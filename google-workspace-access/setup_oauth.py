@@ -22,16 +22,17 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CREDENTIALS_PATH = os.path.join(SCRIPT_DIR, "credentials.json")
 TOKEN_PATH = os.path.join(SCRIPT_DIR, "token.json")
 
-# Minimum scopes to fix "Claude can't edit an existing Google Sheet".
-# Extend this list (and enable the matching APIs in Cloud Console) if you
-# also want Docs/Slides/Gmail/Calendar access, e.g.:
+# Scopes for Sheets/Drive editing plus Gmail send (via the Gmail API, not
+# SMTP - this token is shared by both the google-sheets and gmail-sender
+# MCP servers). Extend further (and enable the matching APIs in Cloud
+# Console) for Docs/Slides/Calendar, e.g.:
 #   "https://www.googleapis.com/auth/documents"
 #   "https://www.googleapis.com/auth/presentations"
-#   "https://www.googleapis.com/auth/gmail.modify"
 #   "https://www.googleapis.com/auth/calendar"
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/gmail.modify",
 ]
 
 
