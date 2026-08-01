@@ -7,6 +7,10 @@
         "CREDENTIALS_PATH": "google-workspace-access/credentials.json",
         "TOKEN_PATH": "google-workspace-access/token.json"
       }
+    },
+    "gmail-sender": {
+      "command": "uvx",
+      "args": ["--with", "mcp<2.0.0", "claude-gmail-mcp"]
     }
   }
 }
