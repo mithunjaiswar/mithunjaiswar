@@ -46,13 +46,23 @@ Comprehensive employee-level incentive audits for seven Indian cities (Delhi NCR
 ### ⏳ IN PROGRESS - Remaining Cities
 
 #### 5. Kolkata (73 employees)
-- **Current Status**:
-  - 44 Formula Based (mix of Verified and Mismatches)
-  - 23 Subjective / Fixed
-  - 5 Insufficient Evidence
-  - 1 Part Formula + Subjective/Incomplete Evidence
-  - Risk levels: 21 Verified, 29 Insufficient Evidence, 13 Overpaid, 10 Underpaid
-- **Next Steps**: Investigate Insufficient Evidence cases against source files (working files, department incentive, DTO & OWN_NOW tracking)
+- **Status**: Deep audit completed with 8 Insufficient Evidence cases identified
+- **Work done**:
+  - Categorized 73 employees into audit schema with Final Status and Risk Levels
+  - 58 employees verified as Formula Based (No Risk) - Telecaller BI, R&M Technician, RM Incentives, Car Recovery, Fixed structures
+  - 7 employees with Low Risk (City exception, Fixed incentive, OT-paid-as-incentive)
+  - 2 employees marked Underpaid (OT conversions)
+  - 8 employees flagged as Insufficient Evidence (Medium Risk) - requiring detailed source file investigation
+- **Insufficient Evidence Cases** (8 total):
+  - EF561 (Tejal Sanjiv Patil) - "Other city" Telecalling ₹5,605
+  - EF9074 (Fardin Sepai) - Own Now/Leasing driver mix ₹3,250 (formula suspected)
+  - EF11489 (Shani Lal) - Special onground support ₹2,000
+  - EF10316 (Nishu Kunwar) - Special incentive ₹2,000
+  - EF12867 (Snehalata) - "Other city" Telecalling ₹5,511
+  - EF12562 (sumeet) - "Other city" + Last Month ₹2K, ₹4,316 (partial logic)
+  - EF11702 (Souvik Khatua) - KAM slab calculation ₹3,797 (formula suspected)
+  - EF12991 (Samjana) - "Other city" Recruitment ₹520
+- **Next Steps**: Cross-verify 8 Insufficient Evidence cases against source files using detailed investigation guide
 
 #### 6. Chennai (81+ employees)
 - **Current Status**: Not yet accessed
