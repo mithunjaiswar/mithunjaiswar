@@ -64,13 +64,22 @@ Comprehensive employee-level incentive audits for seven Indian cities (Delhi NCR
   - EF12991 (Samjana) - "Other city" Recruitment ₹520
 - **Next Steps**: Cross-verify 8 Insufficient Evidence cases against source files using detailed investigation guide
 
-#### 6. Chennai (81+ employees)
-- **Current Status**: Not yet accessed
-- **Next Steps**: Similar pattern - verify sources for Insufficient Evidence and Subjective cases
+#### 6. Chennai (116 employees)
+- **Status**: Deep audit completed with categorization
+- **Work done**:
+  - Categorized 116 employees with Final Status and Risk Levels
+  - 82 employees verified as Formula Based (No Risk)
+  - 34 employees flagged as Insufficient Evidence (Medium Risk)
+- **Next Steps**: Cross-verify 34 Insufficient Evidence cases against source files
 
-#### 7. Mumbai (72+ employees)
-- **Current Status**: Not yet accessed
-- **Next Steps**: Similar pattern - verify sources for Insufficient Evidence and Subjective cases
+#### 7. Mumbai (109 employees)
+- **Status**: Deep audit completed with categorization
+- **Work done**:
+  - Categorized 109 employees with Final Status and Risk Levels
+  - 41 employees verified as Formula Based (No Risk/Low Risk)
+  - 68 employees flagged as Insufficient Evidence (Medium Risk)
+  - Identified entries marked "Mail Approval" or "Approved via email" as requiring verification
+- **Next Steps**: Cross-verify 68 Insufficient Evidence cases against source files
 
 ## Key Audit Methodology
 
