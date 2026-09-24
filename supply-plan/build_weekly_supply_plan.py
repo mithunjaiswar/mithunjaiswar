@@ -7,9 +7,11 @@ Lakshya build-up (the logic behind each weekly number) to the right of it.
 
 Every number on a city tab is a formula that reads from the Inputs tab.
 
-Usage: python3 build_weekly_supply_plan.py <output.xlsx>
+Usage: python3 build_weekly_supply_plan.py <output.xlsx> <raw.json>
+  raw.json = {"hdr": [...], "data": [[...], ...]}: the SSOT query output (see SSOT_URL).
 """
 import datetime as dt
+import json
 import sys
 
 from openpyxl import Workbook
@@ -20,17 +22,6 @@ from openpyxl.utils import get_column_letter
 # ---------------------------------------------------------------- data
 CITIES = ["Mumbai", "Delhi NCR", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune"]
 
-# Opening, Sun 20 Sep 2026 (reporting DB): fleet_total_cars_cnt, allotted_cars_eod,
-# eip_vehicles_cnt, own_now_cars_eod
-OPENING = {
-    "Mumbai":    (4170, 2606, 973, 496),
-    "Delhi NCR": (4182, 2207, 63, 680),
-    "Bangalore": (2857, 1952, 339, 668),
-    "Hyderabad": (2583, 1686, 424, 299),
-    "Chennai":   (2555, 1727, 465, 418),
-    "Kolkata":   (1085, 524, 48, 192),
-    "Pune":      (1735, 971, 60, 277),
-}
 # Lakshya v4 December targets: EIP, Own Now, L+DTO
 TARGET = {
     "Mumbai":    (1150, 1006, 1225),
@@ -99,10 +90,12 @@ EVENTS_CITY = {
 LAKSHYA_URL = "https://docs.google.com/spreadsheets/d/1Bu8NkgNVcakYondqbyK_jW4nFuFDBqEk"
 AOP_URL = "https://docs.google.com/spreadsheets/d/1yK2NRIK1B7U-K9wSqGvoFgcl3arVB-Ozybl_St0Z_PA"
 SUPPLY_URL = "https://docs.google.com/spreadsheets/d/1Cxg6qsZr6I9nr9OdORAYJVlRc5iB6r0Vnu6k9LKWcjE"
+SSOT_URL = "https://docs.google.com/document/d/1UIKW0voWgrUu2HDonBR4GsWdFz8XLVgWq7r5UoaYMpc"
 SOURCES = [
     ("Lakshya source (targets)", LAKSHYA_URL, "Lakshya_15000_Model_v4.xlsx - source of every target in this plan"),
     ("AOP (reference only)", AOP_URL, "AOP FY27 - does not match Lakshya; used only for the recruitment channel mix"),
-    ("Weekly Supply Plan (format)", SUPPLY_URL, "Weekly Supply Plan - city tab layout and raw_performance data"),
+    ("Weekly Supply Plan (format)", SUPPLY_URL, "Weekly Supply Plan - city tab layout"),
+    ("SSOT query (raw data)", SSOT_URL, "SSOT query - run from 1 Aug 2026; its output is the raw_performance tab"),
 ]
 
 
@@ -117,6 +110,7 @@ YELLOW = "FFFFFF00"
 INPUT = "FFFFF2CC"
 GREEN = "FFA2D9BE"
 LIGHT = "FFF2F2F2"
+ACTUAL = "FFDDEBF7"
 BLUE_TXT = "FF0000FF"
 F_HDR = Font(name="Calibri", size=10, bold=True, color="FFFFFFFF")
 F_BODY = Font(name="Calibri", size=10)
@@ -161,13 +155,21 @@ def inp(ws, row, col, value, fmt=None):
     return put(ws, row, col, value, fmt, font=F_INPUT, bg=INPUT)
 
 
+RAW_HDR = []  # filled from the raw data file at build time
+
+
+def rc(name):
+    """Column letter of a raw_performance field."""
+    return get_column_letter(RAW_HDR.index(name) + 1)
+
+
 def q(sheet):
     return f"'{sheet}'"
 
 
 # ---------------------------------------------------------------- Inputs tab layout
 R_GLOBAL = 5          # header row of global settings; values start next row
-R_SUM_H = 15          # summary header row
+R_SUM_H = 16          # summary header row
 R_SUM0 = R_SUM_H + 1  # first city row in summary
 R_CITY_H = 28         # city inputs header row
 R_CITY0 = R_CITY_H + 1
@@ -216,8 +218,10 @@ COLS = [  # (letter, header, width)
     ("AU", "Total placements (Own Now + L+DTO)", 10), ("AV", "Check: on road = EIP + L+DTO + Own Now", 9),
     ("AW", "Util headroom", 8),
 ]
-FIRST = 3                      # first week row (row 2 = opening actual)
-LAST = FIRST + N_WEEKS - 1     # 16
+N_ACTUAL = 4                   # actual weeks shown above the plan (rows 2-5)
+FIRST = 2 + N_ACTUAL           # first plan week row
+OPEN_ROW = FIRST - 1           # last actual week = opening position
+LAST = FIRST + N_WEEKS - 1     # 19
 R_TOT = LAST + 2               # 19
 R_MON_T = R_TOT + 3            # 22 monthly block title
 R_MON_H = R_MON_T + 1          # 23
@@ -238,25 +242,53 @@ def build_city(wb, idx, city):
 
     ev_col = get_column_letter(9 + idx)  # events columns on Inputs calendar: I..O
 
-    # ---- row 2: opening actual
-    r = 2
-    put(ws, r, 1, city, bg=LIGHT, bold=True)
-    put(ws, r, 2, "CNG", bg=LIGHT)
-    put(ws, r, 3, f"=EOMONTH(D{r},-1)+1", DATE, bg=LIGHT)
-    put(ws, r, 4, f"={G_OPEN_DATE}", DATE, bg=LIGHT)
-    put(ws, r, 5, f"={ci('fleet', idx)}", NUM, bg=LIGHT)
-    put(ws, r, 17, "Opening - actual Sun 20 Sep (reporting DB)", bg=LIGHT)
-    put(ws, r, 18, f"={ci('eip', idx)}", NUM, bg=LIGHT)
-    put(ws, r, 23, f"={ci('ldto', idx)}", NUM, bg=LIGHT)
-    put(ws, r, 24, f"={ci('own', idx)}", NUM, bg=LIGHT)
-    put(ws, r, 25, f"={ci('onroad', idx)}", NUM, bg=LIGHT)
-    put(ws, r, 26, f"=Y{r}/E{r}", PCT, bg=LIGHT)
-    put(ws, r, 27, f"={ci('ceiling', idx)}", PCT, bg=LIGHT)
-    put(ws, r, 48, f"=Y{r}-(R{r}+W{r}+X{r})", NUM, bg=LIGHT)
-    put(ws, r, 49, f"=AA{r}-Z{r}", PCT, bg=LIGHT)
-    for c in range(1, 50):
-        if c != 28 and ws.cell(r, c).value is None:
-            put(ws, r, c, None, bg=LIGHT)
+    # ---- actual weeks (rows 2-5): straight from raw_performance
+    def day(col, r, offset):   # value on one date (week start + offset days)
+        return (f"SUMIFS(raw_performance!${rc(col)}:${rc(col)},raw_performance!$D:$D,$A{r},"
+                f"raw_performance!$E:$E,$B{r},raw_performance!$C:$C,$D{r}+{offset})").replace("+-", "-")
+
+    def week(col, r):          # sum over the Mon-Sun week
+        return (f"SUMIFS(raw_performance!${rc(col)}:${rc(col)},raw_performance!$D:$D,$A{r},"
+                f"raw_performance!$E:$E,$B{r},raw_performance!$B:$B,$D{r})")
+
+    for k in range(N_ACTUAL):
+        r = 2 + k
+        f = {
+            "A": city if k == 0 else "=$A$2", "B": "CNG" if k == 0 else "=$B$2",
+            "C": f"=EOMONTH(D{r},-1)+1",
+            "D": f"={G_OPEN_DATE}-{7 * N_ACTUAL - 1}" if k == 0 else f"=D{r - 1}+7",
+            "E": "=" + day("fleet_total_cars_cnt", r, 6),
+            "F": f"=E{r}-" + day("fleet_total_cars_cnt", r, -1),
+            "G": "=" + day("allotted_cars_eod", r, -1),
+            "H": "=" + day("allotted_cars_eod", r, -1) + "-" + day("eip_vehicles_cnt", r, -1),
+            "I": f"=Y{r}-G{r}", "J": f"=K{r}+P{r}", "K": f"=SUM(L{r}:O{r})",
+            "L": "=" + week("ni_fse_cnt", r) + "+" + week("resurrection_fse_cnt", r),
+            "M": "=" + week("ni_vendor_cnt", r) + "+" + week("resurrection_vendor_cnt", r),
+            "N": "=" + week("ni_driver_referral_cnt", r) + "+" + week("resurrection_driver_referral_cnt", r),
+            "O": "=" + week("ni_perf_mktg_cnt", r) + "+" + week("resurrection_perf_mktg_cnt", r),
+            "P": "=" + week("Net EIP Add-ons", r),
+            "Q": "ACTUAL - raw_performance",
+            "R": "=" + day("eip_vehicles_cnt", r, 6),
+            "U": f"=I{r}-J{r}", "V": f"=IF(H{r}=0,0,-U{r}/H{r})",
+            "W": f"=Y{r}-R{r}-X{r}",
+            "X": "=" + day("own_now_cars_eod", r, 6),
+            "Y": "=" + day("allotted_cars_eod", r, 6),
+            "Z": f"=Y{r}/E{r}", "AA": f"={ci('ceiling', idx)}",
+            "AC": 7, "AU": f"=K{r}",
+            "AV": f"=Y{r}-(R{r}+W{r}+X{r})", "AW": f"=AA{r}-Z{r}",
+        }
+        for letter, _, _ in COLS:
+            if letter == "AB":
+                continue
+            col = ws[letter + "1"].column
+            fmt = NUM
+            if letter in ("C", "D"):
+                fmt = DATE
+            elif letter in ("V", "Z", "AA", "AW"):
+                fmt = PCT
+            elif letter in ("A", "B", "Q", "AC"):
+                fmt = None
+            put(ws, r, col, f.get(letter), fmt, bg=ACTUAL, bold=(letter == "Q"))
 
     # ---- weekly rows
     for w in range(N_WEEKS):
@@ -368,7 +400,7 @@ def build_city(wb, idx, city):
     # ---- notes
     notes = [
         "HOW THIS TAB WORKS  (all inputs are on the Inputs tab; nothing on this tab is typed)",
-        "Row 2 is the actual position on Sun 20 Sep. Each week then starts from the previous week's close.",
+        f"Rows 2-{OPEN_ROW} (blue) are the last {N_ACTUAL} actual weeks, read from the raw_performance tab. The plan (row {FIRST} on) starts from the close of the last actual week, Sun 20 Sep.",
         "EIP: the gap to the December target is spread across the weeks by the EIP weights (AG = gap x weight). No EIP churn is modelled, as in Lakshya v4.",
         "Own Now: net add = gap to December target x Own Now weight (AJ). Churn and purchase rollover = opening book x monthly rate / 4.33 x days/7 (AK, AL). Placements needed = net add + churn + rollover (AM).",
         "Leasing + DTO: net add = gap to December target x L+DTO weight (AR). Churn = opening book x Lakshya net churn rate / 4.33 x days/7 (AS). Placements needed = net add + churn (AT).",
@@ -424,7 +456,7 @@ def build_inputs(wb):
     ws.merge_cells(start_row=R_GLOBAL, start_column=3, end_row=R_GLOBAL, end_column=8)
     rows = [
         ("Opening date (actual, Sunday)", dt.date(2026, 9, 20), DATE, True,
-         "Close of w/c 14 Sep. Opening fleet, on road, EIP and Own Now in section 3 are as of this date."),
+         "Last actual week ends here (close of w/c 14 Sep). Opening values in section 3 and the 4 actual weeks on each city tab are read from raw_performance up to this date."),
         ("First plan week starts (Monday)", f"=B{R_GLOBAL + 1}+1", DATE, False, "Current week, Mon 21 - Sun 27 Sep."),
         ("Plan ends (Sunday)", dt.date(2026, 12, 27), DATE, True,
          "Same end as Lakshya v4: w/e Sun 27 Dec. 28-31 Dec is not planned."),
@@ -459,7 +491,7 @@ def build_inputs(wb):
         r = R_SUM0 + i
         s = q(city)
         vals = [
-            (city, None), (f"={s}!Y2", NUM), (f"={s}!Y{LAST}", NUM), (f"={ci('t_onroad', i)}", NUM),
+            (city, None), (f"={s}!Y{OPEN_ROW}", NUM), (f"={s}!Y{LAST}", NUM), (f"={ci('t_onroad', i)}", NUM),
             (f"=C{r}-D{r}", NUM), (f"={s}!R{LAST}", NUM), (f"={s}!X{LAST}", NUM), (f"={s}!W{LAST}", NUM),
             (f"={s}!E{LAST}", NUM), (f"={ci('lk_fleet', i)}", NUM), (f"=C{r}/I{r}", PCT),
             (f"={ci('ceiling', i)}", PCT), (f"=L{r}-K{r}", PCT), (f"={s}!P{R_TOT}", NUM),
@@ -494,7 +526,7 @@ def build_inputs(wb):
 
     # ---- 3. city inputs
     ws.cell(R_CITY_H - 2, 1, "3.  CITY INPUTS - opening position, December targets, rates, ceiling, channel mix").font = F_SECTION
-    groups = [(2, 6, "OPENING - actual Sun 20 Sep"), (7, 10, "DECEMBER TARGET - Lakshya v4"),
+    groups = [(2, 6, "OPENING - actual on the opening date (raw_performance)"), (7, 10, "DECEMBER TARGET - Lakshya v4"),
               (11, 14, "RATES - per calendar month"), (15, 15, "GUARDRAIL"),
               (16, 19, "RECRUITMENT CHANNEL MIX - AOP Sep-Dec"), (20, 20, "REFERENCE")]
     for c1, c2, t in groups:
@@ -510,15 +542,14 @@ def build_inputs(wb):
     ws.row_dimensions[R_CITY_H].height = 54
     for i, city in enumerate(CITIES):
         r = R_CITY0 + i
-        fl, on, eip, own = OPENING[city]
         te, to, tl = TARGET[city]
         rl, ro, rr, ns, ce = RATES[city]
         fse, ven, ref = CHANNEL[city]
         put(ws, r, 1, city, bold=True)
-        inp(ws, r, 2, fl, NUM)
-        inp(ws, r, 3, on, NUM)
-        inp(ws, r, 4, eip, NUM)
-        inp(ws, r, 5, own, NUM)
+        for j, field in ((2, "fleet_total_cars_cnt"), (3, "allotted_cars_eod"), (4, "eip_vehicles_cnt"),
+                         (5, "own_now_cars_eod")):
+            put(ws, r, j, f'=SUMIFS(raw_performance!${rc(field)}:${rc(field)},raw_performance!$D:$D,$A{r},'
+                          f'raw_performance!$E:$E,"CNG",raw_performance!$C:$C,{G_OPEN_DATE})', NUM, bg=ACTUAL)
         put(ws, r, 6, f"=C{r}-D{r}-E{r}", NUM)
         inp(ws, r, 7, te, NUM)
         inp(ws, r, 8, to, NUM)
@@ -542,7 +573,7 @@ def build_inputs(wb):
     for j in range(11, 20):
         put(ws, r, j, None, bg=LIGHT)
     notes = [
-        "Opening: allotted_cars_eod (on road), eip_vehicles_cnt, own_now_cars_eod, fleet_total_cars_cnt. Leasing + DTO = on road - EIP - Own Now (EIP sits inside leasing in the source).",
+        "Opening (blue) is read from the raw_performance tab on the opening date: allotted_cars_eod (on road), eip_vehicles_cnt, own_now_cars_eod, fleet_total_cars_cnt. Leasing + DTO = on road - EIP - Own Now (EIP sits inside leasing in the source).",
         "L+DTO churn: Lakshya v4 planning rate (net basis: a driver who leaves and returns nets out). Own Now churn and rollover: Lakshya v4 city exits divided by the book they ran on, per calendar month.",
         "New-car share: Lakshya v4 new-car Own Now placements / all Own Now placements (information only; it splits AM into AN and AO on the city tabs).",
     ]
@@ -700,7 +731,7 @@ def build_compare(wb):
          f"Opening fleet differs: weekly plan starts from the DB fleet_total_cars_cnt on 20 Sep (19,167), the "
          f"column the Weekly Supply Plan uses; Lakshya started from 19,334 on 31 Aug."),
         ("Utilisation, 27 Dec", 0.7212, None, PCT, 0.0005, "Same cars on road on a slightly smaller fleet (see fleet line)."),
-        ("Starting point - cars on road", 11718, "=" + "+".join(f"{q(c)}!Y2" for c in CITIES), NUM, None,
+        ("Starting point - cars on road", 11718, "=" + "+".join(f"{q(c)}!Y{OPEN_ROW}" for c in CITIES), NUM, None,
          "Lakshya starts from the 31 Aug actual; the weekly plan starts from the 20 Sep actual (reporting DB)."),
     ]
     first = r + 1
@@ -908,14 +939,44 @@ def build_compare(wb):
     ws.sheet_view.zoomScale = 90
 
 
-def main(out):
+def build_raw(wb, raw):
+    """raw_performance: the SSOT query output, one row per date x city x fuel type."""
+    ws = wb.create_sheet("raw_performance")
+    date_cols = {"month", "Week", "date", "current_year_week"}
+    for j, h in enumerate(raw["hdr"], start=1):
+        c = ws.cell(1, j, h)
+        c.font = F_HDR
+        c.fill = fill(NAVY)
+        c.alignment = CENTER
+        ws.column_dimensions[get_column_letter(j)].width = 12
+    ws.row_dimensions[1].height = 40
+    for i, row in enumerate(raw["data"], start=2):
+        for j, (h, v) in enumerate(zip(raw["hdr"], row), start=1):
+            if v in ("", "NULL", "None"):
+                val = None
+            elif h in date_cols:
+                val = dt.date.fromisoformat(v)
+            elif h in ("city", "fuel_type", "short_month", "updated_at"):
+                val = v
+            else:
+                val = float(v) if "." in v else int(v)
+            c = ws.cell(i, j, val)
+            if h in date_cols:
+                c.number_format = "yyyy-mm-dd"
+    ws.freeze_panes = "F2"
+
+
+def main(out, raw_path):
+    raw = json.load(open(raw_path))
+    RAW_HDR[:] = raw["hdr"]
     wb = Workbook()
     build_inputs(wb)
     for i, city in enumerate(CITIES):
         build_city(wb, i, city)
     build_compare(wb)
+    build_raw(wb, raw)
     wb.save(out)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "Lakshya_Weekly_Supply_Plan.xlsx")
+    main(sys.argv[1], sys.argv[2])
