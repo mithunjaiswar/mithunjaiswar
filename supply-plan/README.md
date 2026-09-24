@@ -6,6 +6,8 @@
 - 10 tabs: `Lakshya vs Plan` (comparison for sharing), `Inputs`, one tab per city (Mumbai, Delhi NCR, Bangalore,
   Hyderabad, Chennai, Kolkata, Pune) and `raw_performance` (output of the SSOT query).
 - Each city tab shows the last 4 actual weeks (read from `raw_performance`) and then the 14 plan weeks to w/e 27 Dec.
+- Churn follows last year's weekly attrition shape (same week last year, from `raw_performance`) at the Lakshya level;
+  recruitment dips in festival weeks using the Weekly Supply Plan's seasonality impacts (Inputs section 7).
 - Targets come from `Lakshya_15000_Model_v4.xlsx` (the CEO's AOP does not match it, so it is reference only).
 - Opening position: `raw_performance` (SSOT query on `analytics.ssot_scorecard_agg`), CNG, Sun 20 Sep 2026.
 - City tabs follow the column layout of the existing Weekly Supply Plan sheet (A–Z); the Lakshya

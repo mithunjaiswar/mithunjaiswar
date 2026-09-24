@@ -71,8 +71,27 @@ LAKSHYA_SALES = {"Mumbai": 151, "Delhi NCR": 209, "Bangalore": 50, "Hyderabad": 
 
 N_WEEKS = 14  # w/c 21 Sep ... w/c 21 Dec (w/e 27 Dec), the same 14 weeks as Lakshya v4
 W_EIP = [5, 5, 8, 8, 8, 8, 4, 4, 8, 8, 8, 9, 9, 8]
-W_OWN = [3, 4, 7, 8, 8, 7, 3, 3, 9, 9, 10, 10, 10, 9]
-W_LDTO = [5, 7, 8, 8, 6, 5, 0, 0, 7, 10, 10, 11, 12, 11]
+# Own Now / L+DTO base profiles are relative weights before seasonality (they need not sum to 100):
+# Own Now builds up as new cars land in Oct-Nov; L+DTO is flat and gets its shape from seasonality.
+W_OWN = [4, 5, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 7]
+W_LDTO = [1] * 14
+# Event impact on recruitment by city (Mumbai, Delhi NCR, Bangalore, Hyderabad, Chennai, Kolkata, Pune):
+# "Rec Avg" (2024-25 average) from the seasonality_Impect tab of the Weekly Supply Plan. City-only events
+# are 0 in the other cities.
+SEASON_REC = {
+    "Mahatma Gandhi Jayanti": (-0.245, -0.12, -0.13, -0.305, -0.025, -0.67, 0.005),
+    "Dussehra": (-0.075, -0.09, -0.17, -0.475, -0.075, -1.37, -0.025),
+    "Kannada Rajyotsava": (0, 0, -0.19, 0, 0, 0, 0),
+    "Diwali (Laxmi Pujan)": (-0.415, -1.625, -0.385, -0.095, -0.315, -0.205, -0.61),
+    "Bhai Dooj": (-0.415, -1.625, -0.385, -0.095, -0.315, -0.205, -0.61),
+    "Guru Nanak Jayanti": (0.085, 0.06, 0.08, 0.01, -0.055, -0.01, 0.075),
+    "GHMC/MMC/CMC Election Hyderabad 2026": (0, 0, 0, 0, 0, 0, 0),
+    "KMC Election Kolkata 2026": (0, 0, 0, 0, 0, 0, 0),
+    "Christmas": (0.125, -0.005, -0.06, -0.03, -0.075, -0.295, -0.085),
+}
+# Event used for the impact lookup in each plan week (week 8 = Bali Pratipada + Bhai Dooj, same impact)
+WEEK_EVENT = {2: "Mahatma Gandhi Jayanti", 5: "Dussehra", 6: "Kannada Rajyotsava", 7: "Diwali (Laxmi Pujan)",
+              8: "Bhai Dooj", 10: "Guru Nanak Jayanti", 13: "KMC Election Kolkata 2026", 14: "Christmas"}
 EVENTS_ALL = {
     2: "Gandhi Jayanti (Fri 2 Oct)",
     5: "Dussehra (Tue 20 Oct)",
@@ -172,20 +191,24 @@ def q(sheet):
 
 # ---------------------------------------------------------------- Inputs tab layout
 R_GLOBAL = 5          # header row of global settings; values start next row
-R_SUM_H = 16          # summary header row
+R_SUM_H = 18          # summary header row
 R_SUM0 = R_SUM_H + 1  # first city row in summary
-R_CITY_H = 28         # city inputs header row
+R_CITY_H = 31         # city inputs header row
 R_CITY0 = R_CITY_H + 1
-R_ADD_H = 40          # new cars header
+R_ADD_H = 45          # new cars header
 R_ADD0 = R_ADD_H + 1
-R_SALE_H = 52         # sales header
+R_SALE_H = 57         # sales header
 R_SALE0 = R_SALE_H + 1
-R_CAL_H = 64          # calendar header
+R_CAL_H = 69          # calendar header
 R_CAL0 = R_CAL_H + 1
+R_SEAS_H = 91         # seasonality table header
+R_SEAS0 = R_SEAS_H + 1
+R_SEAS1 = R_SEAS0 + len(SEASON_REC) - 1
 
 G_OPEN_DATE = f"Inputs!$B${R_GLOBAL + 1}"
 G_PLAN_END = f"Inputs!$B${R_GLOBAL + 3}"
 G_WPM = f"Inputs!$B${R_GLOBAL + 4}"
+G_FLOOR = f"Inputs!$B${R_GLOBAL + 6}"
 
 # City-input columns on the Inputs tab
 CI = {k: i + 1 for i, k in enumerate([
@@ -212,15 +235,23 @@ COLS = [  # (letter, header, width)
     ("Z", "Week ending Util", 8), ("AA", "Util ceiling (Lakshya)", 8), ("AB", "", 2),
     ("AC", "Days in plan", 6), ("AD", "Total buy (new cars)", 8), ("AE", "Total sold", 8),
     ("AF", "EIP weight", 7), ("AG", "EIP net add", 8),
-    ("AH", "Own Now book - WB", 8), ("AI", "Own Now weight", 7), ("AJ", "Own Now net add", 8),
-    ("AK", "Own Now churn", 8), ("AL", "Own Now purchase rollover", 9),
+    ("AH", "Own Now book - WB", 8), ("AI", "Own Now share of placements", 8), ("AJ", "Own Now net add", 8),
+    ("AK", "Own Now churn (LY-shaped)", 8), ("AL", "Own Now purchase rollover", 9),
     ("AM", "Own Now placements", 9), ("AN", "of which new cars", 8),
     ("AO", "of which existing cars", 8),
-    ("AP", "L+DTO book - WB", 8), ("AQ", "L+DTO weight", 7), ("AR", "L+DTO net add", 8),
-    ("AS", "L+DTO churn", 8), ("AT", "L+DTO placements", 9),
+    ("AP", "L+DTO book - WB", 8), ("AQ", "L+DTO share of placements", 8), ("AR", "L+DTO net add", 8),
+    ("AS", "L+DTO churn (LY-shaped)", 8), ("AT", "L+DTO placements", 9),
     ("AU", "Total placements (Own Now + L+DTO)", 10), ("AV", "Check: on road = EIP + L+DTO + Own Now", 9),
-    ("AW", "Util headroom", 8),
+    ("AW", "Util headroom", 8), ("AX", "", 2),
+    ("AY", "LY week (same week last year)", 9), ("AZ", "LY active partners - WB", 9),
+    ("BA", "LY recruitment (new joins + resurrections)", 10), ("BB", "LY net attrition (abs)", 9),
+    ("BC", "LY net attrition %", 8), ("BD", "LY attrition index (1 = average week)", 9),
+    ("BE", "Festival impact on recruitment", 9), ("BF", "Seasonality factor", 8),
+    ("BG", "Own Now base profile", 8), ("BH", "L+DTO base profile", 8),
+    ("BI", "Own Now straight-line book - WB", 9), ("BJ", "L+DTO straight-line book - WB", 9),
 ]
+LY_BLOCK = ("AY", "AZ", "BA", "BB", "BC", "BD", "BE", "BF", "BG", "BH", "BI", "BJ")
+TEAL = "FF1F6F5F"
 N_ACTUAL = 4                   # actual weeks shown above the plan (rows 2-5)
 FIRST = 2 + N_ACTUAL           # first plan week row
 OPEN_ROW = FIRST - 1           # last actual week = opening position
@@ -283,7 +314,8 @@ def build_city(wb, idx, city):
         ws.column_dimensions[newcol(letter)].width = width
         if text:
             grey = letter >= "AC" and len(letter) == 2 and letter not in ("AA", "AD", "AE")
-            hdr(ws, 1, column_index_from_string(newcol(letter)), text, GREY_HDR if grey else NAVY)
+            color = TEAL if letter in LY_BLOCK else (GREY_HDR if grey else NAVY)
+            hdr(ws, 1, column_index_from_string(newcol(letter)), text, color)
     ws.row_dimensions[1].height = 54
     ws.freeze_panes = "F2"
 
@@ -325,7 +357,7 @@ def build_city(wb, idx, city):
             "AV": f"=Y{r}-(R{r}+W{r}+X{r})", "AW": f"=AA{r}-Z{r}",
         }
         for letter, _, _ in COLS:
-            if letter == "AB":
+            if letter in ("AB", "AX"):
                 continue
             fmt = NUM
             if letter in ("C", "D"):
@@ -335,6 +367,14 @@ def build_city(wb, idx, city):
             elif letter in ("A", "B", "Q", "AC"):
                 fmt = None
             cput(ws, r, letter, f.get(letter), fmt, bg=ACTUAL, bold=(letter == "Q"))
+
+    def raw_on(col, r):        # value on the LY week's Monday
+        return (f"SUMIFS(raw_performance!${rc(col)}:${rc(col)},raw_performance!$D:$D,$A{r},"
+                f"raw_performance!$E:$E,$B{r},raw_performance!$C:$C,$AY{r})")
+
+    def raw_wk(col, r):        # sum over the LY week
+        return (f"SUMIFS(raw_performance!${rc(col)}:${rc(col)},raw_performance!$D:$D,$A{r},"
+                f"raw_performance!$E:$E,$B{r},raw_performance!$B:$B,$AY{r})")
 
     # ---- weekly rows
     for w in range(N_WEEKS):
@@ -356,27 +396,48 @@ def build_city(wb, idx, city):
             "AE": f"=INDEX(Inputs!$B${R_SALE0 + idx}:$E${R_SALE0 + idx},MATCH(C{r},Inputs!$B${R_SALE_H}:$E${R_SALE_H},0))/COUNTIF($C${FIRST}:$C${LAST},C{r})",
             "AF": f"=Inputs!$F${cal}",
             "AG": f"=({ci('t_eip', idx)}-{ci('eip', idx)})*AF{r}",
-            "AH": f"=X{p}", "AI": f"=Inputs!$G${cal}",
-            "AJ": f"=({ci('t_own', idx)}-{ci('own', idx)})*AI{r}",
-            "AK": f"=AH{r}*{ci('r_own', idx)}/{G_WPM}*AC{r}/7",
-            "AL": f"=AH{r}*{ci('r_roll', idx)}/{G_WPM}*AC{r}/7",
-            "AM": f"=AJ{r}+AK{r}+AL{r}", "AN": f"=AM{r}*{ci('newshare', idx)}",
+            "AH": f"=X{p}",
+            "AI": f"=BG{r}*BF{r}/SUMPRODUCT($BG${FIRST}:$BG${LAST},$BF${FIRST}:$BF${LAST})",
+            "AJ": f"=AM{r}-AK{r}-AL{r}",
+            "AK": f"=BI{r}*{ci('r_own', idx)}/{G_WPM}*AC{r}/7*BD{r}",
+            "AL": f"=BI{r}*{ci('r_roll', idx)}/{G_WPM}*AC{r}/7",
+            "AM": f"=(({ci('t_own', idx)}-{ci('own', idx)})+SUM($AK${FIRST}:$AL${LAST}))*AI{r}",
+            "AN": f"=AM{r}*{ci('newshare', idx)}",
             "AO": f"=AM{r}-AN{r}",
-            "AP": f"=W{p}", "AQ": f"=Inputs!$H${cal}",
-            "AR": f"=({ci('t_ldto', idx)}-{ci('ldto', idx)})*AQ{r}",
-            "AS": f"=AP{r}*{ci('r_ldto', idx)}/{G_WPM}*AC{r}/7",
-            "AT": f"=AR{r}+AS{r}", "AU": f"=AM{r}+AT{r}",
+            "AP": f"=W{p}",
+            "AQ": f"=BH{r}*BF{r}/SUMPRODUCT($BH${FIRST}:$BH${LAST},$BF${FIRST}:$BF${LAST})",
+            "AR": f"=AT{r}-AS{r}",
+            "AS": f"=BJ{r}*{ci('r_ldto', idx)}/{G_WPM}*AC{r}/7*BD{r}",
+            "AT": f"=(({ci('t_ldto', idx)}-{ci('ldto', idx)})+SUM($AS${FIRST}:$AS${LAST}))*AQ{r}",
+            "AU": f"=AM{r}+AT{r}",
             "AV": f"=Y{r}-(R{r}+W{r}+X{r})", "AW": f"=AA{r}-Z{r}",
+            # last year and seasonality
+            "AY": f"=D{r}-364",
+            "AZ": "=" + raw_on("uniq_partners_dt_beginning", r),
+            "BA": "=" + raw_wk("newjoin_cnt", r) + "+" + raw_wk("resurrection_cnt", r),
+            "BB": "=" + raw_wk("attrition_cnt", r) + "+" + raw_wk("temp_attrition_cnt", r) + "-"
+                  + raw_wk("rejoin_cnt", r) + "-" + raw_wk("temp_rejoin_cnt", r),
+            "BC": f"=IFERROR(BB{r}/(AZ{r}+BA{r}),0)",
+            "BD": f"=IFERROR(BC{r}/AVERAGE($BC${FIRST}:$BC${LAST}),1)",
+            "BE": f"=IFERROR(INDEX(Inputs!$B${R_SEAS0}:$H${R_SEAS1},MATCH(Inputs!$P${cal},Inputs!$A${R_SEAS0}:$A${R_SEAS1},0),{idx + 1}),0)",
+            "BF": f"=MAX(1+{G_FLOOR},1+BE{r})",
+            "BG": f"=Inputs!$G${cal}", "BH": f"=Inputs!$H${cal}",
+            "BI": f"={ci('own', idx)}" if w == 0 else f"=BI{p}+({ci('t_own', idx)}-{ci('own', idx)})/COUNT($D${FIRST}:$D${LAST})",
+            "BJ": f"={ci('ldto', idx)}" if w == 0 else f"=BJ{p}+({ci('t_ldto', idx)}-{ci('ldto', idx)})/COUNT($D${FIRST}:$D${LAST})",
         }
         for letter, _, _ in COLS:
-            if letter == "AB":
+            if letter in ("AB", "AX"):
                 continue
             v = f.get(letter)
             fmt = NUM
             if letter in ("C", "D"):
                 fmt = DATE
-            elif letter in ("V", "Z", "AA", "AF", "AI", "AQ", "AW"):
+            elif letter in ("V", "Z", "AA", "AF", "AI", "AQ", "AW", "BC", "BE"):
                 fmt = PCT
+            elif letter in ("BD", "BF"):
+                fmt = "0.00"
+            elif letter == "AY":
+                fmt = DATE
             elif letter in ("A", "B", "Q"):
                 fmt = None
             bg = None
@@ -446,8 +507,10 @@ def build_city(wb, idx, city):
         "HOW THIS TAB WORKS  (all inputs are on the Inputs tab; nothing on this tab is typed)",
         f"Rows 2-{OPEN_ROW} (blue) are the last {N_ACTUAL} actual weeks, read from the raw_performance tab. The plan (row {FIRST} on) starts from the close of the last actual week, Sun 20 Sep.",
         "EIP: the gap to the December target is spread across the weeks by the EIP weights (AG = gap x weight). No EIP churn is modelled, as in Lakshya v4.",
-        "Own Now: net add = gap to December target x Own Now weight (AJ). Churn and purchase rollover = opening book x monthly rate / 4.33 x days/7 (AK, AL). Placements needed = net add + churn + rollover (AM).",
-        "Leasing + DTO: net add = gap to December target x L+DTO weight (AR). Churn = opening book x Lakshya net churn rate / 4.33 x days/7 (AS). Placements needed = net add + churn (AT).",
+        "LAST YEAR (AY:BD): same week last year (week start - 364 days) from raw_performance. LY net attrition % = (attrition + temp attrition - rejoins - temp rejoins) / (active partners at week start + new joins + resurrections), as in the Weekly Supply Plan. LY attrition index = that week's LY % / the average over the 14 plan weeks.",
+        "SEASONALITY (BE:BF): festival impact on recruitment for the event in that week (Inputs, sections 6-7); seasonality factor = 1 + impact, floored. Share of placements (AI, AQ) = base profile x seasonality factor, over the total.",
+        "Churn (AK, AS) = straight-line book (BI, BJ: today's book moving evenly to the December target) x Lakshya monthly rate / 4.33 x LY attrition index. So the Lakshya rate sets the level and last year sets the week-to-week shape. Own Now rollover (AL) is not shaped.",
+        "Placements (AM, AT) = (gap to December target + all churn over the plan) x that week's share. Net add = placements - churn (AJ, AR), so the book dips in festival weeks and lands exactly on target on 27 Dec.",
         "Recruitment by channel (N:Q) = total placements (AU) x the city's channel mix on the Inputs tab. Net Attrition (W) = Own Now churn + rollover + L+DTO churn.",
         "Fleet (E) = previous week + Total buy (G) - Total sold (H); each month's cars are split evenly across that month's weeks (Inputs, sections 4 and 5). Buy and sold are blank in actual weeks: raw_performance has fleet only. Util (AB) = week-ending cars on road / fleet; red when above the Lakshya ceiling (AC).",
         "Weights sum to 100%, so the last week (w/e Sun 27 Dec, Lakshya's last week) lands exactly on the Lakshya December target for each layer. Check column AV must be 0.",
@@ -506,6 +569,8 @@ def build_inputs(wb):
          "Same end as Lakshya v4: w/e Sun 27 Dec. 28-31 Dec is not planned."),
         ("Weeks per month", "=52/12", "0.00", False, "Turns a monthly churn rate into a weekly one."),
         ("India CNG on-road goal, Dec", 15000, NUM, True, "Lakshya lands at 15,082. ~1,000 EV held flat on top = 16,000."),
+        ("Largest recruitment drop in one week", -0.75, "0%", True,
+         "Floor on the festival impact (section 7). Some history values are below -100% (e.g. Delhi Diwali -163%)."),
     ]
     for k, (label, val, fmt, is_input, note) in enumerate(rows):
         r = R_GLOBAL + 1 + k
@@ -517,7 +582,7 @@ def build_inputs(wb):
     # ---- sources
     F_LINK = Font(name="Calibri", size=10, color="FF1155CC", underline="single")
     for k, (label, url, text) in enumerate(SOURCES):
-        r = R_GLOBAL + 6 + k
+        r = R_GLOBAL + 7 + k
         put(ws, r, 1, label, bold=True)
         put(ws, r, 2, link(url, text), font=F_LINK)
         ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=8)
@@ -656,8 +721,9 @@ def build_inputs(wb):
 
     # ---- 6. calendar
     ws.cell(R_CAL_H - 1, 1, "6.  WEEKLY CALENDAR AND PHASING  -  weeks run Mon-Sun; a week counts in the month its Monday falls in").font = F_SECTION
-    cal_heads = ["Week #", "Week start (Mon)", "Week end", "Month", "Days in plan", "EIP weight",
-                 "Own Now weight", "L+DTO weight"] + [f"Events - {c}" for c in CITIES]
+    cal_heads = ["Week #", "Week start (Mon)", "Week end", "Month", "Days in plan", "EIP weight (sums to 100%)",
+                 "Own Now base profile", "L+DTO base profile"] + [f"Events - {c}" for c in CITIES] + [
+                 "Event used for impact (section 7)"]
     for j, t in enumerate(cal_heads, start=1):
         hdr(ws, R_CAL_H, j, t)
     ws.row_dimensions[R_CAL_H].height = 40
@@ -669,28 +735,49 @@ def build_inputs(wb):
         put(ws, r, 4, f"=EOMONTH(B{r},-1)+1", "mmm-yy")
         put(ws, r, 5, f"=C{r}-B{r}+1", "0")
         inp(ws, r, 6, W_EIP[w] / 100, "0%")
-        inp(ws, r, 7, W_OWN[w] / 100, "0%")
-        inp(ws, r, 8, W_LDTO[w] / 100, "0%")
+        inp(ws, r, 7, W_OWN[w], "0")
+        inp(ws, r, 8, W_LDTO[w], "0")
         for k, city in enumerate(CITIES):
             parts = [x for x in (EVENTS_ALL.get(w + 1), EVENTS_CITY.get((city, w + 1))) if x]
             inp(ws, r, 9 + k, "; ".join(parts) if parts else "")
+        inp(ws, r, 16, WEEK_EVENT.get(w + 1, ""))
     r = R_CAL0 + N_WEEKS
     put(ws, r, 1, "Total", bold=True, bg=LIGHT)
     for j in (2, 3, 4):
         put(ws, r, j, None, bg=LIGHT)
     put(ws, r, 5, f"=SUM(E{R_CAL0}:E{r - 1})", "0", bold=True, bg=LIGHT)
-    for j in (6, 7, 8):
+    put(ws, r, 6, f"=SUM(F{R_CAL0}:F{r - 1})", "0%", bold=True, bg=LIGHT)
+    ws.conditional_formatting.add(f"F{r}", FormulaRule(formula=[f"ROUND(F{r},6)<>1"], font=red,
+                                                       fill=fill("FFFFC7CE")))
+    for j in (7, 8):
         L = get_column_letter(j)
-        put(ws, r, j, f"=SUM({L}{R_CAL0}:{L}{r - 1})", "0%", bold=True, bg=LIGHT)
-        ws.conditional_formatting.add(f"{L}{r}", FormulaRule(formula=[f"ROUND({L}{r},6)<>1"], font=red,
-                                                             fill=fill("FFFFC7CE")))
+        put(ws, r, j, f"=SUM({L}{R_CAL0}:{L}{r - 1})", "0", bold=True, bg=LIGHT)
     notes = [
-        "Weights spread each layer's gap (December target - 20 Sep opening) across the weeks. Each column must total 100% or the plan will not land on target (the total turns red).",
-        "Default shape: L+DTO holds its book flat through the two Diwali weeks (weight 0% = placements only replace churn) and recovers over the last six weeks, as in Lakshya v4.",
-        "Own Now follows new-car arrivals (Oct-Nov) and dips around Diwali; EIP is spread fairly evenly. Change the weights to reshape the weekly plan; the December landing does not move.",
+        "EIP weight: share of the EIP gap (December target - 20 Sep opening) added each week; must total 100% (turns red if not).",
+        "Own Now / L+DTO base profile: relative size of each week's placements before seasonality (any scale). On each city tab, placements = base profile x seasonality factor, scaled so the layer lands on its December target.",
+        "Default: L+DTO flat (its shape comes from festival weeks and last year's attrition); Own Now builds up as new cars land in Oct-Nov.",
     ]
     for k, t in enumerate(notes):
         ws.cell(r + 1 + k, 1, t).font = F_NOTE
+
+    # ---- 7. seasonality
+    ws.cell(R_SEAS_H - 1, 1, "7.  SEASONALITY - festival impact on recruitment (Weekly Supply Plan, seasonality_Impect tab, 'Rec Avg' 2024-25)").font = F_SECTION
+    hdr(ws, R_SEAS_H, 1, "Event")
+    for k, city in enumerate(CITIES):
+        hdr(ws, R_SEAS_H, 2 + k, city)
+    for i, (ev, vals) in enumerate(SEASON_REC.items()):
+        r = R_SEAS0 + i
+        put(ws, r, 1, ev, bold=True)
+        for k, v in enumerate(vals):
+            inp(ws, r, 2 + k, v, "0%")
+    r = R_SEAS1 + 1
+    for k, t in enumerate([
+        "Change in recruitment in the event week vs a normal week. A city tab looks up the event named for that week in section 6 (last column), "
+        "then seasonality factor = 1 + impact, floored at the global setting. Recruitment lost in festival weeks is picked up in the other weeks, "
+        "because the total still has to land on the December target.",
+        "Kannada Rajyotsava is a Bangalore-only holiday (0 elsewhere). The Hyderabad and Kolkata civic elections have no measured impact.",
+    ]):
+        ws.cell(r + k, 1, t).font = F_NOTE
     ws.freeze_panes = "B4"
     ws.sheet_view.zoomScale = 90
 
@@ -899,9 +986,9 @@ def build_compare(wb):
     notes = [
         "Why the numbers are close: the weekly plan starts from the actual 20 Sep book (L+DTO 6,271), about 400 below where "
         "Lakshya's path had it, so it needs a bigger net add (+670 vs Lakshya's +261 over these weeks). But a smaller book "
-        "loses fewer drivers to churn, which offsets most of it - total placements end up within about 1.5% of Lakshya's.",
-        "Lakshya also shapes the Diwali weeks as a fall in the book that is recovered later; the weekly plan holds the book "
-        "flat through Diwali (Inputs, section 6). The December landing is the same either way.",
+        "loses fewer drivers to churn, which offsets most of it - total placements end up within about 2% of Lakshya's.",
+        "Both plans let the book dip in the festival weeks and recover later. Lakshya sets that dip by hand; the weekly plan "
+        "takes it from last year's weekly attrition and the festival impact on recruitment (Inputs, sections 6-7; city tabs AY:BJ).",
     ]
     for k, t in enumerate(notes):
         c = ws.cell(r + 1 + k, 1, t)
