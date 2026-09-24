@@ -65,3 +65,9 @@ Owners seen in the Chennai reference:
 - Build through the Slides API batchUpdate, chunked at 400 requests per batch. Give each rebuild a new object-ID prefix, delete the old slides, and pin the slide order.
 - After building, verify with `presentations.pages.getThumbnail` and look at the slides before telling the user it's done.
 - OAuth token: `google-workspace-access/token.json`. It is gitignored; never commit or print it.
+
+## Code
+- `wbr-deck/pull_chennai_data.py`: pulls the Chennai tables from every source link into `chennai_tables.json`. It reuses the BLR helpers in `wbr-deck/blr_helpers.py`.
+- `wbr-deck/build_city_deck.py`: builds the deck in this house style from `chennai_tables.json`. Run it as `python3 build_city_deck.py <new-id-prefix>`. The `DEPTS` spec maps department › function › sub-function, the owner and the rows, with polarity (pol=-1 means higher is worse).
+- The scripts use a scratchpad path (`SP`) for intermediate JSON; point it at a local folder before running.
+- Chennai deck: https://docs.google.com/presentation/d/1QoPHyJ67aYjbLtQXNPs2y9owwbAJUIcEDXKCUXS8i1w/edit
