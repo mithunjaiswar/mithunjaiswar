@@ -12,12 +12,13 @@ Usage: python3 build_weekly_supply_plan.py <output.xlsx> <raw.json>
 """
 import datetime as dt
 import json
+import re
 import sys
 
 from openpyxl import Workbook
 from openpyxl.formatting.rule import ColorScaleRule, FormulaRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import column_index_from_string, get_column_letter
 
 # ---------------------------------------------------------------- data
 CITIES = ["Mumbai", "Delhi NCR", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune"]
@@ -141,6 +142,8 @@ def hdr(ws, row, col, text, color=NAVY):
 
 
 def put(ws, row, col, value, fmt=None, font=F_BODY, bg=None, bold=False):
+    if isinstance(value, str) and value.startswith("=") and "'!" in value and ws.title not in CITIES:
+        value = _shift_refs(value, own_sheet=False)
     c = ws.cell(row, col, value)
     c.font = F_BOLD if bold else font
     if fmt:
@@ -207,7 +210,7 @@ COLS = [  # (letter, header, width)
     ("V", "Net Attrition %", 8), ("W", "Leasing + DTO cars on Road - WE", 10),
     ("X", "Own Now cars on Road - WE", 9), ("Y", "Week-ending cars on Road", 9),
     ("Z", "Week ending Util", 8), ("AA", "Util ceiling (Lakshya)", 8), ("AB", "", 2),
-    ("AC", "Days in plan", 6), ("AD", "New cars added", 8), ("AE", "Cars sold", 7),
+    ("AC", "Days in plan", 6), ("AD", "Total buy (new cars)", 8), ("AE", "Total sold", 8),
     ("AF", "EIP weight", 7), ("AG", "EIP net add", 8),
     ("AH", "Own Now book - WB", 8), ("AI", "Own Now weight", 7), ("AJ", "Own Now net add", 8),
     ("AK", "Own Now churn", 8), ("AL", "Own Now purchase rollover", 9),
@@ -229,14 +232,58 @@ R_MON0 = R_MON_H + 1           # 24..27
 R_MON_TOT = R_MON0 + 4         # 28
 R_NOTES = R_MON_TOT + 3        # 31
 
+# The formulas below are written against the logical column letters in COLS. On the sheet,
+# "New cars added" (AD) and "Cars sold" (AE) sit right after nULP as G and H ("Total buy",
+# "Total sold"), so logical G..AC move two columns right; AF onwards stay where they are.
+_MOVED = {"AD": "G", "AE": "H"}
+
+
+def newcol(old):
+    if old in _MOVED:
+        return _MOVED[old]
+    i = column_index_from_string(old)
+    return get_column_letter(i + 2) if 7 <= i <= 29 else old
+
+
+_REF = re.compile(r"(?<![A-Za-z0-9_])((?:'[^']+'|[A-Za-z_][A-Za-z0-9_]*)!)?(\$?)([A-Z]{1,3})(\$?)(\d*)"
+                  r"(?::(\$?)([A-Z]{1,3})(\$?)(\d*))?")
+_CITY_PREFIXES = {f"'{c}'!" for c in CITIES}
+
+
+def _shift_refs(formula, own_sheet):
+    """Map logical city-tab column letters to their sheet position.
+    own_sheet=True: shift refs with no sheet prefix (formula lives on a city tab).
+    own_sheet=False: shift refs prefixed with a city tab name (formula lives elsewhere)."""
+    def sub(m):
+        prefix, d1, c1, d2, r1, d3, c2, d4, r2 = m.groups()
+        is_ref = bool(r1) or c2 is not None
+        if not is_ref:
+            return m.group(0)
+        if own_sheet and prefix is not None:
+            return m.group(0)
+        if not own_sheet and prefix not in _CITY_PREFIXES:
+            return m.group(0)
+        out = f"{prefix or ''}{d1}{newcol(c1)}{d2}{r1}"
+        if c2 is not None:
+            out += f":{d3}{newcol(c2)}{d4}{r2}"
+        return out
+    return _REF.sub(sub, formula)
+
+
+def cput(ws, r, old_letter, value, fmt=None, **kw):
+    """put() on a city tab, addressed by logical column letter; formulas get shifted."""
+    if isinstance(value, str) and value.startswith("="):
+        value = _shift_refs(value, own_sheet=True)
+    return put(ws, r, column_index_from_string(newcol(old_letter)), value, fmt, **kw)
+
 
 def build_city(wb, idx, city):
     ws = wb.create_sheet(city)
     for letter, text, width in COLS:
-        ws.column_dimensions[letter].width = width
+        ws.column_dimensions[newcol(letter)].width = width
         if text:
-            color = GREY_HDR if letter >= "AC" and len(letter) == 2 and letter != "AA" else NAVY
-            hdr(ws, 1, ws[letter + "1"].column, text, color)
+            grey = letter >= "AC" and len(letter) == 2 and letter not in ("AA", "AD", "AE")
+            hdr(ws, 1, column_index_from_string(newcol(letter)), text, GREY_HDR if grey else NAVY)
     ws.row_dimensions[1].height = 54
     ws.freeze_panes = "F2"
 
@@ -280,7 +327,6 @@ def build_city(wb, idx, city):
         for letter, _, _ in COLS:
             if letter == "AB":
                 continue
-            col = ws[letter + "1"].column
             fmt = NUM
             if letter in ("C", "D"):
                 fmt = DATE
@@ -288,7 +334,7 @@ def build_city(wb, idx, city):
                 fmt = PCT
             elif letter in ("A", "B", "Q", "AC"):
                 fmt = None
-            put(ws, r, col, f.get(letter), fmt, bg=ACTUAL, bold=(letter == "Q"))
+            cput(ws, r, letter, f.get(letter), fmt, bg=ACTUAL, bold=(letter == "Q"))
 
     # ---- weekly rows
     for w in range(N_WEEKS):
@@ -323,7 +369,6 @@ def build_city(wb, idx, city):
             "AV": f"=Y{r}-(R{r}+W{r}+X{r})", "AW": f"=AA{r}-Z{r}",
         }
         for letter, _, _ in COLS:
-            col = ws[letter + "1"].column
             if letter == "AB":
                 continue
             v = f.get(letter)
@@ -341,7 +386,7 @@ def build_city(wb, idx, city):
                 bg = GREEN
             elif letter == "AU":
                 bg = YELLOW
-            put(ws, r, col, v, fmt, bg=bg)
+            cput(ws, r, letter, v, fmt, bg=bg)
 
     # ---- totals row
     r = R_TOT
@@ -349,19 +394,17 @@ def build_city(wb, idx, city):
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=4)
     for letter in ["F", "I", "J", "K", "L", "M", "N", "O", "P", "U", "AD", "AE", "AG", "AJ", "AK",
                    "AL", "AM", "AN", "AO", "AR", "AS", "AT", "AU"]:
-        col = ws[letter + "1"].column
-        put(ws, r, col, f"=SUM({letter}{FIRST}:{letter}{LAST})", NUM, bold=True, bg=LIGHT)
+        cput(ws, r, letter, f"=SUM({letter}{FIRST}:{letter}{LAST})", NUM, bold=True, bg=LIGHT)
     for letter in ["AF", "AI", "AQ"]:
-        col = ws[letter + "1"].column
-        put(ws, r, col, f"=SUM({letter}{FIRST}:{letter}{LAST})", PCT, bold=True, bg=LIGHT)
-    put(ws, r, 17, "Closing stock on 27 Dec is the last week row", font=F_NOTE)
+        cput(ws, r, letter, f"=SUM({letter}{FIRST}:{letter}{LAST})", PCT, bold=True, bg=LIGHT)
+    cput(ws, r, "Q", "Closing stock on 27 Dec is the last week row", font=F_NOTE)
 
     # ---- monthly view
     ws.cell(R_MON_T, 1, "MONTHLY VIEW  -  each week counts in the month its Monday falls in; "
                         "month-end stock = last week of that month").font = F_SECTION
     mon_cols = [
-        ("Month", None, DATE), ("Weeks", "count", "0"), ("New cars added", "AD", NUM),
-        ("Cars sold", "AE", NUM), ("Fleet (month end)", "=E", NUM), ("EIP net add", "P", NUM),
+        ("Month", None, DATE), ("Weeks", "count", "0"), ("Total buy (new cars)", "AD", NUM),
+        ("Total sold", "AE", NUM), ("Fleet (month end)", "=E", NUM), ("EIP net add", "P", NUM),
         ("Own Now placements", "AM", NUM), ("Own Now churn + rollover", "AKAL", NUM),
         ("Own Now net add", "AJ", NUM), ("L+DTO placements", "AT", NUM), ("L+DTO churn", "AS", NUM),
         ("L+DTO net add", "AR", NUM), ("Total placements (recruitment)", "AU", NUM),
@@ -382,10 +425,11 @@ def build_city(wb, idx, city):
             elif src == "AKAL":
                 v = f"=SUMIF({rng},$A{r},AK${FIRST}:AK${LAST})+SUMIF({rng},$A{r},AL${FIRST}:AL${LAST})"
             elif src.startswith("="):
-                s = src[1:]
+                s = newcol(src[1:])
                 v = f"=INDEX({s}${FIRST}:{s}${LAST},MATCH($A{r},{rng},1))"
             else:
-                v = f"=SUMIF({rng},$A{r},{src}${FIRST}:{src}${LAST})"
+                s = newcol(src)
+                v = f"=SUMIF({rng},$A{r},{s}${FIRST}:{s}${LAST})"
             put(ws, r, j, v, fmt)
     r = R_MON_TOT
     put(ws, r, 1, "Total", bold=True, bg=LIGHT)
@@ -404,8 +448,8 @@ def build_city(wb, idx, city):
         "EIP: the gap to the December target is spread across the weeks by the EIP weights (AG = gap x weight). No EIP churn is modelled, as in Lakshya v4.",
         "Own Now: net add = gap to December target x Own Now weight (AJ). Churn and purchase rollover = opening book x monthly rate / 4.33 x days/7 (AK, AL). Placements needed = net add + churn + rollover (AM).",
         "Leasing + DTO: net add = gap to December target x L+DTO weight (AR). Churn = opening book x Lakshya net churn rate / 4.33 x days/7 (AS). Placements needed = net add + churn (AT).",
-        "Recruitment by channel (L:O) = total placements (AU) x the city's channel mix on the Inputs tab. Net Attrition (U) = Own Now churn + rollover + L+DTO churn.",
-        "Fleet (E) = previous week + new cars added - cars sold; each month's cars are split evenly across that month's weeks. Util (Z) = week-ending cars on road / fleet; red when above the Lakshya ceiling (AA).",
+        "Recruitment by channel (N:Q) = total placements (AU) x the city's channel mix on the Inputs tab. Net Attrition (W) = Own Now churn + rollover + L+DTO churn.",
+        "Fleet (E) = previous week + Total buy (G) - Total sold (H); each month's cars are split evenly across that month's weeks (Inputs, sections 4 and 5). Buy and sold are blank in actual weeks: raw_performance has fleet only. Util (AB) = week-ending cars on road / fleet; red when above the Lakshya ceiling (AC).",
         "Weights sum to 100%, so the last week (w/e Sun 27 Dec, Lakshya's last week) lands exactly on the Lakshya December target for each layer. Check column AV must be 0.",
     ]
     for k, text in enumerate(notes):
@@ -413,10 +457,10 @@ def build_city(wb, idx, city):
 
     # ---- conditional formats
     ws.conditional_formatting.add(
-        f"Z2:Z{LAST}", ColorScaleRule(start_type="min", start_color="FFF8696B", mid_type="percentile",
+        f"AB2:AB{LAST}", ColorScaleRule(start_type="min", start_color="FFF8696B", mid_type="percentile",
                                       mid_value=50, mid_color="FFFFEB84", end_type="max", end_color="FF63BE7B"))
     ws.conditional_formatting.add(
-        f"K{FIRST}:K{LAST}", ColorScaleRule(start_type="min", start_color="FFFFFFFF", end_type="max",
+        f"M{FIRST}:M{LAST}", ColorScaleRule(start_type="min", start_color="FFFFFFFF", end_type="max",
                                             end_color="FF57BB8A"))
     red = Font(name="Calibri", size=10, bold=True, color="FFC00000")
     ws.conditional_formatting.add(f"AW2:AW{LAST}", FormulaRule(formula=[f"AW2<0"], font=red))
