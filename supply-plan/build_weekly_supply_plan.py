@@ -77,10 +77,10 @@ SALES = {"Mumbai": (0, 50, 50, 51), "Delhi NCR": (0, 70, 70, 69), "Bangalore": (
 LAKSHYA_SALES = {"Mumbai": 151, "Delhi NCR": 209, "Bangalore": 50, "Hyderabad": 50, "Chennai": 50,
                  "Kolkata": 50, "Pune": 161}
 
-N_WEEKS = 15  # w/c 21 Sep ... w/c 28 Dec (28-31 Dec only)
-W_EIP = [5, 5, 8, 8, 8, 8, 4, 4, 7, 7, 7, 8, 8, 7, 6]
-W_OWN = [3, 4, 7, 8, 8, 7, 3, 3, 8, 9, 9, 9, 9, 8, 5]
-W_LDTO = [5, 7, 8, 8, 6, 5, 0, 0, 6, 9, 10, 11, 11, 10, 4]
+N_WEEKS = 14  # w/c 21 Sep ... w/c 21 Dec (w/e 27 Dec), the same 14 weeks as Lakshya v4
+W_EIP = [5, 5, 8, 8, 8, 8, 4, 4, 8, 8, 8, 9, 9, 8]
+W_OWN = [3, 4, 7, 8, 8, 7, 3, 3, 9, 9, 10, 10, 10, 9]
+W_LDTO = [5, 7, 8, 8, 6, 5, 0, 0, 7, 10, 10, 11, 12, 11]
 EVENTS_ALL = {
     2: "Gandhi Jayanti (Fri 2 Oct)",
     5: "Dussehra (Tue 20 Oct)",
@@ -88,14 +88,27 @@ EVENTS_ALL = {
     8: "Bali Pratipada, Bhai Dooj - low week",
     10: "Guru Nanak Jayanti (Tue 24 Nov)",
     11: "Last week new cars can land (30 Nov)",
-    14: "Christmas (Fri 25 Dec)",
-    15: "Part week: 28-31 Dec, plan ends 31 Dec",
+    14: "Christmas (Fri 25 Dec); last plan week, ends Sun 27 Dec as in Lakshya",
 }
 EVENTS_CITY = {
     ("Bangalore", 6): "Kannada Rajyotsava (Sun 1 Nov)",
     ("Hyderabad", 8): "GHMC election (Sun 15 Nov)",
     ("Kolkata", 13): "KMC election (Tue 15 Dec)",
 }
+
+LAKSHYA_URL = "https://docs.google.com/spreadsheets/d/1Bu8NkgNVcakYondqbyK_jW4nFuFDBqEk"
+AOP_URL = "https://docs.google.com/spreadsheets/d/1yK2NRIK1B7U-K9wSqGvoFgcl3arVB-Ozybl_St0Z_PA"
+SUPPLY_URL = "https://docs.google.com/spreadsheets/d/1Cxg6qsZr6I9nr9OdORAYJVlRc5iB6r0Vnu6k9LKWcjE"
+SOURCES = [
+    ("Lakshya source (targets)", LAKSHYA_URL, "Lakshya_15000_Model_v4.xlsx - source of every target in this plan"),
+    ("AOP (reference only)", AOP_URL, "AOP FY27 - does not match Lakshya; used only for the recruitment channel mix"),
+    ("Weekly Supply Plan (format)", SUPPLY_URL, "Weekly Supply Plan - city tab layout and raw_performance data"),
+]
+
+
+def link(url, text):
+    return f'=HYPERLINK("{url}","{text}")'
+
 
 # ---------------------------------------------------------------- styles
 NAVY = "FF1F3864"
@@ -204,7 +217,7 @@ COLS = [  # (letter, header, width)
     ("AW", "Util headroom", 8),
 ]
 FIRST = 3                      # first week row (row 2 = opening actual)
-LAST = FIRST + N_WEEKS - 1     # 17
+LAST = FIRST + N_WEEKS - 1     # 16
 R_TOT = LAST + 2               # 19
 R_MON_T = R_TOT + 3            # 22 monthly block title
 R_MON_H = R_MON_T + 1          # 23
@@ -300,7 +313,7 @@ def build_city(wb, idx, city):
 
     # ---- totals row
     r = R_TOT
-    put(ws, r, 1, "Total 21 Sep - 31 Dec", bold=True)
+    put(ws, r, 1, "Total 21 Sep - 27 Dec", bold=True)
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=4)
     for letter in ["F", "I", "J", "K", "L", "M", "N", "O", "P", "U", "AD", "AE", "AG", "AJ", "AK",
                    "AL", "AM", "AN", "AO", "AR", "AS", "AT", "AU"]:
@@ -309,7 +322,7 @@ def build_city(wb, idx, city):
     for letter in ["AF", "AI", "AQ"]:
         col = ws[letter + "1"].column
         put(ws, r, col, f"=SUM({letter}{FIRST}:{letter}{LAST})", PCT, bold=True, bg=LIGHT)
-    put(ws, r, 17, "Closing stock on 31 Dec is the last week row", font=F_NOTE)
+    put(ws, r, 17, "Closing stock on 27 Dec is the last week row", font=F_NOTE)
 
     # ---- monthly view
     ws.cell(R_MON_T, 1, "MONTHLY VIEW  -  each week counts in the month its Monday falls in; "
@@ -361,7 +374,7 @@ def build_city(wb, idx, city):
         "Leasing + DTO: net add = gap to December target x L+DTO weight (AR). Churn = opening book x Lakshya net churn rate / 4.33 x days/7 (AS). Placements needed = net add + churn (AT).",
         "Recruitment by channel (L:O) = total placements (AU) x the city's channel mix on the Inputs tab. Net Attrition (U) = Own Now churn + rollover + L+DTO churn.",
         "Fleet (E) = previous week + new cars added - cars sold; each month's cars are split evenly across that month's weeks. Util (Z) = week-ending cars on road / fleet; red when above the Lakshya ceiling (AA).",
-        "Weights sum to 100%, so the last week (28-31 Dec) lands exactly on the Lakshya December target for each layer. Check column AV must be 0.",
+        "Weights sum to 100%, so the last week (w/e Sun 27 Dec, Lakshya's last week) lands exactly on the Lakshya December target for each layer. Check column AV must be 0.",
     ]
     for k, text in enumerate(notes):
         ws.cell(R_NOTES + k, 1, text).font = F_SECTION if k == 0 else F_NOTE
@@ -413,8 +426,8 @@ def build_inputs(wb):
         ("Opening date (actual, Sunday)", dt.date(2026, 9, 20), DATE, True,
          "Close of w/c 14 Sep. Opening fleet, on road, EIP and Own Now in section 3 are as of this date."),
         ("First plan week starts (Monday)", f"=B{R_GLOBAL + 1}+1", DATE, False, "Current week, Mon 21 - Sun 27 Sep."),
-        ("Plan ends (month-end spot)", dt.date(2026, 12, 31), DATE, True,
-         "The last week (w/c 28 Dec) counts 4 days, so the plan lands on 31 Dec."),
+        ("Plan ends (Sunday)", dt.date(2026, 12, 27), DATE, True,
+         "Same end as Lakshya v4: w/e Sun 27 Dec. 28-31 Dec is not planned."),
         ("Weeks per month", "=52/12", "0.00", False, "Turns a monthly churn rate into a weekly one."),
         ("India CNG on-road goal, Dec", 15000, NUM, True, "Lakshya lands at 15,082. ~1,000 EV held flat on top = 16,000."),
     ]
@@ -425,11 +438,19 @@ def build_inputs(wb):
         c = put(ws, r, 3, note, font=F_NOTE)
         ws.merge_cells(start_row=r, start_column=3, end_row=r, end_column=8)
 
+    # ---- sources
+    F_LINK = Font(name="Calibri", size=10, color="FF1155CC", underline="single")
+    for k, (label, url, text) in enumerate(SOURCES):
+        r = R_GLOBAL + 6 + k
+        put(ws, r, 1, label, bold=True)
+        put(ws, r, 2, link(url, text), font=F_LINK)
+        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=8)
+
     # ---- 2. summary
     ws.cell(R_SUM_H - 1, 1, "2.  PLAN SUMMARY - OUTPUT, DO NOT EDIT  (pulled from the city tabs)").font = F_SECTION
-    sum_cols = ["City", "On road 20 Sep", "On road 31 Dec", "Lakshya target", "Gap to target",
-                "EIP 31 Dec", "Own Now 31 Dec", "L+DTO 31 Dec", "Fleet 31 Dec", "Lakshya fleet Dec",
-                "Util 31 Dec", "Ceiling", "Headroom", "EIP net add", "Own Now placements",
+    sum_cols = ["City", "On road 20 Sep", "On road 27 Dec", "Lakshya target", "Gap to target",
+                "EIP 27 Dec", "Own Now 27 Dec", "L+DTO 27 Dec", "Fleet 27 Dec", "Lakshya fleet Dec",
+                "Util 27 Dec", "Ceiling", "Headroom", "EIP net add", "Own Now placements",
                 "L+DTO placements", "Total placements", "Peak week placements", "Check (0 = OK)"]
     for j, t in enumerate(sum_cols, start=1):
         hdr(ws, R_SUM_H, j, t)
@@ -635,9 +656,14 @@ def build_compare(wb):
     ws["A1"].font = F_TITLE
     ws["A2"] = ("Grey headers = Lakshya_15000_Model_v4 as given (typed from the model). Navy headers = this "
                 "workbook's weekly plan (live formulas from the city tabs). Weekly plan starts from the actual "
-                "position on Sun 20 Sep 2026 and runs to 31 Dec.")
+                "position on Sun 20 Sep 2026 and runs to Sun 27 Dec, the same end week as Lakshya.")
     ws["A2"].font = F_NOTE
     ws.merge_cells("A2:P2")
+    ws["A3"] = "Lakshya source:"
+    ws["A3"].font = F_BOLD
+    ws["B3"] = link(LAKSHYA_URL, "Lakshya_15000_Model_v4.xlsx (Google Drive)")
+    ws["B3"].font = Font(name="Calibri", size=10, color="FF1155CC", underline="single")
+    ws.merge_cells("B3:H3")
     ok_fill, diff_fill = fill("FFC6EFCE"), fill("FFFFEB9C")
     ok_font = Font(name="Calibri", size=10, bold=True, color="FF006100")
     diff_font = Font(name="Calibri", size=10, bold=True, color="FF9C5700")
@@ -662,18 +688,18 @@ def build_compare(wb):
     hdr(ws, r, 6, "Why", NAVY)
     ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=16)
     rows = [
-        ("CNG cars on road, 31 Dec", 15082, all_cities(f"Y{LAST}"), NUM, 0.5,
+        ("CNG cars on road, 27 Dec", 15082, all_cities(f"Y{LAST}"), NUM, 0.5,
          "Every city lands on its Lakshya December number."),
-        ("EIP, 31 Dec", 3038, all_cities(f"R{LAST}"), NUM, 0.5, ""),
-        ("Own Now, 31 Dec", 5103, all_cities(f"X{LAST}"), NUM, 0.5, ""),
-        ("Leasing + DTO, 31 Dec", 6941, all_cities(f"W{LAST}"), NUM, 0.5, ""),
+        ("EIP, 27 Dec", 3038, all_cities(f"R{LAST}"), NUM, 0.5, ""),
+        ("Own Now, 27 Dec", 5103, all_cities(f"X{LAST}"), NUM, 0.5, ""),
+        ("Leasing + DTO, 27 Dec", 6941, all_cities(f"W{LAST}"), NUM, 0.5, ""),
         ("New cars added, Sep-Dec", 2300, all_cities(f"AD{R_TOT}"), NUM, 0.5,
          "Same 2,300 cars; phased 50% Oct / 50% Nov, all landed by 30 Nov."),
         ("Cars sold, Sep-Dec", 721, all_cities(f"AE{R_TOT}"), NUM, 0.5, "Same 721 cars; phased evenly Oct-Dec."),
-        ("Fleet, 31 Dec", 20913, all_cities(f"E{LAST}"), NUM, 0.5,
+        ("Fleet, 27 Dec", 20913, all_cities(f"E{LAST}"), NUM, 0.5,
          f"Opening fleet differs: weekly plan starts from the DB fleet_total_cars_cnt on 20 Sep (19,167), the "
          f"column the Weekly Supply Plan uses; Lakshya started from 19,334 on 31 Aug."),
-        ("Utilisation, 31 Dec", 0.7212, None, PCT, 0.0005, "Same cars on road on a slightly smaller fleet (see fleet line)."),
+        ("Utilisation, 27 Dec", 0.7212, None, PCT, 0.0005, "Same cars on road on a slightly smaller fleet (see fleet line)."),
         ("Starting point - cars on road", 11718, "=" + "+".join(f"{q(c)}!Y2" for c in CITIES), NUM, None,
          "Lakshya starts from the 31 Aug actual; the weekly plan starts from the 20 Sep actual (reporting DB)."),
     ]
@@ -728,7 +754,7 @@ def build_compare(wb):
 
     # ---- 3. fleet and utilisation
     r += 4
-    section(r, "3.  FLEET AND UTILISATION BY CITY - 31 December")
+    section(r, "3.  FLEET AND UTILISATION BY CITY - 27 December")
     r += 1
     heads = [("City", NAVY), ("New cars - Lakshya", GREY_HDR), ("New cars - plan", NAVY),
              ("Sold - Lakshya", GREY_HDR), ("Sold - plan", NAVY), ("Fleet - Lakshya", GREY_HDR),
@@ -772,8 +798,7 @@ def build_compare(wb):
     r += 1
     heads = [("City", NAVY), ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY),
              ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
-             ("Total - Lakshya", GREY_HDR), ("Total - plan", NAVY), ("Difference", NAVY),
-             ("Plan 28-31 Dec (not in Lakshya)", NAVY)]
+             ("Total - Lakshya", GREY_HDR), ("Total - plan", NAVY), ("Difference", NAVY)]
     for j, (t, col) in enumerate(heads, start=1):
         hdr(ws, r, j, t, col)
     ws.row_dimensions[r].height = 40
@@ -783,24 +808,23 @@ def build_compare(wb):
         s = q(city)
         put(ws, r, 1, city, bold=True)
         put(ws, r, 2, LK_LDTO_PL[city], NUM)
-        put(ws, r, 3, f"=SUM({s}!AT{FIRST}:AT{LAST - 1})", NUM)
+        put(ws, r, 3, f"=SUM({s}!AT{FIRST}:AT{LAST})", NUM)
         put(ws, r, 4, f"=C{r}-B{r}", NUM)
         put(ws, r, 5, LK_OWN_PL[city], NUM)
-        put(ws, r, 6, f"=SUM({s}!AM{FIRST}:AM{LAST - 1})", NUM)
+        put(ws, r, 6, f"=SUM({s}!AM{FIRST}:AM{LAST})", NUM)
         put(ws, r, 7, f"=F{r}-E{r}", NUM)
         put(ws, r, 8, f"=B{r}+E{r}", NUM)
         put(ws, r, 9, f"=C{r}+F{r}", NUM)
         put(ws, r, 10, f"=I{r}-H{r}", NUM)
-        put(ws, r, 11, f"={s}!AU{LAST}", NUM)
     r += 1
     put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
-    for j in range(2, 12):
+    for j in range(2, 11):
         L = get_column_letter(j)
         put(ws, r, j, f"=SUM({L}{first}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
     notes = [
         "Why the numbers are close: the weekly plan starts from the actual 20 Sep book (L+DTO 6,271), about 400 below where "
-        "Lakshya's path had it, so it needs a bigger net add (+643 vs Lakshya's +261 over these weeks). But a smaller book "
-        "loses fewer drivers to churn, which offsets most of it - total placements differ by under 1%.",
+        "Lakshya's path had it, so it needs a bigger net add (+670 vs Lakshya's +261 over these weeks). But a smaller book "
+        "loses fewer drivers to churn, which offsets most of it - total placements end up within about 1.5% of Lakshya's.",
         "Lakshya also shapes the Diwali weeks as a fall in the book that is recovered later; the weekly plan holds the book "
         "flat through Diwali (Inputs, section 6). The December landing is the same either way.",
     ]
@@ -829,18 +853,9 @@ def build_compare(wb):
         put(ws, r, 6, all_cities(f"W{wrow}"), NUM)
         put(ws, r, 7, f"=F{r}-E{r}", NUM)
         put(ws, r, 8, f'=IF(AND(ABS(D{r})<0.5,ABS(G{r})<0.5),"Match","Differs - catching up")')
-    r += 1
-    put(ws, r, 1, dt.date(2026, 12, 31), "dd-mmm-yy", bold=True, bg=LIGHT)
-    put(ws, r, 2, 5103, NUM, bold=True, bg=LIGHT)
-    put(ws, r, 3, all_cities(f"X{LAST}"), NUM, bold=True, bg=LIGHT)
-    put(ws, r, 4, f"=C{r}-B{r}", NUM, bold=True, bg=LIGHT)
-    put(ws, r, 5, 6941, NUM, bold=True, bg=LIGHT)
-    put(ws, r, 6, all_cities(f"W{LAST}"), NUM, bold=True, bg=LIGHT)
-    put(ws, r, 7, f"=F{r}-E{r}", NUM, bold=True, bg=LIGHT)
-    put(ws, r, 8, f'=IF(AND(ABS(D{r})<0.5,ABS(G{r})<0.5),"Match","Differs")', bold=True, bg=LIGHT)
     status_rules(f"H{first}:H{r}", f"H{first}")
     ws.cell(r + 1, 1, "We start behind Lakshya's path in September and October, and the weekly plan closes the gap by "
-                      "31 Dec. Lakshya's December number is its w/e 27 Dec book; the plan's 31 Dec row includes 28-31 Dec.").font = F_NOTE
+                      "the last week, w/e 27 Dec, where both land on the same December number.").font = F_NOTE
 
     # ---- 6. weekly India
     r += 4
