@@ -599,11 +599,306 @@ def build_inputs(wb):
     ws.sheet_view.zoomScale = 90
 
 
+# ---------------------------------------------------------------- Lakshya v4 as given (for the comparison tab)
+LK_UTIL_DEC = {"Mumbai": 0.75, "Delhi NCR": 0.6199, "Bangalore": 0.7694, "Hyderabad": 0.7687,
+               "Chennai": 0.7759, "Kolkata": 0.5727, "Pune": 0.6869}
+# Placements over the same 14 weeks (w/e 27 Sep - w/e 27 Dec): Weekly L+DTO F:S, Weekly Own Now E:R
+LK_LDTO_PL = {"Mumbai": 2258, "Delhi NCR": 2400, "Bangalore": 2054, "Hyderabad": 2284, "Chennai": 1780,
+              "Kolkata": 574, "Pune": 1390}
+LK_OWN_PL = {"Mumbai": 693, "Delhi NCR": 397, "Bangalore": 653, "Hyderabad": 541, "Chennai": 461,
+             "Kolkata": 177, "Pune": 267}
+LK_LDTO_WK = [983, 1118, 1070, 923, 777, 522, 442, 603, 1004, 1122, 1096, 1251, 1200, 629]
+LK_OWN_WK = [131, 297, 286, 246, 208, 144, 123, 166, 279, 311, 262, 299, 287, 150]
+# Month-end books (Lakshya months end on w/e 27 Sep, 25 Oct, 29 Nov, 27 Dec) by city
+LK_LDTO_ME = {"Mumbai": (1179, 1183, 1152, 1225), "Delhi NCR": (1488, 1489, 1446, 1535),
+              "Bangalore": (1080, 1110, 1109, 1201), "Hyderabad": (1054, 1063, 1041, 1112),
+              "Chennai": (925, 943, 933, 1004), "Kolkata": (283, 264, 235, 233),
+              "Pune": (678, 656, 612, 631)}
+LK_OWN_ME = {"Mumbai": (549, 711, 869, 1006), "Delhi NCR": (688, 757, 804, 850),
+             "Bangalore": (687, 824, 961, 1075), "Hyderabad": (314, 448, 582, 700),
+             "Chennai": (438, 537, 641, 725), "Kolkata": (205, 245, 274, 305),
+             "Pune": (287, 345, 395, 442)}
+ME_WEEK_ROWS = (FIRST, FIRST + 4, FIRST + 9, FIRST + 13)  # plan weeks ending 27 Sep, 25 Oct, 29 Nov, 27 Dec
+
+
+def all_cities(cell):
+    return "=" + "+".join(f"{q(c)}!{cell}" for c in CITIES)
+
+
+def build_compare(wb):
+    ws = wb.create_sheet("Lakshya vs Plan", 0)
+    widths = [22, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.column_dimensions["P"].width = 60
+    ws["A1"] = "Lakshya 15,000 - the plan we were given vs the weekly plan we built"
+    ws["A1"].font = F_TITLE
+    ws["A2"] = ("Grey headers = Lakshya_15000_Model_v4 as given (typed from the model). Navy headers = this "
+                "workbook's weekly plan (live formulas from the city tabs). Weekly plan starts from the actual "
+                "position on Sun 20 Sep 2026 and runs to 31 Dec.")
+    ws["A2"].font = F_NOTE
+    ws.merge_cells("A2:P2")
+    ok_fill, diff_fill = fill("FFC6EFCE"), fill("FFFFEB9C")
+    ok_font = Font(name="Calibri", size=10, bold=True, color="FF006100")
+    diff_font = Font(name="Calibri", size=10, bold=True, color="FF9C5700")
+
+    def status_rules(rng, first_cell):
+        ws.conditional_formatting.add(rng, FormulaRule(formula=[f'LEFT({first_cell},1)="M"'], font=ok_font, fill=ok_fill))
+        ws.conditional_formatting.add(rng, FormulaRule(formula=[f'LEFT({first_cell},1)="D"'], font=diff_font, fill=diff_fill))
+
+    def section(row, text):
+        ws.cell(row, 1, text).font = F_SECTION
+
+    def status(diff_cell, tol=0.5):
+        return f'=IF(ABS({diff_cell})<{tol},"Match","Differs")'
+
+    # ---- 1. headline
+    r = 4
+    section(r, "1.  HEADLINE - INDIA")
+    r += 1
+    for j, (t, col) in enumerate([("Metric", NAVY), ("Lakshya v4", GREY_HDR), ("Weekly plan", NAVY),
+                                  ("Difference", NAVY), ("Status", NAVY)], start=1):
+        hdr(ws, r, j, t, col)
+    hdr(ws, r, 6, "Why", NAVY)
+    ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=16)
+    rows = [
+        ("CNG cars on road, 31 Dec", 15082, all_cities(f"Y{LAST}"), NUM, 0.5,
+         "Every city lands on its Lakshya December number."),
+        ("EIP, 31 Dec", 3038, all_cities(f"R{LAST}"), NUM, 0.5, ""),
+        ("Own Now, 31 Dec", 5103, all_cities(f"X{LAST}"), NUM, 0.5, ""),
+        ("Leasing + DTO, 31 Dec", 6941, all_cities(f"W{LAST}"), NUM, 0.5, ""),
+        ("New cars added, Sep-Dec", 2300, all_cities(f"AD{R_TOT}"), NUM, 0.5,
+         "Same 2,300 cars; phased 50% Oct / 50% Nov, all landed by 30 Nov."),
+        ("Cars sold, Sep-Dec", 721, all_cities(f"AE{R_TOT}"), NUM, 0.5, "Same 721 cars; phased evenly Oct-Dec."),
+        ("Fleet, 31 Dec", 20913, all_cities(f"E{LAST}"), NUM, 0.5,
+         f"Opening fleet differs: weekly plan starts from the DB fleet_total_cars_cnt on 20 Sep (19,167), the "
+         f"column the Weekly Supply Plan uses; Lakshya started from 19,334 on 31 Aug."),
+        ("Utilisation, 31 Dec", 0.7212, None, PCT, 0.0005, "Same cars on road on a slightly smaller fleet (see fleet line)."),
+        ("Starting point - cars on road", 11718, "=" + "+".join(f"{q(c)}!Y2" for c in CITIES), NUM, None,
+         "Lakshya starts from the 31 Aug actual; the weekly plan starts from the 20 Sep actual (reporting DB)."),
+    ]
+    first = r + 1
+    for k, (label, lk, plan, fmt, tol, why) in enumerate(rows):
+        r += 1
+        put(ws, r, 1, label, bold=True)
+        put(ws, r, 2, lk, fmt)
+        if plan is None:  # utilisation
+            plan = f"=C{first}/C{first + 6}"
+        put(ws, r, 3, plan, fmt)
+        put(ws, r, 4, f"=C{r}-B{r}", fmt)
+        put(ws, r, 5, status(f"D{r}", tol) if tol is not None else "Info")
+        put(ws, r, 6, why, font=F_NOTE)
+        ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=16)
+    status_rules(f"E{first}:E{r}", f"E{first}")
+
+    # ---- 2. December landing by city and layer
+    r += 3
+    section(r, "2.  31 DECEMBER BY CITY - each layer, Lakshya v4 vs weekly plan")
+    r += 1
+    heads = [("City", NAVY), ("EIP - Lakshya", GREY_HDR), ("EIP - plan", NAVY), ("Own Now - Lakshya", GREY_HDR),
+             ("Own Now - plan", NAVY), ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY),
+             ("On road - Lakshya", GREY_HDR), ("On road - plan", NAVY), ("Difference", NAVY), ("Status", NAVY)]
+    for j, (t, col) in enumerate(heads, start=1):
+        hdr(ws, r, j, t, col)
+    ws.row_dimensions[r].height = 32
+    first = r + 1
+    for city in CITIES:
+        r += 1
+        s = q(city)
+        te, to, tl = TARGET[city]
+        put(ws, r, 1, city, bold=True)
+        put(ws, r, 2, te, NUM)
+        put(ws, r, 3, f"={s}!R{LAST}", NUM)
+        put(ws, r, 4, to, NUM)
+        put(ws, r, 5, f"={s}!X{LAST}", NUM)
+        put(ws, r, 6, tl, NUM)
+        put(ws, r, 7, f"={s}!W{LAST}", NUM)
+        put(ws, r, 8, f"=B{r}+D{r}+F{r}", NUM)
+        put(ws, r, 9, f"={s}!Y{LAST}", NUM)
+        put(ws, r, 10, f"=ABS(C{r}-B{r})+ABS(E{r}-D{r})+ABS(G{r}-F{r})", NUM)
+        put(ws, r, 11, status(f"J{r}"))
+    r += 1
+    put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
+    for j in range(2, 11):
+        L = get_column_letter(j)
+        put(ws, r, j, f"=SUM({L}{first}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
+    put(ws, r, 11, status(f"J{r}"), bold=True, bg=LIGHT)
+    status_rules(f"K{first}:K{r}", f"K{first}")
+    ws.cell(r + 1, 1, "Difference = sum of the absolute gaps across the three layers, so 0 means every layer matches.").font = F_NOTE
+
+    # ---- 3. fleet and utilisation
+    r += 4
+    section(r, "3.  FLEET AND UTILISATION BY CITY - 31 December")
+    r += 1
+    heads = [("City", NAVY), ("New cars - Lakshya", GREY_HDR), ("New cars - plan", NAVY),
+             ("Sold - Lakshya", GREY_HDR), ("Sold - plan", NAVY), ("Fleet - Lakshya", GREY_HDR),
+             ("Fleet - plan", NAVY), ("Fleet difference", NAVY), ("Util - Lakshya", GREY_HDR),
+             ("Util - plan", NAVY), ("Ceiling", NAVY), ("Within ceiling?", NAVY)]
+    for j, (t, col) in enumerate(heads, start=1):
+        hdr(ws, r, j, t, col)
+    ws.row_dimensions[r].height = 32
+    first = r + 1
+    for i, city in enumerate(CITIES):
+        r += 1
+        s = q(city)
+        put(ws, r, 1, city, bold=True)
+        put(ws, r, 2, LAKSHYA_ADDS[city], NUM)
+        put(ws, r, 3, f"={s}!AD{R_TOT}", NUM)
+        put(ws, r, 4, LAKSHYA_SALES[city], NUM)
+        put(ws, r, 5, f"={s}!AE{R_TOT}", NUM)
+        put(ws, r, 6, LAKSHYA_FLEET_DEC[city], NUM)
+        put(ws, r, 7, f"={s}!E{LAST}", NUM)
+        put(ws, r, 8, f"=G{r}-F{r}", NUM)
+        put(ws, r, 9, LK_UTIL_DEC[city], PCT)
+        put(ws, r, 10, f"={s}!Z{LAST}", PCT)
+        put(ws, r, 11, f"={ci('ceiling', i)}", PCT)
+        put(ws, r, 12, f'=IF(J{r}<=K{r}+0.00005,"Match - yes","Differs - above by "&TEXT(J{r}-K{r},"0.0%"))')
+    r += 1
+    put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
+    for j in (2, 3, 4, 5, 6, 7, 8):
+        L = get_column_letter(j)
+        put(ws, r, j, f"=SUM({L}{first}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
+    put(ws, r, 9, 0.7212, PCT, bold=True, bg=LIGHT)
+    put(ws, r, 10, f"=({all_cities(f'Y{LAST}')[1:]})/G{r}", PCT, bold=True, bg=LIGHT)
+    put(ws, r, 11, None, bg=LIGHT)
+    put(ws, r, 12, None, bg=LIGHT)
+    status_rules(f"L{first}:L{r - 1}", f"L{first}")
+    ws.cell(r + 1, 1, "New cars and sales match Lakshya city by city. Fleet differs only because of the opening fleet "
+                      "(see section 1); a city above its ceiling needs more fleet, fewer sales, or a lower target.").font = F_NOTE
+
+    # ---- 4. placements over the same 14 weeks
+    r += 4
+    section(r, "4.  PLACEMENTS OVER THE SAME 14 WEEKS (w/e 27 Sep - w/e 27 Dec)  -  where the plans differ, and why")
+    r += 1
+    heads = [("City", NAVY), ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY),
+             ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
+             ("Total - Lakshya", GREY_HDR), ("Total - plan", NAVY), ("Difference", NAVY),
+             ("Plan 28-31 Dec (not in Lakshya)", NAVY)]
+    for j, (t, col) in enumerate(heads, start=1):
+        hdr(ws, r, j, t, col)
+    ws.row_dimensions[r].height = 40
+    first = r + 1
+    for city in CITIES:
+        r += 1
+        s = q(city)
+        put(ws, r, 1, city, bold=True)
+        put(ws, r, 2, LK_LDTO_PL[city], NUM)
+        put(ws, r, 3, f"=SUM({s}!AT{FIRST}:AT{LAST - 1})", NUM)
+        put(ws, r, 4, f"=C{r}-B{r}", NUM)
+        put(ws, r, 5, LK_OWN_PL[city], NUM)
+        put(ws, r, 6, f"=SUM({s}!AM{FIRST}:AM{LAST - 1})", NUM)
+        put(ws, r, 7, f"=F{r}-E{r}", NUM)
+        put(ws, r, 8, f"=B{r}+E{r}", NUM)
+        put(ws, r, 9, f"=C{r}+F{r}", NUM)
+        put(ws, r, 10, f"=I{r}-H{r}", NUM)
+        put(ws, r, 11, f"={s}!AU{LAST}", NUM)
+    r += 1
+    put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
+    for j in range(2, 12):
+        L = get_column_letter(j)
+        put(ws, r, j, f"=SUM({L}{first}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
+    notes = [
+        "Why the numbers are close: the weekly plan starts from the actual 20 Sep book (L+DTO 6,271), about 400 below where "
+        "Lakshya's path had it, so it needs a bigger net add (+643 vs Lakshya's +261 over these weeks). But a smaller book "
+        "loses fewer drivers to churn, which offsets most of it - total placements differ by under 1%.",
+        "Lakshya also shapes the Diwali weeks as a fall in the book that is recovered later; the weekly plan holds the book "
+        "flat through Diwali (Inputs, section 6). The December landing is the same either way.",
+    ]
+    for k, t in enumerate(notes):
+        c = ws.cell(r + 1 + k, 1, t)
+        c.font = F_NOTE
+
+    # ---- 5. month-end path, India
+    r += 5
+    section(r, "5.  THE PATH TO DECEMBER - India books on Lakshya's month-end Sundays")
+    r += 1
+    heads = [("Week ending", NAVY), ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
+             ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY), ("Status", NAVY)]
+    for j, (t, col) in enumerate(heads, start=1):
+        hdr(ws, r, j, t, col)
+    ws.row_dimensions[r].height = 32
+    first = r + 1
+    for m, (d, wrow) in enumerate(zip([dt.date(2026, 9, 27), dt.date(2026, 10, 25), dt.date(2026, 11, 29),
+                                       dt.date(2026, 12, 27)], ME_WEEK_ROWS)):
+        r += 1
+        put(ws, r, 1, d, "dd-mmm-yy", bold=True)
+        put(ws, r, 2, sum(LK_OWN_ME[c][m] for c in CITIES), NUM)
+        put(ws, r, 3, all_cities(f"X{wrow}"), NUM)
+        put(ws, r, 4, f"=C{r}-B{r}", NUM)
+        put(ws, r, 5, sum(LK_LDTO_ME[c][m] for c in CITIES), NUM)
+        put(ws, r, 6, all_cities(f"W{wrow}"), NUM)
+        put(ws, r, 7, f"=F{r}-E{r}", NUM)
+        put(ws, r, 8, f'=IF(AND(ABS(D{r})<0.5,ABS(G{r})<0.5),"Match","Differs - catching up")')
+    r += 1
+    put(ws, r, 1, dt.date(2026, 12, 31), "dd-mmm-yy", bold=True, bg=LIGHT)
+    put(ws, r, 2, 5103, NUM, bold=True, bg=LIGHT)
+    put(ws, r, 3, all_cities(f"X{LAST}"), NUM, bold=True, bg=LIGHT)
+    put(ws, r, 4, f"=C{r}-B{r}", NUM, bold=True, bg=LIGHT)
+    put(ws, r, 5, 6941, NUM, bold=True, bg=LIGHT)
+    put(ws, r, 6, all_cities(f"W{LAST}"), NUM, bold=True, bg=LIGHT)
+    put(ws, r, 7, f"=F{r}-E{r}", NUM, bold=True, bg=LIGHT)
+    put(ws, r, 8, f'=IF(AND(ABS(D{r})<0.5,ABS(G{r})<0.5),"Match","Differs")', bold=True, bg=LIGHT)
+    status_rules(f"H{first}:H{r}", f"H{first}")
+    ws.cell(r + 1, 1, "We start behind Lakshya's path in September and October, and the weekly plan closes the gap by "
+                      "31 Dec. Lakshya's December number is its w/e 27 Dec book; the plan's 31 Dec row includes 28-31 Dec.").font = F_NOTE
+
+    # ---- 6. weekly India
+    r += 4
+    section(r, "6.  WEEK BY WEEK - INDIA  (placements = drivers to place in Own Now and Leasing + DTO that week)")
+    r += 1
+    heads = [("Week (Mon)", NAVY), ("Week end", NAVY), ("L+DTO placements - Lakshya", GREY_HDR),
+             ("L+DTO placements - plan", NAVY), ("Difference", NAVY), ("Own Now placements - Lakshya", GREY_HDR),
+             ("Own Now placements - plan", NAVY), ("Difference", NAVY), ("EIP net add - plan", NAVY),
+             ("Total placements - plan", NAVY), ("On road, week end - plan", NAVY), ("Fleet - plan", NAVY),
+             ("Util - plan", NAVY)]
+    for j, (t, col) in enumerate(heads, start=1):
+        hdr(ws, r, j, t, col)
+    ws.row_dimensions[r].height = 40
+    first = r + 1
+    for w in range(N_WEEKS):
+        r += 1
+        pr = FIRST + w
+        cal = R_CAL0 + w
+        put(ws, r, 1, f"=Inputs!B{cal}", DATE, bold=True)
+        put(ws, r, 2, f"=Inputs!C{cal}", DATE)
+        if w < len(LK_LDTO_WK):
+            put(ws, r, 3, LK_LDTO_WK[w], NUM)
+            put(ws, r, 6, LK_OWN_WK[w], NUM)
+            put(ws, r, 5, f"=D{r}-C{r}", NUM)
+            put(ws, r, 8, f"=G{r}-F{r}", NUM)
+        else:
+            put(ws, r, 3, "not in Lakshya", font=F_NOTE)
+            put(ws, r, 6, "not in Lakshya", font=F_NOTE)
+            put(ws, r, 5, None)
+            put(ws, r, 8, None)
+        put(ws, r, 4, all_cities(f"AT{pr}"), NUM)
+        put(ws, r, 7, all_cities(f"AM{pr}"), NUM)
+        put(ws, r, 9, all_cities(f"P{pr}"), NUM)
+        put(ws, r, 10, all_cities(f"AU{pr}"), NUM, bg=YELLOW)
+        put(ws, r, 11, all_cities(f"Y{pr}"), NUM)
+        put(ws, r, 12, all_cities(f"E{pr}"), NUM)
+        put(ws, r, 13, f"=K{r}/L{r}", PCT)
+    r += 1
+    put(ws, r, 1, "Total", bold=True, bg=LIGHT)
+    put(ws, r, 2, None, bg=LIGHT)
+    for j in range(3, 11):
+        L = get_column_letter(j)
+        put(ws, r, j, f"=SUM({L}{first}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
+    for j in (11, 12, 13):
+        put(ws, r, j, None, bg=LIGHT)
+    ws.conditional_formatting.add(
+        f"M{first}:M{r - 1}", ColorScaleRule(start_type="min", start_color="FFF8696B", mid_type="percentile",
+                                             mid_value=50, mid_color="FFFFEB84", end_type="max", end_color="FF63BE7B"))
+    ws.freeze_panes = "B4"
+    ws.sheet_view.zoomScale = 90
+
+
 def main(out):
     wb = Workbook()
     build_inputs(wb)
     for i, city in enumerate(CITIES):
         build_city(wb, i, city)
+    build_compare(wb)
     wb.save(out)
 
 
