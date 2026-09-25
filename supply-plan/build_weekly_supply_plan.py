@@ -1222,7 +1222,7 @@ def build_compare(wb):
     r += 1
     heads = [("Week ending", NAVY), ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
              ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY), ("Status", NAVY),
-             ("Why it differs (cars short by city)", NAVY)]
+             ("Why", NAVY)]
     for j, (t, col) in enumerate(heads, start=1):
         hdr(ws, r, j, t, col)
     ws.column_dimensions["I"].width = 11
@@ -1251,7 +1251,7 @@ def build_compare(wb):
     r += 1
     heads = [("City", NAVY), ("Month-end", NAVY), ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
              ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY), ("Status", NAVY),
-             ("Why it differs / what it would take", NAVY)]
+             ("Why", NAVY)]
     for j, (t, col) in enumerate(heads, start=1):
         hdr(ws, r, j, t, col)
     ws.row_dimensions[r].height = 32
@@ -1277,20 +1277,23 @@ def build_compare(wb):
             pace = f"Inputs!$B${R_PACE0 + i}" if m < 2 else f"Inputs!$D${R_PACE0 + i}"
             weeks = f'COUNTIFS({bu},"{mon}",{af},"<>Diwali")'
             capped = f'COUNTIFS({bu},"{mon}",{bp},"Capped at LY pace")'
-            why = (f'=IF(I{r}="Match","",IF(E{r}+H{r}>0,"Plan above Lakshya by "&TEXT(E{r}+H{r},"#,##0")&" cars.",'
-                   f'TEXT(-(E{r}+H{r}),"#,##0")&" cars short. "'
-                   + ('&"Only 1 plan week after the 20 Sep actual. "' if m == 0 else "")
-                   + f'&{capped}&" of "&{weeks}&" week(s) held to the best pace of 2024/25 ("&TEXT({pace},"0.0%")&" a week)"'
-                   + (f'&"; Diwali dip "&TEXT(Inputs!$D${R_DIP0 + i},"0%")' if m == 2 else "")
-                   + f'&". To close: about "&TEXT(-(E{r}+H{r})/MAX(1,{weeks}),"#,##0")&" more cars a week than that pace allows."))')
+            if m == 0:
+                reason = '"only 1 week after the 20 Sep actual"'
+            else:
+                reason = f'"growth held to last year\'s pace ("&TEXT({pace},"0.0%")&"/wk)"'
+                if m == 2:
+                    reason += f'&" + Diwali dip "&TEXT(Inputs!$D${R_DIP0 + i},"0%")'
+            why = (f'=IF(I{r}="Match","",IF(E{r}+H{r}>0,"Above Lakshya by "&TEXT(E{r}+H{r},"#,##0"),'
+                   f'TEXT(-(E{r}+H{r}),"#,##0")&" short - "&{reason}))')
             put(ws, r, 10, why)
     status_rules(f"I{first}:I{r}", f"I{first}")
     # India reasons in section 5: which cities are short at each month-end
     for m, r5 in enumerate(s5_rows):
         terms = "&".join(f'IF(ABS(E{b_rows[(i, m)]}+H{b_rows[(i, m)]})>=0.5,"{c} "&TEXT(E{b_rows[(i, m)]}+H{b_rows[(i, m)]},"+#,##0;-#,##0")&"  ","")'
                          for i, c in enumerate(CITIES))
-        lead = '"Only 1 plan week after the 20 Sep actual. "&' if m == 0 else ""
-        put(ws, r5, 9, f'=IF(H{r5}="Match","",{lead}"Short: "&{terms}&"(details in 5b)")', font=F_NOTE)
+        lead = ['"Only 1 week after the 20 Sep actual. "', '"Growth held to last year\'s pace. "',
+                '"Diwali dip + last year\'s pace. "', '""'][m]
+        put(ws, r5, 9, f'=IF(H{r5}="Match","",{lead}&"Short: "&{terms})', font=F_NOTE)
     ws.cell(r + 1, 1, "Differs in September: one week from the 20 Sep actual. Differs later: the city's proven pace (Inputs, section 8) or the Diwali dip (section 9) "
                       "stops it closing the gap that month - the city tab column BP shows 'Capped at LY pace' in those weeks. Every city matches in December. "
                       "To see the plan fill every month-end regardless, set Inputs 'Hold weekly growth to last year's pace?' to No.").font = F_NOTE
