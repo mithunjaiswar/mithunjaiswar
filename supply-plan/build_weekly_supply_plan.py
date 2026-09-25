@@ -1005,6 +1005,11 @@ def build_inputs(wb):
 
 
 # ---------------------------------------------------------------- Lakshya v4 as given (for the comparison tab)
+# Lakshya v4 starting books: Own Now ~6 Sep (Inputs sec 5), L+DTO 31 Aug (Actuals tab)
+LK_OWN_OPEN = {"Mumbai": 511, "Delhi NCR": 661, "Bangalore": 668, "Hyderabad": 281, "Chennai": 428,
+               "Kolkata": 185, "Pune": 267}
+LK_LDTO_OPEN = {"Mumbai": 1164, "Delhi NCR": 1473, "Bangalore": 1040, "Hyderabad": 1035, "Chennai": 899,
+                "Kolkata": 300, "Pune": 694}
 LK_UTIL_DEC = {"Mumbai": 0.75, "Delhi NCR": 0.6199, "Bangalore": 0.7694, "Hyderabad": 0.7687,
                "Chennai": 0.7759, "Kolkata": 0.5727, "Pune": 0.6869}
 # Placements over the same 14 weeks (w/e 27 Sep - w/e 27 Dec): Weekly L+DTO F:S, Weekly Own Now E:R
@@ -1245,55 +1250,133 @@ def build_compare(wb):
     ws.cell(r + 1, 1, "Each plan week works towards Lakshya's next month-end book (Inputs, section 10). September has only one plan week (from the 20 Sep actual), "
                       "so it cannot close; later months miss only where last year's pace or the Diwali dip does not allow it. City detail below.").font = F_NOTE
 
-    # ---- 5b. month-end by city
+    # ---- 5b. month-end by city, with the actual starting point
     r += 4
-    section(r, "5b.  MONTH-END BY CITY - Lakshya's Own Now and Leasing + DTO books vs the plan")
+    section(r, "5b.  BY CITY - where each plan started (actual vs Lakshya), and Lakshya's month-end books vs the plan")
     r += 1
-    heads = [("City", NAVY), ("Month-end", NAVY), ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
-             ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY), ("Status", NAVY),
-             ("Why", NAVY)]
+    heads = [("City", NAVY), ("Date", NAVY), ("Point", NAVY),
+             ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Own Now - actual", TEAL), ("Own Now diff", NAVY),
+             ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("L+DTO - actual", TEAL), ("L+DTO diff", NAVY),
+             ("Status", NAVY), ("Why", NAVY)]
     for j, (t, col) in enumerate(heads, start=1):
         hdr(ws, r, j, t, col)
     ws.row_dimensions[r].height = 32
     first = r + 1
     b_rows = {}
     dates = [dt.date(2026, 9, 27), dt.date(2026, 10, 25), dt.date(2026, 11, 29), dt.date(2026, 12, 27)]
+    rawmax = "MAX(raw_performance!$C:$C)"
+
+    def raw(field, city_cell, date_expr):
+        L = rc(field)
+        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{city_cell},raw_performance!$E:$E,\"CNG\","
+                f"raw_performance!$C:$C,{date_expr})")
+
+    def raw_ldto(city_cell, date_expr):
+        return (raw("allotted_cars_eod", city_cell, date_expr) + "-" + raw("own_now_cars_eod", city_cell, date_expr)
+                + "-" + raw("eip_vehicles_cnt", city_cell, date_expr))
+
+    city_blocks = []
     for i, city in enumerate(CITIES):
         s_ = q(city)
+        cc = f'"{city}"'
+        top = r + 1
+        # 1. Lakshya's own starting point
+        r += 1
+        put(ws, r, 1, city, bold=True)
+        put(ws, r, 2, "31 Aug / 6 Sep")
+        put(ws, r, 3, "Lakshya start", font=F_NOTE)
+        put(ws, r, 4, LK_OWN_OPEN[city], NUM)
+        put(ws, r, 5, None)
+        put(ws, r, 6, "=" + raw("own_now_cars_eod", cc, "DATE(2026,9,6)"), NUM)
+        put(ws, r, 7, f"=F{r}-D{r}", NUM)
+        put(ws, r, 8, LK_LDTO_OPEN[city], NUM)
+        put(ws, r, 9, None)
+        put(ws, r, 10, "=" + raw_ldto(cc, "DATE(2026,8,31)"), NUM)
+        put(ws, r, 11, f"=J{r}-H{r}", NUM)
+        put(ws, r, 12, "Start")
+        put(ws, r, 13, f'="Actual vs Lakshya start: Own Now "&TEXT(G{r},"+#,##0;-#,##0;0")&", L+DTO "&TEXT(K{r},"+#,##0;-#,##0;0")')
+        lk_row = r
+        # 2. our plan start (20 Sep actual) vs where Lakshya's path was that day
+        r += 1
+        put(ws, r, 2, f"={G_OPEN_DATE}", "dd-mmm")
+        put(ws, r, 3, "Plan start", font=F_NOTE)
+        put(ws, r, 4, f"=D{lk_row}+(Inputs!F{R_MS0 + i}-D{lk_row})*2/3", NUM)   # 6 Sep -> 27 Sep, 2 of 3 weeks
+        put(ws, r, 5, f"={ci('own', i)}", NUM)
+        put(ws, r, 6, "=" + raw("own_now_cars_eod", cc, G_OPEN_DATE), NUM)
+        put(ws, r, 7, f"=F{r}-D{r}", NUM)
+        put(ws, r, 8, f"=H{lk_row}+(Inputs!J{R_MS0 + i}-H{lk_row})*3/4", NUM)  # 31 Aug -> 27 Sep, 3 of 4 weeks
+        put(ws, r, 9, f"={ci('ldto', i)}", NUM)
+        put(ws, r, 10, "=" + raw_ldto(cc, G_OPEN_DATE), NUM)
+        put(ws, r, 11, f"=J{r}-H{r}", NUM)
+        put(ws, r, 12, "Start")
+        put(ws, r, 13, f'="Plan starts from the actual; Lakshya path that day: Own Now "&TEXT(G{r},"+#,##0;-#,##0;0")&", L+DTO "&TEXT(K{r},"+#,##0;-#,##0;0")')
+        # 3-6. Lakshya month-ends
         for m, (d, wrow) in enumerate(zip(dates, ME_WEEK_ROWS)):
             r += 1
-            put(ws, r, 1, city if m == 0 else "", bold=True)
             put(ws, r, 2, d, "dd-mmm")
-            put(ws, r, 3, f"=Inputs!{get_column_letter(6 + m)}{R_MS0 + i}", NUM)
-            put(ws, r, 4, f"={s_}!X{wrow}", NUM)
-            put(ws, r, 5, f"=D{r}-C{r}", NUM)
-            put(ws, r, 6, f"=Inputs!{get_column_letter(10 + m)}{R_MS0 + i}", NUM)
-            put(ws, r, 7, f"={s_}!W{wrow}", NUM)
-            put(ws, r, 8, f"=G{r}-F{r}", NUM)
-            put(ws, r, 9, f'=IF(AND(ABS(E{r})<0.5,ABS(H{r})<0.5),"Match","Differs")')
+            put(ws, r, 3, "Month-end", font=F_NOTE)
+            put(ws, r, 4, f"=Inputs!{get_column_letter(6 + m)}{R_MS0 + i}", NUM)
+            put(ws, r, 5, f"={s_}!X{wrow}", NUM)
+            put(ws, r, 6, f'=IF(B{r}<={rawmax},' + raw("own_now_cars_eod", cc, f"B{r}") + ',"")', NUM)
+            put(ws, r, 7, f"=E{r}-D{r}", NUM)
+            put(ws, r, 8, f"=Inputs!{get_column_letter(10 + m)}{R_MS0 + i}", NUM)
+            put(ws, r, 9, f"={s_}!W{wrow}", NUM)
+            put(ws, r, 10, f'=IF(B{r}<={rawmax},' + raw_ldto(cc, f"B{r}") + ',"")', NUM)
+            put(ws, r, 11, f"=I{r}-H{r}", NUM)
+            put(ws, r, 12, f'=IF(AND(ABS(G{r})<0.5,ABS(K{r})<0.5),"Match","Differs")')
             b_rows[(i, m)] = r
             mon = MONTHS[m]
             bu, bp, af = (f"{s_}!$BU${FIRST}:$BU${LAST}", f"{s_}!$BP${FIRST}:$BP${LAST}", f"{s_}!$AF${FIRST}:$AF${LAST}")
             pace = f"Inputs!$B${R_PACE0 + i}" if m < 2 else f"Inputs!$D${R_PACE0 + i}"
-            weeks = f'COUNTIFS({bu},"{mon}",{af},"<>Diwali")'
-            capped = f'COUNTIFS({bu},"{mon}",{bp},"Capped at LY pace")'
             if m == 0:
                 reason = '"only 1 week after the 20 Sep actual"'
             else:
                 reason = f'"growth held to last year\'s pace ("&TEXT({pace},"0.0%")&"/wk)"'
                 if m == 2:
                     reason += f'&" + Diwali dip "&TEXT(Inputs!$D${R_DIP0 + i},"0%")'
-            why = (f'=IF(I{r}="Match","",IF(E{r}+H{r}>0,"Above Lakshya by "&TEXT(E{r}+H{r},"#,##0"),'
-                   f'TEXT(-(E{r}+H{r}),"#,##0")&" short - "&{reason}))')
-            put(ws, r, 10, why)
-    status_rules(f"I{first}:I{r}", f"I{first}")
+            why = (f'=IF(L{r}="Match","",IF(G{r}+K{r}>0,"Above Lakshya by "&TEXT(G{r}+K{r},"#,##0"),'
+                   f'TEXT(-(G{r}+K{r}),"#,##0")&" short - "&{reason}))')
+            put(ws, r, 13, why)
+        city_blocks.append(top)
+    # INDIA block: sum of the city blocks row by row
+    r += 1
+    labels = [("31 Aug / 6 Sep", "Lakshya start"), (f"={G_OPEN_DATE}", "Plan start")] + [(d, "Month-end") for d in dates]
+    for k, (d, pt) in enumerate(labels):
+        r += 1
+        put(ws, r, 1, "INDIA" if k == 0 else "", bold=True, bg=LIGHT)
+        put(ws, r, 2, d, "dd-mmm", bg=LIGHT)
+        put(ws, r, 3, pt, font=F_NOTE, bg=LIGHT)
+        for j in (4, 5, 6, 8, 9, 10):
+            L = get_column_letter(j)
+            cells = ",".join(f"{L}{t + k}" for t in city_blocks)
+            if k < 2 and j in (5, 9) and k == 0:
+                put(ws, r, j, None, bg=LIGHT)
+            elif j in (6, 10) and k >= 2:
+                put(ws, r, j, f'=IF(COUNT({cells})=0,"",SUM({cells}))', NUM, bold=True, bg=LIGHT)
+            else:
+                put(ws, r, j, f"=SUM({cells})", NUM, bold=True, bg=LIGHT)
+        if k < 2:
+            put(ws, r, 7, f"=F{r}-D{r}", NUM, bold=True, bg=LIGHT)
+            put(ws, r, 11, f"=J{r}-H{r}", NUM, bold=True, bg=LIGHT)
+            put(ws, r, 12, "Start", bg=LIGHT)
+        else:
+            put(ws, r, 7, f"=E{r}-D{r}", NUM, bold=True, bg=LIGHT)
+            put(ws, r, 11, f"=I{r}-H{r}", NUM, bold=True, bg=LIGHT)
+            put(ws, r, 12, f'=IF(AND(ABS(G{r})<0.5,ABS(K{r})<0.5),"Match","Differs")', bg=LIGHT)
+        put(ws, r, 13, None, bg=LIGHT)
+    status_rules(f"L{first}:L{r}", f"L{first}")
+    ws.conditional_formatting.add(f"A{first}:M{r}", FormulaRule(formula=[f'$C{first}<>"Month-end"'], fill=fill(ACTUAL)))
     # India reasons in section 5: which cities are short at each month-end
     for m, r5 in enumerate(s5_rows):
-        terms = "&".join(f'IF(ABS(E{b_rows[(i, m)]}+H{b_rows[(i, m)]})>=0.5,"{c} "&TEXT(E{b_rows[(i, m)]}+H{b_rows[(i, m)]},"+#,##0;-#,##0")&"  ","")'
+        terms = "&".join(f'IF(ABS(G{b_rows[(i, m)]}+K{b_rows[(i, m)]})>=0.5,"{c} "&TEXT(G{b_rows[(i, m)]}+K{b_rows[(i, m)]},"+#,##0;-#,##0")&"  ","")'
                          for i, c in enumerate(CITIES))
         lead = ['"Only 1 week after the 20 Sep actual. "', '"Growth held to last year\'s pace. "',
                 '"Diwali dip + last year\'s pace. "', '""'][m]
         put(ws, r5, 9, f'=IF(H{r5}="Match","",{lead}&"Short: "&{terms})', font=F_NOTE)
+    ws.cell(r + 1, 1, "Start rows (blue): Lakshya started from Own Now on ~6 Sep and L+DTO on 31 Aug; the plan starts from the actual on 20 Sep. "
+                      "'Plan start' Lakshya = where Lakshya's path was on 20 Sep (straight line to its 27 Sep book). Diff on start rows = actual - Lakshya; on month-ends = plan - Lakshya. "
+                      "Actual columns fill in from raw_performance once a month-end has passed.").font = F_NOTE
+    r += 1
     ws.cell(r + 1, 1, "Differs in September: one week from the 20 Sep actual. Differs later: the city's proven pace (Inputs, section 8) or the Diwali dip (section 9) "
                       "stops it closing the gap that month - the city tab column BP shows 'Capped at LY pace' in those weeks. Every city matches in December. "
                       "To see the plan fill every month-end regardless, set Inputs 'Hold weekly growth to last year's pace?' to No.").font = F_NOTE
