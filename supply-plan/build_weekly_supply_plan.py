@@ -88,6 +88,21 @@ PACE = {
     "Pune":      (0.023, 0.012, 0.054),
 }
 PACE_INDIA = (0.015, 0.0, 0.029)
+# Diwali dip: change in cars on road (allotted_cars_eod, Sunday to Sunday) around Diwali.
+# Run-up week = the week before the week with Bhai Dooj; Diwali week = the week with Bhai Dooj;
+# Recovery = the week after. 2024: w/e 27 Oct, 3 Nov, 10 Nov (Diwali Fri 1 Nov).
+# 2025: w/e 19 Oct, 26 Oct, 2 Nov (Diwali Mon 20 Oct). 2026: w/c 2 Nov, 9 Nov, 16 Nov (Diwali Sun 8 Nov).
+DIWALI_WEEK = {7: "Run-up week", 8: "Diwali week", 9: "Recovery week"}
+DIWALI_CARS = {  # cars on road on the Sundays: (week before run-up, run-up, Diwali, recovery) for 2024, 2025
+    "Mumbai":    ((3023, 2910, 2716, 2645), (2517, 2340, 2228, 2211)),
+    "Delhi NCR": ((2005, 1917, 1761, 1772), (2197, 2150, 2029, 2038)),
+    "Bangalore": ((1745, 1810, 1686, 1741), (2087, 1989, 1930, 1937)),
+    "Hyderabad": ((1039, 1071, 1001, 1004), (1463, 1422, 1395, 1409)),
+    "Chennai":   ((1143, 1111, 892, 1001), (1409, 1259, 1321, 1422)),
+    "Kolkata":   ((516, 543, 533, 545), (513, 503, 473, 498)),
+    "Pune":      ((1154, 1128, 998, 1073), (903, 827, 773, 833)),
+}
+DIWALI_SUNDAYS = (("20 Oct 24", "27 Oct 24", "3 Nov 24", "10 Nov 24"), ("12 Oct 25", "19 Oct 25", "26 Oct 25", "2 Nov 25"))
 # Same measure per year, for reference: (2024, 2025) x (Pre, Diwali, Post)
 PACE_HIST = {
     "Mumbai":    ((0.025, -0.020, 0.052), (0.009, -0.025, 0.048)),
@@ -230,6 +245,10 @@ R_SEAS0 = R_SEAS_H + 1
 R_SEAS1 = R_SEAS0 + len(SEASON_REC) - 1
 R_PACE_H = R_SEAS1 + 6  # proven pace table header
 R_PACE0 = R_PACE_H + 1
+R_DIP_H = R_PACE0 + 13  # Diwali dip table header
+R_DIP0 = R_DIP_H + 1
+R_DIPC_H = R_DIP0 + 14  # cars on road around Diwali, header
+R_DIPC0 = R_DIPC_H + 1
 
 G_OPEN_DATE = f"Inputs!$B${R_GLOBAL + 1}"
 G_PLAN_END = f"Inputs!$B${R_GLOBAL + 3}"
@@ -281,9 +300,11 @@ COLS = [  # (letter, header, width)
     ("BM", "Planned on-road add = new cars + MIN(needed, capacity)", 11), ("BN", "Planned weekly growth %", 8),
     ("BO", "Organic growth %", 8), ("BP", "Organic need within last year's pace?", 10),
     ("BQ", "Gap to Lakshya still open (week end)", 10),
+    ("BR", "Diwali dip % (2024/25 avg, Inputs s.9)", 9), ("BS", "Diwali dip (cars)", 8),
+    ("BT", "New cars still to go on road (incl. this week)", 10),
 ]
 LY_BLOCK = ("AY", "AZ", "BA", "BB", "BC", "BD", "BE", "BF")
-PACE_BLOCK = ("BH", "BI", "BJ", "BK", "BL", "BM", "BN", "BO", "BP", "BQ")
+PACE_BLOCK = ("BH", "BI", "BJ", "BK", "BL", "BM", "BN", "BO", "BP", "BQ", "BR", "BS", "BT")
 TEAL = "FF1F6F5F"
 N_ACTUAL = 4                   # actual weeks shown above the plan (rows 2-5)
 FIRST = 2 + N_ACTUAL           # first plan week row
@@ -421,7 +442,7 @@ def build_city(wb, idx, city):
             "L": f"=AU{r}*{ci('fse', idx)}", "M": f"=AU{r}*{ci('vendor', idx)}",
             "N": f"=AU{r}*{ci('referral', idx)}", "O": f"=AU{r}*{ci('perf', idx)}",
             "P": f"=AG{r}", "Q": f"=Inputs!${ev_col}${cal}", "R": f"=R{p}+P{r}",
-            "U": f"=-(AK{r}+AL{r}+AS{r})", "V": f"=IF(H{r}=0,0,-U{r}/H{r})",
+            "U": f"=(AJ{r}+AR{r})-(AM{r}+AT{r})", "V": f"=IF(H{r}=0,0,-U{r}/H{r})",
             "W": f"=W{p}+AR{r}", "X": f"=X{p}+AJ{r}", "Y": f"=G{r}+I{r}", "Z": f"=Y{r}/E{r}",
             "AA": f"={ci('ceiling', idx)}",
             "AC": f"=Inputs!$E${cal}",
@@ -429,18 +450,18 @@ def build_city(wb, idx, city):
             "AE": f"=INDEX(Inputs!$B${R_SALE0 + idx}:$E${R_SALE0 + idx},MATCH(C{r},Inputs!$B${R_SALE_H}:$E${R_SALE_H},0))/COUNTIF($C${FIRST}:$C${LAST},C{r})",
             "AF": f"=Inputs!$F${cal}",
             # the planned on-road add (BM) is split across the three layers by their share of the gap
-            "AG": f"=BM{r}*({ci('t_eip', idx)}-{ci('eip', idx)})/({ci('t_onroad', idx)}-{ci('onroad', idx)})",
+            "AG": f"=(BM{r}-BS{r})*IFERROR(({ci('t_eip', idx)}-R{p})/({ci('t_onroad', idx)}-G{r}),0)",
             "AH": f"=X{p}",
-            "AI": f"=({ci('t_own', idx)}-{ci('own', idx)})/({ci('t_onroad', idx)}-{ci('onroad', idx)})",
-            "AJ": f"=BM{r}*AI{r}",
+            "AI": f"=IFERROR(({ci('t_own', idx)}-AH{r})/({ci('t_onroad', idx)}-G{r}),0)",
+            "AJ": f"=(BM{r}-BS{r})*AI{r}",
             "AK": f"=AH{r}*{ci('r_own', idx)}/{G_WPM}*AC{r}/7*BD{r}",
             "AL": f"=AH{r}*{ci('r_roll', idx)}/{G_WPM}*AC{r}/7",
             "AM": f"=MAX(0,AJ{r}+AK{r}+AL{r})",
             "AN": f"=AM{r}*{ci('newshare', idx)}",
             "AO": f"=AM{r}-AN{r}",
             "AP": f"=W{p}",
-            "AQ": f"=({ci('t_ldto', idx)}-{ci('ldto', idx)})/({ci('t_onroad', idx)}-{ci('onroad', idx)})",
-            "AR": f"=BM{r}*AQ{r}",
+            "AQ": f"=IFERROR(({ci('t_ldto', idx)}-AP{r})/({ci('t_onroad', idx)}-G{r}),0)",
+            "AR": f"=(BM{r}-BS{r})*AQ{r}+BS{r}",
             "AS": f"=AP{r}*{ci('r_ldto', idx)}/{G_WPM}*AC{r}/7*BD{r}",
             "AT": f"=MAX(0,AR{r}+AS{r})",
             "AU": f"=AM{r}+AT{r}",
@@ -458,14 +479,21 @@ def build_city(wb, idx, city):
             # realism: never grow faster than the city's proven pace for the season, plus new cars
             "BH": f"=INDEX(Inputs!$B${R_PACE0 + idx}:$D${R_PACE0 + idx},MATCH(AF{r},Inputs!$B${R_PACE_H}:$D${R_PACE_H},0))",
             "BI": f"=G{r}*BH{r}",
-            "BJ": "=0" if w == 0 else f"=N(AD{p})",
+            # new cars bought so far and not yet on road go on road this week, unless it is a Diwali week
+            "BJ": "=0" if w == 0 else f'=IF(Inputs!$P${cal}="No",0,MIN(Inputs!$I${R_ADD0 + idx},SUM($AD${FIRST}:AD{p})-SUM($BJ${FIRST}:BJ{p})))',
             "BK": f"=BI{r}+BJ{r}",
-            "BL": f"=(({ci('t_onroad', idx)}-G{r})-SUM(BJ{r}:$BJ${LAST}))*BF{r}/SUM(BF{r}:$BF${LAST})",
-            "BM": f"=BJ{r}+MIN(BL{r},BI{r})",
+            # Diwali weeks: organic change = last two years' average dip. Other weeks: the gap left after
+            # new cars and the Diwali dips still to come, spread over the non-Diwali weeks left
+            "BL": (f'=IF(AF{r}="Diwali",BS{r},(({ci("t_onroad", idx)}-G{r})-BT{r}-G{r}*SUMIF(AF{r}:$AF${LAST},"Diwali",BR{r}:$BR${LAST}))'
+                   f'*BF{r}/SUMIF(AF{r}:$AF${LAST},"<>Diwali",BF{r}:$BF${LAST}))'),
+            "BM": f'=BJ{r}+IF(AF{r}="Diwali",BL{r},MIN(BL{r},BI{r}))',
             "BN": f"=BM{r}/G{r}",
             "BO": f"=(BM{r}-BJ{r})/G{r}",
-            "BP": f'=IF(BL{r}<=BI{r}+0.5,"Yes","Capped at LY pace")',
+            "BP": f'=IF(AF{r}="Diwali","Diwali dip (2024/25 avg)",IF(BL{r}<=BI{r}+0.5,"Yes","Capped at LY pace"))',
             "BQ": f"={ci('t_onroad', idx)}-Y{r}",
+            "BR": f'=IF(AF{r}="Diwali",IFERROR(INDEX(Inputs!$B${R_DIP0 + idx}:$C${R_DIP0 + idx},MATCH(Inputs!$O${cal},Inputs!$B${R_DIP_H}:$C${R_DIP_H},0)),0),0)',
+            "BS": f"=G{r}*BR{r}",
+            "BT": (f"=SUM($AD${FIRST}:$AD${LAST - 1})" if w == 0 else f"=SUM($AD${FIRST}:$AD${LAST - 1})-SUM($BJ${FIRST}:BJ{p})"),
         }
         for letter, _, _ in COLS:
             if letter in ("AB", "AX", "BG"):
@@ -474,7 +502,7 @@ def build_city(wb, idx, city):
             fmt = NUM
             if letter in ("C", "D"):
                 fmt = DATE
-            elif letter in ("V", "Z", "AA", "AI", "AQ", "AW", "BC", "BE", "BH", "BN", "BO"):
+            elif letter in ("V", "Z", "AA", "AI", "AQ", "AW", "BC", "BE", "BH", "BN", "BO", "BR"):
                 fmt = PCT
             elif letter in ("AF", "BP"):
                 fmt = None
@@ -554,9 +582,10 @@ def build_city(wb, idx, city):
         "LAST YEAR (AY:BD): same week last year (week start - 364 days) from raw_performance. LY net attrition % = (attrition + temp attrition - rejoins - temp rejoins) / (active partners at week start + new joins + resurrections), as in the Weekly Supply Plan. LY attrition index = that week's LY % / the average over the 14 plan weeks.",
         "SEASONALITY (BE:BF): festival impact on recruitment for the event in that week (Inputs, sections 6-7); seasonality factor = 1 + impact, floored. Weeks with no festival have a factor of 1.",
         "REALISM (BH:BQ): new cars bought last week go straight on road (BJ). The rest of the gap to the Lakshya number, after all the new cars still to come, is spread over the weeks left by seasonality factor (BL) - but a week never gets more organic growth than cars on road x the city's best 4-week weekly pace in the same season of 2024/25 (BH, BI). Planned add BM = BJ + MIN(BL, BI). BP says 'Capped at LY pace' when the week needed more than that.",
-        "LAYERS: the planned add (BM) is split EIP / Own Now / L+DTO by each layer's share of the gap to its Lakshya number (AG, AI, AQ). Churn (AK, AS) = last week's book x Lakshya monthly rate / 4.33 x LY attrition index (BD). Placements (AM, AT) = net add + churn (+ rollover for Own Now).",
-        "Recruitment by channel (N:Q) = total placements (AU) x the city's channel mix on the Inputs tab. Net Attrition (W) = Own Now churn + rollover + L+DTO churn.",
+        "LAYERS: the planned add (BM, less any Diwali dip) is split EIP / Own Now / L+DTO by each layer's share of the gap it still has to its Lakshya number (AG, AI, AQ), so L+DTO wins back its Diwali dip afterwards. Churn (AK, AS) = last week's book x Lakshya monthly rate / 4.33 x LY attrition index (BD). Placements (AM, AT) = net add + churn (+ rollover for Own Now).",
+        "Recruitment by channel (N:Q) = total placements (AU) x the city's channel mix on the Inputs tab. Net Attrition (W) = net adds - placements: Own Now churn + rollover + L+DTO churn, plus any extra exits in the Diwali weeks when the dip is bigger than normal churn.",
         "Fleet (E) = previous week + Total buy (G) - Total sold (H); each month's cars are split evenly across that month's weeks (Inputs, sections 4 and 5). Buy and sold are blank in actual weeks: raw_performance has fleet only. Util (AB) = week-ending cars on road / fleet; red when above the Lakshya ceiling (AC).",
+        "DIWALI (BR:BT): in the two Diwali weeks cars on road follow the city's average dip of 2024 and 2025 (Inputs, section 9) instead of growing; the dip is taken from the Leasing + DTO book. New cars that arrive in those weeks wait and go on road in the recovery week (BJ). The weeks before and after are asked to make up the dip, within last year's pace.",
         "If the proven pace cannot carry the city to its Lakshya number, the plan lands short and BQ shows the gap still open on 27 Dec. Nothing forces a spike in the last weeks. Check column AV must be 0.",
     ]
     for k, text in enumerate(notes):
@@ -576,6 +605,9 @@ def build_city(wb, idx, city):
     ws.conditional_formatting.add(f"AT{FIRST}:AT{LAST}", FormulaRule(formula=[f"AT{FIRST}<0"], font=red))
     ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'BP{FIRST}="Capped at LY pace"'], font=red,
                                                                      fill=fill("FFFFC7CE")))
+    ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'LEFT(BP{FIRST},6)="Diwali"'],
+                                                                     font=Font(name="Calibri", size=10, bold=True, color="FF9C5700"),
+                                                                     fill=fill("FFFFEB9C")))
     ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'BP{FIRST}="Yes"'],
                                                                      font=Font(name="Calibri", size=10, color="FF006100"),
                                                                      fill=fill("FFC6EFCE")))
@@ -744,7 +776,7 @@ def build_inputs(wb):
         ws.cell(r + 1 + k, 1, t).font = F_NOTE
 
     # ---- 4/5. cars added / sold by month
-    def month_table(r_h, title, data, lakshya, note):
+    def month_table(r_h, title, data, lakshya, note, cap_col=False):
         ws.cell(r_h - 1, 1, title).font = F_SECTION
         hdr(ws, r_h, 1, "City")
         for m in range(4):
@@ -752,6 +784,8 @@ def build_inputs(wb):
             c.number_format = "mmm-yy"
         for j, t in enumerate(["Total", "Lakshya Sep-Dec", "Difference"], start=6):
             hdr(ws, r_h, j, t)
+        if cap_col:
+            hdr(ws, r_h, 9, "Most new cars on road in one week")
         for i, city in enumerate(CITIES):
             r = r_h + 1 + i
             put(ws, r, 1, city, bold=True)
@@ -760,6 +794,8 @@ def build_inputs(wb):
             put(ws, r, 6, f"=SUM(B{r}:E{r})", NUM, bold=True)
             inp(ws, r, 7, lakshya[city], NUM)
             put(ws, r, 8, f"=F{r}-G{r}", NUM)
+            if cap_col:  # 1.5 x the busiest month's weekly arrivals; type over to change
+                put(ws, r, 9, f"=ROUNDUP(MAX(C{r}/4,D{r}/5)*1.5,0)", NUM, font=F_INPUT, bg=INPUT)
         r = r_h + 1 + len(CITIES)
         put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
         for j in range(2, 9):
@@ -769,14 +805,16 @@ def build_inputs(wb):
         ws.conditional_formatting.add(f"H{r_h + 1}:H{r}", FormulaRule(formula=[f"H{r_h + 1}<>0"], font=red))
 
     month_table(R_ADD_H, "4.  NEW CARS ADDED TO FLEET, BY MONTH  (Sep = 21-30 Sep only)", ADDS, LAKSHYA_ADDS,
-                "Lakshya: 2,300 cars (WagonR 1,200, Dzire 600, Rumion 500), all landed by 30 Nov. Default phasing 50% Oct / 50% Nov - change to the delivery schedule. Each month's cars are split evenly across that month's weeks.")
+                "Lakshya: 2,300 cars (WagonR 1,200, Dzire 600, Rumion 500), all landed by 30 Nov. Default phasing 50% Oct / 50% Nov - change to the delivery schedule. Each month's cars are split evenly across that month's weeks. "
+                "New cars go on road the week after they land, at most column I a week (1.5 x normal arrivals), so cars held back over Diwali are placed over the following weeks.", cap_col=True)
     month_table(R_SALE_H, "5.  CARS SOLD, BY MONTH  (Sep = 21-30 Sep only)", SALES, LAKSHYA_SALES,
                 "Lakshya: 721 cars (AOP 1,776). Sales come out of idle cars, so they change utilisation, not cars on road. Default phasing: even Oct-Dec. Any sold between 1 and 20 Sep are already in the opening fleet - reduce these rows by them.")
 
     # ---- 6. calendar
     ws.cell(R_CAL_H - 1, 1, "6.  WEEKLY CALENDAR AND PHASING  -  weeks run Mon-Sun; a week counts in the month its Monday falls in").font = F_SECTION
     cal_heads = ["Week #", "Week start (Mon)", "Week end", "Month", "Days in plan", "Season (section 8)"] + [
-        f"Events - {c}" for c in CITIES] + ["Event used for impact (section 7)"]
+        f"Events - {c}" for c in CITIES] + ["Event used for impact (section 7)", "Diwali week (section 9)",
+                                             "New cars go on road this week?"]
     for j, t in enumerate(cal_heads, start=1):
         hdr(ws, R_CAL_H, j, t)
     ws.row_dimensions[R_CAL_H].height = 40
@@ -792,6 +830,8 @@ def build_inputs(wb):
             parts = [x for x in (EVENTS_ALL.get(w + 1), EVENTS_CITY.get((city, w + 1))) if x]
             inp(ws, r, 7 + k, "; ".join(parts) if parts else "")
         inp(ws, r, 14, WEEK_EVENT.get(w + 1, ""))
+        inp(ws, r, 15, DIWALI_WEEK.get(w + 1, ""))
+        inp(ws, r, 16, "No" if WEEK_SEASON[w] == "Diwali" else "Yes")
     r = R_CAL0 + N_WEEKS
     put(ws, r, 1, "Total", bold=True, bg=LIGHT)
     for j in (2, 3, 4):
@@ -801,6 +841,7 @@ def build_inputs(wb):
     notes = [
         "Season decides which proven weekly pace (section 8) caps the week: Pre-Diwali = w/c 21 Sep - 26 Oct, Diwali = w/c 2 and 9 Nov (Diwali Sun 8 Nov), Post-Diwali = w/c 16 Nov - 21 Dec.",
         "Event used for impact: the festival whose recruitment impact (section 7) shapes that week. Weeks with no event get a seasonality factor of 1.",
+        "Diwali week: which historical Diwali dip (section 9) applies. New cars go on road this week? 'No' holds the week's new cars back; they go on road in the next 'Yes' week.",
     ]
     for k, t in enumerate(notes):
         ws.cell(r + 1 + k, 1, t).font = F_NOTE
@@ -842,8 +883,58 @@ def build_inputs(wb):
         "Cap used on the city tabs (columns B:D, editable) = the higher of 2024 and 2025 for that season, floored at 0% (where even the best stretch shrank, the week is planned flat, not down).",
         "Measured on allotted_cars_eod each Sunday, CNG, with one-off data glitches removed. Pre-Diwali = mid-Sep to Diwali, Diwali = Diwali week + next 2, Post-Diwali = late Nov to early Jan.",
         "New cars bought are added on top of this organic pace in the week after they arrive (city tab column BJ): they are extra supply last year did not have.",
+        "The Diwali column is kept for reference only: the two Diwali weeks follow the historical dip in section 9, not a pace cap.",
     ]):
         ws.cell(r + k, 1, t).font = F_NOTE
+
+    # ---- 9. Diwali dip
+    ws.cell(R_DIP_H - 1, 1, "9.  DIWALI DIP - change in cars on road in the Diwali weeks of 2024 and 2025 (used for w/c 2 and 9 Nov 2026)").font = F_SECTION
+    heads = ["City", "Run-up week", "Diwali week", "Two weeks together", "Recovery week (info)",
+             "2024 run-up", "2024 Diwali", "2024 recovery", "2025 run-up", "2025 Diwali", "2025 recovery"]
+    for j, t in enumerate(heads, start=1):
+        hdr(ws, R_DIP_H, j, t, NAVY if j <= 5 else GREY_HDR)
+    cc = R_DIPC0  # cars table rows, same city order
+    for i, city in enumerate(CITIES + ["INDIA (reference)"]):
+        r = R_DIP0 + i
+        put(ws, r, 1, city, bold=True)
+        cr = cc + i
+        # history from the cars table below: (run-up, Diwali, recovery) = weeks 2/1, 3/2, 4/3 of each year
+        hist = [f"=C{cr}/B{cr}-1", f"=D{cr}/C{cr}-1", f"=E{cr}/D{cr}-1",
+                f"=G{cr}/F{cr}-1", f"=H{cr}/G{cr}-1", f"=I{cr}/H{cr}-1"]
+        for k, f in enumerate(hist):
+            put(ws, r, 6 + k, f, "0.0%", font=F_NOTE)
+        avg_ru, avg_dw = f"=AVERAGE(F{r},I{r})", f"=AVERAGE(G{r},J{r})"
+        if city in CITIES:
+            # typed as the formula so it stays live; overwrite with a number to override
+            put(ws, r, 2, avg_ru, "0.0%", font=F_INPUT, bg=INPUT)
+            put(ws, r, 3, avg_dw, "0.0%", font=F_INPUT, bg=INPUT)
+        else:
+            put(ws, r, 2, avg_ru, "0.0%")
+            put(ws, r, 3, avg_dw, "0.0%")
+        put(ws, r, 4, f"=(1+B{r})*(1+C{r})-1", "0.0%", bold=True)
+        put(ws, r, 5, f"=AVERAGE(H{r},K{r})", "0.0%")
+    r = R_DIP0 + len(CITIES) + 1
+    for k, t in enumerate([
+        "Run-up week = the week before the week with Bhai Dooj; Diwali week = the week with Bhai Dooj; recovery = the week after. "
+        "2024 (Diwali Fri 1 Nov): w/e 27 Oct, 3 Nov, 10 Nov. 2025 (Diwali Mon 20 Oct): w/e 19 Oct, 26 Oct, 2 Nov. 2026 (Diwali Sun 8 Nov): w/c 2 Nov, 9 Nov, 16 Nov.",
+        "Columns B:C (the average of the two years) are what the city tabs use for the two Diwali weeks; type a number over them to override. The recovery week is not forced: it follows the post-Diwali pace.",
+    ]):
+        ws.cell(r + k, 1, t).font = F_NOTE
+    ws.cell(R_DIPC_H - 1, 1, "Cars on road on the Sundays around Diwali (allotted_cars_eod, CNG)").font = F_SECTION
+    heads = ["City"] + [f"{d}" for d in DIWALI_SUNDAYS[0]] + [f"{d}" for d in DIWALI_SUNDAYS[1]]
+    for j, t in enumerate(heads, start=1):
+        hdr(ws, R_DIPC_H, j, t, GREY_HDR)
+    for i, city in enumerate(CITIES):
+        r = R_DIPC0 + i
+        put(ws, r, 1, city, bold=True)
+        for y in range(2):
+            for k in range(4):
+                put(ws, r, 2 + 4 * y + k, DIWALI_CARS[city][y][k], NUM)
+    r = R_DIPC0 + len(CITIES)
+    put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
+    for j in range(2, 10):
+        L = get_column_letter(j)
+        put(ws, r, j, f"=SUM({L}{R_DIPC0}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
     ws.freeze_panes = "B4"
     ws.sheet_view.zoomScale = 90
 
@@ -1165,7 +1256,8 @@ def build_readme(wb):
         "New cars go on road the week after they arrive (2,300 cars, Oct-Nov, Inputs section 4) - supply we did not have last year. Everything else is organic growth from recruitment net of churn.",
         "Organic growth: each week is asked for its share of the gap still open after the new cars (gap left / weeks left, less in festival weeks). It is never allowed above the city's proven pace - its best 4-week average weekly growth "
         "in the same season of 2024 or 2025 (Inputs, section 8). If a week needs more, it is capped and the rest rolls to later weeks; if the gap cannot close by 27 Dec, the city lands short. Nothing forces a jump in the last weeks.",
-        "So the plan never assumes organic growth that last year did not show. City tab column BP marks each week 'Yes' or 'Capped at LY pace', and the Summary View shows week-on-week growth next to the same week last year.",
+        "So the plan never assumes organic growth that last year did not show. The two Diwali weeks follow the dip seen in 2024 and 2025 instead of growing (section 4). "
+        "City tab column BP marks each week 'Yes', 'Capped at LY pace' or 'Diwali dip', and the Summary View shows week-on-week growth next to the same week last year.",
     ])
 
     # ---- 2. the bridge
@@ -1234,23 +1326,57 @@ def build_readme(wb):
                   "Last year's column is India cars on road, same week of 2025 (Diwali 2025 fell on 20 Oct, three weeks earlier than 2026).").font = F_NOTE
     r += 3
 
-    r = para(r, "4.  WHERE THE PLAN DROPS, WHERE IT GAINS, AND THE WEEKS IN BETWEEN", [
+    # ---- Diwali check
+    ws.cell(r, 1, "4.  DIWALI CHECK - what happened in the two Diwali weeks of 2024 and 2025, and what the plan assumes for w/c 2 and 9 Nov").font = F_SECTION
+    r += 1
+    heads = ["City", "2024: two Diwali weeks", "2025: two Diwali weeks", "Average (used)", "Plan: organic change",
+             "Plan: total change (new cars held back)", "Plan: recovery week", "History: recovery week"]
+    for j, t in enumerate(heads, start=1):
+        hdr(ws, r, j, t)
+    ws.row_dimensions[r].height = 45
+    dfirst = r + 1
+    pre, dw2, rec = FIRST + 5, FIRST + 7, FIRST + 8  # weeks ending 1 Nov, 15 Nov, 22 Nov
+    for i, city in enumerate(CITIES + ["INDIA"]):
+        r += 1
+        d = R_DIP0 + i
+        put(ws, r, 1, city, bold=True, bg=LIGHT if city == "INDIA" else None)
+        put(ws, r, 2, f"=(1+Inputs!F{d})*(1+Inputs!G{d})-1", "0.0%")
+        put(ws, r, 3, f"=(1+Inputs!I{d})*(1+Inputs!J{d})-1", "0.0%")
+        put(ws, r, 4, f"=Inputs!D{d}", "0.0%", bold=True)
+        if city in CITIES:
+            s_ = q(city)
+            put(ws, r, 5, f"=({s_}!BS{pre + 1}+{s_}!BS{dw2})/{s_}!Y{pre}", "0.0%")
+            put(ws, r, 6, f"={s_}!Y{dw2}/{s_}!Y{pre}-1", "0.0%", bold=True)
+            put(ws, r, 7, f"={s_}!Y{rec}/{s_}!Y{dw2}-1", "0.0%")
+        else:
+            allc = lambda col, row: "+".join(f"{q(c)}!{col}{row}" for c in CITIES)
+            put(ws, r, 5, f"=({allc('BS', pre + 1)}+{allc('BS', dw2)})/({allc('Y', pre)})", "0.0%", bg=LIGHT)
+            put(ws, r, 6, f"=({allc('Y', dw2)})/({allc('Y', pre)})-1", "0.0%", bold=True, bg=LIGHT)
+            put(ws, r, 7, f"=({allc('Y', rec)})/({allc('Y', dw2)})-1", "0.0%", bg=LIGHT)
+        put(ws, r, 8, f"=Inputs!E{d}", "0.0%", bg=LIGHT if city == "INDIA" else None)
+    r += 1
+    ws.cell(r, 1, "The plan's two Diwali weeks now fall by each city's two-year average dip (Inputs, section 9) - India about -9%, as in 2024 (-9.8%) and 2025 (-8.5%). "
+                  "New cars that arrive in those weeks wait, then go on road from the recovery week at up to 1.5x the normal weekly rate (Inputs, section 4), so the recovery week is also lifted by new cars. "
+                  "The Summary View shows the same weeks against last year's week of the same date (Diwali 2025 fell three weeks earlier).").font = F_NOTE
+    r += 3
+
+    r = para(r, "5.  WHERE THE PLAN DROPS, WHERE IT GAINS, AND THE WEEKS IN BETWEEN", [
         "PRE-DIWALI (w/c 21 Sep - 26 Oct): last year cars on road fell in these weeks (India -0.1% at best, weeks of -2.6% to -5.4%); in 2024 the best was +1.5% a week. The plan allows each city its better of the two years "
         "and adds the October new cars the week after they land. Last year's attrition peaks here (LY attrition index up to 1.2-1.4), so more placements are needed just to hold the book.",
-        "DIWALI (w/c 2 and 9 Nov): recruitment drops by the festival impact (Inputs, section 7 - e.g. Mumbai -41.5%, Delhi held at -75%). Mumbai and Delhi have never grown in these weeks (pace 0%), "
-        "so they are planned flat apart from new cars; the other cities get their small Diwali pace. This is where the plan dips.",
+        "DIWALI (w/c 2 and 9 Nov): cars on road fell in these weeks in both years - India -9.8% in 2024 and -8.5% in 2025 over the two weeks (drivers go home; recruitment stops). "
+        "The plan now falls by each city's two-year average (section 4 above; Inputs section 9), all of it from the Leasing + DTO book, and holds new cars back until the recovery week. This is where the plan dips.",
         "POST-DIWALI (w/c 16 Nov - 21 Dec): the season where we have shown real recovery - India +2.7% to +2.9% a week at best, Mumbai and Pune above 5%. Most of the remaining gap is closed here, "
         "but no city goes above its own best 4-week pace.",
         "WEEKS WITH NO FESTIVAL (the middle of each season): no seasonality is applied - the factor is 1, so the week is simply asked for an equal share of the gap still open, capped by the season's pace. "
         "Only last year's attrition shape (city tab column BD) changes how many placements such a week needs.",
     ])
-    r = para(r, "5.  HOW TO READ A CITY TAB", [
+    r = para(r, "6.  HOW TO READ A CITY TAB", [
         "Rows 2-5 are actual weeks from raw_performance. Plan weeks start at row 6. Columns A-AC follow the Weekly Supply Plan layout; the Lakshya build-up is AF-AW.",
         "Brown block BH-BQ is the realism check: BH proven pace, BI organic capacity, BJ new cars going on road, BK most we can add, BL organic add needed, BM what we plan (new cars + the smaller of BL and BI), "
-        "BN/BO planned and organic growth %, BP 'Yes' / 'Capped at LY pace', BQ gap to the Lakshya number still open.",
-        "BM is split into EIP / Own Now / Leasing+DTO by each layer's share of its Lakshya gap. Placements = that layer's net add + churn. Recruitment by channel = placements x the city's channel mix.",
+        "BN/BO planned and organic growth %, BP 'Yes' / 'Capped at LY pace' / 'Diwali dip', BQ gap to the Lakshya number still open, BR:BS the Diwali dip, BT new cars still to go on road.",
+        "BM is split into EIP / Own Now / Leasing+DTO by each layer's share of the gap it still has to its Lakshya number (the Diwali dip is taken from Leasing+DTO, which then wins it back). Placements = that layer's net add + churn. Recruitment by channel = placements x the city's channel mix.",
     ])
-    r = para(r, "6.  UPDATING EACH WEEK", [
+    r = para(r, "7.  UPDATING EACH WEEK", [
         "Paste a fresh SSOT query result (link on the Inputs tab) into raw_performance. The Summary View 'actual' rows fill in for finished weeks. "
         "To re-plan from a later week, move the opening date on Inputs to the latest Sunday and extend the calendar.",
         "Change what the plan may assume on the Inputs tab: proven pace (section 8), festival impacts (7), new cars and sales by month (4, 5), churn rates and targets (3).",

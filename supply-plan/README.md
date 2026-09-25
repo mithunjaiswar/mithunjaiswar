@@ -30,7 +30,12 @@ python3 build_weekly_supply_plan.py out.xlsx raw.json   # raw.json = {"hdr": [..
    cars on road in the same season of 2024 or 2025 (Pre-Diwali, Diwali, Post-Diwali), floored at 0%.
    A capped week rolls the rest to later weeks; if the gap can't close by 27 Dec the city lands short.
    Nothing forces a spike in the last weeks.
-4. The week's add is split EIP / Own Now / Leasing+DTO by each layer's share of its Lakshya gap.
+4. **Diwali weeks (w/c 2 and 9 Nov)** do not grow: cars on road follow each city's average dip of 2024 and
+   2025 in the same festival weeks (India −3.3% then −5.9%, −9.1% over the two weeks; Inputs section 9).
+   The dip comes out of the Leasing+DTO book, and new cars that land in those weeks wait and go on road
+   from the recovery week at up to 1.5× the normal weekly rate. The weeks before and after make up the dip.
+5. The week's add is split EIP / Own Now / Leasing+DTO by each layer's share of the gap it still has to its
+   Lakshya number, so Leasing+DTO wins back its Diwali dip.
    Churn = last week's book × Lakshya monthly rate ÷ 4.33 × last year's attrition index for that week.
    Placements = net add + churn; recruitment by channel = placements × AOP channel mix.
 
@@ -39,5 +44,5 @@ python3 build_weekly_supply_plan.py out.xlsx raw.json   # raw.json = {"hdr": [..
 | Season | Weeks | What last year showed | What the plan does |
 |---|---|---|---|
 | Pre-Diwali | w/c 21 Sep – 26 Oct | India flat to falling in 2025 (−2.6% to −5.4% weeks); best 4 weeks +1.5%/wk in 2024 | Organic ≤ each city's better year; October new cars on road |
-| Diwali | w/c 2 & 9 Nov | Little or no growth; Mumbai and Delhi fell | Recruitment cut by festival impact; Mumbai/Delhi organic 0% |
+| Diwali | w/c 2 & 9 Nov | Cars on road fell: India −9.8% (2024), −8.5% (2025) over the two weeks | Falls by each city's two-year average dip; new cars held back |
 | Post-Diwali | w/c 16 Nov – 21 Dec | Real recovery: India +2.7–2.9%/wk best, Mumbai/Pune > 5% | Most of the remaining organic gap, within each city's pace |
