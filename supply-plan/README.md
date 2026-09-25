@@ -1,21 +1,43 @@
 # Lakshya 15,000 — weekly supply plan
 
 `build_weekly_supply_plan.py` writes the workbook behind the Google Sheet
-"Lakshya 15,000 - Weekly Supply Plan (21 Sep - 27 Dec 2026)".
-
-- 12 tabs: `Lakshya vs Plan` (comparison for sharing), `Summary View` (dashboard with a city picker),
-  `Inputs`, one tab per city (Mumbai, Delhi NCR, Bangalore, Hyderabad, Chennai, Kolkata, Pune),
-  `Combined All` (all city rows stacked, same columns as the Weekly Supply Plan's) and `raw_performance`
-  (output of the SSOT query).
-- Each city tab shows the last 4 actual weeks (read from `raw_performance`) and then the 14 plan weeks to w/e 27 Dec.
-- Churn follows last year's weekly attrition shape (same week last year, from `raw_performance`) at the Lakshya level;
-  recruitment dips in festival weeks using the Weekly Supply Plan's seasonality impacts (Inputs section 7).
-- Targets come from `Lakshya_15000_Model_v4.xlsx` (the CEO's AOP does not match it, so it is reference only).
-- Opening position: `raw_performance` (SSOT query on `analytics.ssot_scorecard_agg`), CNG, Sun 20 Sep 2026.
-- City tabs follow the column layout of the existing Weekly Supply Plan sheet (A–Z); the Lakshya
-  build-up (EIP / Own Now / Leasing+DTO) sits to the right in AC–AW. Every city cell is a formula
-  that reads the `Inputs` tab.
+"Lakshya 15,000 - Weekly Supply Plan (21 Sep - 27 Dec 2026)". The sheet's **Read Me** tab explains the
+plan with live numbers; this file is the short version.
 
 ```
 python3 build_weekly_supply_plan.py out.xlsx raw.json   # raw.json = {"hdr": [...], "data": [[...]]} from the SSOT query
 ```
+
+## Tabs
+
+| Tab | What it is |
+|---|---|
+| Read Me | How the plan bridges 20 Sep to 27 Dec: the rule, the bridge by season, India week by week vs last year |
+| Lakshya vs Plan | Lakshya v4 as given next to this plan, for sharing |
+| Summary View | Dashboard with a city picker: plan, actual and same week last year per metric |
+| Inputs | Everything editable: targets, rates, new cars / sales by month, calendar, festival impacts, proven pace |
+| Mumbai … Pune | One tab per city, Weekly Supply Plan layout (A–AC), Lakshya build-up (AF–AW), last year and seasonality (AY–BF), realism check (BH–BQ) |
+| Combined All | One QUERY stacking every city tab (same columns as the Weekly Supply Plan's Combined All) |
+| raw_performance | Output of the SSOT query (`analytics.ssot_scorecard_agg`) |
+
+## How a week is planned
+
+1. **New cars** go on road the week after they arrive (2,300 cars, Oct–Nov).
+2. **Organic growth** (recruitment net of churn) is asked for its share of the gap still open after the
+   new cars: gap left ÷ weeks left, less in festival weeks (festival impact on recruitment from the
+   Weekly Supply Plan's `seasonality_Impect` tab). Weeks with no festival get a factor of 1.
+3. That organic growth is **capped at the city's proven pace**: its best 4-week average weekly growth in
+   cars on road in the same season of 2024 or 2025 (Pre-Diwali, Diwali, Post-Diwali), floored at 0%.
+   A capped week rolls the rest to later weeks; if the gap can't close by 27 Dec the city lands short.
+   Nothing forces a spike in the last weeks.
+4. The week's add is split EIP / Own Now / Leasing+DTO by each layer's share of its Lakshya gap.
+   Churn = last week's book × Lakshya monthly rate ÷ 4.33 × last year's attrition index for that week.
+   Placements = net add + churn; recruitment by channel = placements × AOP channel mix.
+
+## Seasons (2026)
+
+| Season | Weeks | What last year showed | What the plan does |
+|---|---|---|---|
+| Pre-Diwali | w/c 21 Sep – 26 Oct | India flat to falling in 2025 (−2.6% to −5.4% weeks); best 4 weeks +1.5%/wk in 2024 | Organic ≤ each city's better year; October new cars on road |
+| Diwali | w/c 2 & 9 Nov | Little or no growth; Mumbai and Delhi fell | Recruitment cut by festival impact; Mumbai/Delhi organic 0% |
+| Post-Diwali | w/c 16 Nov – 21 Dec | Real recovery: India +2.7–2.9%/wk best, Mumbai/Pune > 5% | Most of the remaining organic gap, within each city's pace |
