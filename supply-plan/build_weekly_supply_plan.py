@@ -19,6 +19,7 @@ from openpyxl import Workbook
 from openpyxl.formatting.rule import ColorScaleRule, FormulaRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.utils import column_index_from_string, get_column_letter
 
 # ---------------------------------------------------------------- data
@@ -1089,6 +1090,20 @@ COMBINED = [  # (header, logical city-tab column or special)
     ("Actual / Plan", "TYPE"), ("Net Attrition", "NETATTR"), ("WE Active Pilots", "PILOTS"),
 ]
 CB_ROWS = LAST - 1  # rows per city (actual + plan weeks)
+# City-tab columns that are empty in the Lakshya plan but kept so the Combined All letters match
+_CB_EMPTY = {"Rejoin %": "S", "Attrition + Temp Attrition": "T"}
+
+
+def combined_query():
+    """One QUERY that stacks every city tab's weekly rows (actual + plan)."""
+    stack = ";".join(f"{q(c)}!A2:AU{LAST}" for c in CITIES)
+    cols = []
+    for h, col in COMBINED:
+        if col in ("TYPE", "NETATTR", "PILOTS"):
+            continue
+        col = col or _CB_EMPTY[h]
+        cols.append(f"Col{column_index_from_string(newcol(col))}")
+    return f'=QUERY({{{stack}}},"select {",".join(cols)} where Col2 is not null",0)'
 
 
 def build_combined(wb):
@@ -1097,33 +1112,41 @@ def build_combined(wb):
         hdr(ws, 1, j, h)
         ws.column_dimensions[get_column_letter(j)].width = 22 if h == "seasonality" else 10
     ws.row_dimensions[1].height = 54
-    r = 1
-    for city in CITIES:
-        s = q(city)
-        for src in range(2, LAST + 1):
-            r += 1
-            actual = src <= OPEN_ROW
-            for j, (h, col) in enumerate(COMBINED, start=1):
-                fmt = NUM
-                if col in ("C", "D"):
-                    fmt = DATE
-                elif col in ("V", "Z", "AA"):
-                    fmt = PCT
-                elif col in ("A", "B", "Q", "TYPE"):
-                    fmt = None
-                if col is None or (actual and col in ("AD", "AE", "AM", "AT")):
-                    v = None
-                elif col == "TYPE":
-                    v = "Actual" if actual else "Plan"
-                elif col == "NETATTR":
-                    v = f"=Y{r}"
-                elif col == "PILOTS":
-                    v = f"=H{r}+K{r}"
-                else:
-                    v = f"={s}!{col}{src}"
-                put(ws, r, j, v, fmt, bg=ACTUAL if actual else None)
+    # Everything below the header comes from two kinds of formula: one QUERY (A:AF) that stacks the
+    # city tabs, and three array formulas (AG:AI). No cell-by-cell links.
+    ws["A2"] = combined_query()
+    n = len(COMBINED)
+    type_col, net_col, pil_col = (get_column_letter(n - 2), get_column_letter(n - 1), get_column_letter(n))
+    # Written as array formulas; Google Sheets opens them as ARRAYFORMULA over rows 2-1000.
+    A = "A2:A1000"
+
+    def rng(name):
+        L = cb(name)
+        return f"{L}2:{L}1000"
+
+    ws[f"{type_col}2"] = ArrayFormula(f"{type_col}2:{type_col}1000",
+                                      f'=IF({A}="","",IF(D2:D1000<={G_OPEN_DATE}-6,"Actual","Plan"))')
+    ws[f"{net_col}2"] = ArrayFormula(f"{net_col}2:{net_col}1000",
+                                     f'=IF({A}="","",{rng("Net Attrition (Abs)")})')
+    ws[f"{pil_col}2"] = ArrayFormula(f"{pil_col}2:{pil_col}1000",
+                                     f'=IF({A}="","",{rng("Week beginning active partners")}+{rng("Channel Sourcing")})')
+    rows = CB_ROWS * len(CITIES) + 1
+    for j, (h, col) in enumerate(COMBINED, start=1):
+        fmt = NUM
+        if col in ("C", "D"):
+            fmt = DATE
+        elif col in ("V", "Z", "AA"):
+            fmt = PCT
+        elif col in ("A", "B", "Q", "TYPE"):
+            fmt = None
+        for r in range(2, rows + 1):
+            c = ws.cell(r, j)
+            c.font = F_BODY
+            if fmt:
+                c.number_format = fmt
+    ws.conditional_formatting.add(f"A2:{get_column_letter(n)}{rows}",
+                                  FormulaRule(formula=[f'${type_col}2="Actual"'], fill=fill(ACTUAL)))
     ws.freeze_panes = "E2"
-    ws.auto_filter.ref = f"A1:{get_column_letter(len(COMBINED))}{r}"
     ws.sheet_view.zoomScale = 90
 
 
