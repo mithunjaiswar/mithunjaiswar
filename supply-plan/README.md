@@ -3,8 +3,10 @@
 `build_weekly_supply_plan.py` writes the workbook behind the Google Sheet
 "Lakshya 15,000 - Weekly Supply Plan (21 Sep - 27 Dec 2026)".
 
-- 10 tabs: `Lakshya vs Plan` (comparison for sharing), `Inputs`, one tab per city (Mumbai, Delhi NCR, Bangalore,
-  Hyderabad, Chennai, Kolkata, Pune) and `raw_performance` (output of the SSOT query).
+- 12 tabs: `Lakshya vs Plan` (comparison for sharing), `Summary View` (dashboard with a city picker),
+  `Inputs`, one tab per city (Mumbai, Delhi NCR, Bangalore, Hyderabad, Chennai, Kolkata, Pune),
+  `Combined All` (all city rows stacked, same columns as the Weekly Supply Plan's) and `raw_performance`
+  (output of the SSOT query).
 - Each city tab shows the last 4 actual weeks (read from `raw_performance`) and then the 14 plan weeks to w/e 27 Dec.
 - Churn follows last year's weekly attrition shape (same week last year, from `raw_performance`) at the Lakshya level;
   recruitment dips in festival weeks using the Weekly Supply Plan's seasonality impacts (Inputs section 7).

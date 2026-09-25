@@ -18,6 +18,7 @@ import sys
 from openpyxl import Workbook
 from openpyxl.formatting.rule import ColorScaleRule, FormulaRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import column_index_from_string, get_column_letter
 
 # ---------------------------------------------------------------- data
@@ -1070,6 +1071,235 @@ def build_compare(wb):
     ws.sheet_view.zoomScale = 90
 
 
+# ---------------------------------------------------------------- Combined All
+# Same columns (and letters) as the Weekly Supply Plan's "Combined All" for A:Z and AH:AI, so its
+# Summary View formulas read the same way. Wagon R / S-Presso util and realisation are not in the
+# Lakshya plan; the Lakshya layers take AA:AG instead.
+COMBINED = [  # (header, logical city-tab column or special)
+    ("City", "A"), ("Fuel Type", "B"), ("Month", "C"), ("Week", "D"), ("Total Cars [week ending]", "E"),
+    ("nULP", "F"), ("Week-beginning cars on Road", "G"), ("Week beginning active partners", "H"),
+    ("Net Allocations", "I"), ("Total Allocations", "J"), ("Channel Sourcing", "K"),
+    ("Field Sales Executive", "L"), ("Vendor", "M"), ("Referrals", "N"), ("Performance marketing", "O"),
+    ("EIP Net add-on", "P"), ("seasonality", "Q"), ("EIP cars", "R"), ("Rejoin %", None),
+    ("Attrition + Temp Attrition", None), ("Net Attrition %", "V"),
+    ("Leasing + DTO cars on Road - WE", "W"), ("Week-ending cars on Road", "Y"), ("Week ending Util", "Z"),
+    ("Net Attrition (Abs)", "U"), ("Own Now cars on Road - WE", "X"),
+    ("Total buy (new cars)", "AD"), ("Total sold", "AE"), ("Util ceiling (Lakshya)", "AA"),
+    ("Own Now placements", "AM"), ("L+DTO placements", "AT"), ("Total placements (Own Now + L+DTO)", "AU"),
+    ("Actual / Plan", "TYPE"), ("Net Attrition", "NETATTR"), ("WE Active Pilots", "PILOTS"),
+]
+CB_ROWS = LAST - 1  # rows per city (actual + plan weeks)
+
+
+def build_combined(wb):
+    ws = wb.create_sheet("Combined All")
+    for j, (h, _) in enumerate(COMBINED, start=1):
+        hdr(ws, 1, j, h)
+        ws.column_dimensions[get_column_letter(j)].width = 22 if h == "seasonality" else 10
+    ws.row_dimensions[1].height = 54
+    r = 1
+    for city in CITIES:
+        s = q(city)
+        for src in range(2, LAST + 1):
+            r += 1
+            actual = src <= OPEN_ROW
+            for j, (h, col) in enumerate(COMBINED, start=1):
+                fmt = NUM
+                if col in ("C", "D"):
+                    fmt = DATE
+                elif col in ("V", "Z", "AA"):
+                    fmt = PCT
+                elif col in ("A", "B", "Q", "TYPE"):
+                    fmt = None
+                if col is None or (actual and col in ("AD", "AE", "AM", "AT")):
+                    v = None
+                elif col == "TYPE":
+                    v = "Actual" if actual else "Plan"
+                elif col == "NETATTR":
+                    v = f"=Y{r}"
+                elif col == "PILOTS":
+                    v = f"=H{r}+K{r}"
+                else:
+                    v = f"={s}!{col}{src}"
+                put(ws, r, j, v, fmt, bg=ACTUAL if actual else None)
+    ws.freeze_panes = "E2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(COMBINED))}{r}"
+    ws.sheet_view.zoomScale = 90
+
+
+def cb(name):
+    """Column letter of a Combined All header."""
+    return get_column_letter([h for h, _ in COMBINED].index(name) + 1)
+
+
+# ---------------------------------------------------------------- Summary View
+SV_WEEKS = N_ACTUAL + N_WEEKS   # 18 columns: 4 actual + 14 plan weeks
+SV_FIRST_BLOCK = 8
+
+
+def build_summary(wb):
+    ws = wb.create_sheet("Summary View", 1)
+    last_col = get_column_letter(1 + SV_WEEKS)
+    ws.column_dimensions["A"].width = 30
+    for j in range(2, 2 + SV_WEEKS):
+        ws.column_dimensions[get_column_letter(j)].width = 9
+
+    ws["A1"] = "City"
+    ws["A1"].font = F_BOLD
+    c = ws["B1"]
+    c.value = "India"
+    c.font = Font(name="Calibri", size=11, bold=True, color=BLUE_TXT)
+    c.fill = fill(INPUT)
+    ws["A2"] = "Fuel Type"
+    ws["A2"].font = F_BOLD
+    c = ws["B2"]
+    c.value = "CNG"
+    c.font = Font(name="Calibri", size=11, bold=True, color=BLUE_TXT)
+    c.fill = fill(INPUT)
+    dv = DataValidation(type="list", formula1='"' + ",".join(["India"] + CITIES) + '"', allow_blank=False)
+    dv2 = DataValidation(type="list", formula1='"CNG"', allow_blank=False)
+    ws.add_data_validation(dv)
+    ws.add_data_validation(dv2)
+    dv.add("B1")
+    dv2.add("B2")
+    ws["D1"] = "Pick a city (or India) in B1. Plan = this workbook; actual and last year = raw_performance."
+    ws["D1"].font = F_NOTE
+    ws["D2"] = "City filter:"
+    ws["D2"].font = F_NOTE
+    ws["E2"] = '=IF($B$1="India","*",$B$1)'
+    ws["E2"].font = F_NOTE
+    ws["G2"] = "Raw data up to:"
+    ws["G2"].font = F_NOTE
+    ws["I2"] = "=MAX(raw_performance!$C:$C)"
+    ws["I2"].number_format = "dd-mmm-yy"
+    ws["I2"].font = F_NOTE
+    CITY = "$E$2"
+    FUEL = "$B$2"
+    RAWMAX = "$I$2"
+
+    ws["A3"] = "Week"
+    ws["A3"].font = F_BOLD
+    ws["A4"] = "2026"
+    ws["A5"] = "2025 (same week LY)"
+    ws["A6"] = ""
+    for k in range(SV_WEEKS):
+        col = get_column_letter(2 + k)
+        c = ws[f"{col}3"]
+        c.value = f'=IF({col}4<={G_OPEN_DATE}-6,"Actual","Plan")'
+        c.font = F_BOLD
+        c.alignment = CENTER
+        c = ws[f"{col}4"]
+        c.value = f"={G_OPEN_DATE}-{7 * N_ACTUAL - 1}" if k == 0 else f"={get_column_letter(1 + k)}4+7"
+        c.number_format = "mmm-dd"
+        c.font = F_BOLD
+        c = ws[f"{col}5"]
+        c.value = f"={col}4-364"
+        c.number_format = "mmm-dd"
+        c.font = F_BOLD
+        c = ws[f"{col}6"]
+        c.value = f'=IF(AND(TODAY()>={col}4,TODAY()<{col}4+7),"We are here","")'
+        c.font = F_BOLD
+        c.alignment = CENTER
+    ws.conditional_formatting.add(f"B6:{last_col}6", FormulaRule(formula=['B6="We are here"'], fill=fill("FFFFFF00")))
+    ws.conditional_formatting.add(f"B3:{last_col}3", FormulaRule(formula=['B3="Actual"'], fill=fill(ACTUAL)))
+
+    CA = "'Combined All'"
+
+    def ca(col, wk):
+        return (f"SUMIFS({CA}!${col}:${col},{CA}!$A:$A,{CITY},{CA}!$B:$B,{FUEL},{CA}!$D:$D,{wk})")
+
+    def raw_day(field, wk):   # on the week's last day (Sunday)
+        L = rc(field)
+        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{CITY},raw_performance!$E:$E,{FUEL},"
+                f"raw_performance!$C:$C,{wk}+6)")
+
+    def raw_mon(field, wk):   # on the week's Monday
+        L = rc(field)
+        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{CITY},raw_performance!$E:$E,{FUEL},"
+                f"raw_performance!$C:$C,{wk})")
+
+    def raw_wk(field, wk):    # sum over the week
+        L = rc(field)
+        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{CITY},raw_performance!$E:$E,{FUEL},"
+                f"raw_performance!$B:$B,{wk})")
+
+    def raw_attr_pct(wk):
+        abs_ = (raw_wk("attrition_cnt", wk) + "+" + raw_wk("temp_attrition_cnt", wk) + "-"
+                + raw_wk("rejoin_cnt", wk) + "-" + raw_wk("temp_rejoin_cnt", wk))
+        base = raw_mon("uniq_partners_dt_beginning", wk) + "+" + raw_wk("newjoin_cnt", wk) + "+" + raw_wk("resurrection_cnt", wk)
+        return f"IFERROR(({abs_})/({base}),\"\")"
+
+    # (title, plan formula(wk), raw formula(wk) or None, number format)
+    blocks = [
+        ("Util", lambda w: f"IFERROR({ca(cb('Week-ending cars on Road'), w)}/{ca(cb('Total Cars [week ending]'), w)},\"\")",
+         lambda w: f"IFERROR({raw_day('allotted_cars_eod', w)}/{raw_day('fleet_total_cars_cnt', w)},\"\")", "0%"),
+        ("On Road Cars", lambda w: ca(cb("Week-ending cars on Road"), w), lambda w: raw_day("allotted_cars_eod", w), "#,##0"),
+        ("Recruitment", lambda w: ca(cb("Channel Sourcing"), w),
+         lambda w: raw_wk("newjoin_cnt", w) + "+" + raw_wk("resurrection_cnt", w), "#,##0"),
+        ("Net Attrition %", lambda w: f"IFERROR(-{ca(cb('Net Attrition'), w)}/{ca(cb('WE Active Pilots'), w)},\"\")",
+         raw_attr_pct, "0.0%"),
+        ("EIP Growth", lambda w: ca(cb("EIP Net add-on"), w), lambda w: raw_wk("Net EIP Add-ons", w), "#,##0"),
+        ("Field Sales Executive", lambda w: ca(cb("Field Sales Executive"), w),
+         lambda w: raw_wk("ni_fse_cnt", w) + "+" + raw_wk("resurrection_fse_cnt", w), "#,##0"),
+        ("Vendor", lambda w: ca(cb("Vendor"), w),
+         lambda w: raw_wk("ni_vendor_cnt", w) + "+" + raw_wk("resurrection_vendor_cnt", w), "#,##0"),
+        ("Referrals", lambda w: ca(cb("Referrals"), w),
+         lambda w: raw_wk("ni_driver_referral_cnt", w) + "+" + raw_wk("resurrection_driver_referral_cnt", w), "#,##0"),
+        ("Performance marketing", lambda w: ca(cb("Performance marketing"), w),
+         lambda w: raw_wk("ni_perf_mktg_cnt", w) + "+" + raw_wk("resurrection_perf_mktg_cnt", w), "#,##0"),
+        ("EIP %", lambda w: f"IFERROR({ca(cb('EIP cars'), w)}/{ca(cb('Week-ending cars on Road'), w)},\"\")",
+         lambda w: f"IFERROR({raw_day('eip_vehicles_cnt', w)}/{raw_day('allotted_cars_eod', w)},\"\")", "0%"),
+        ("Total car", lambda w: ca(cb("Total Cars [week ending]"), w), lambda w: raw_day("fleet_total_cars_cnt", w), "#,##0"),
+        ("Total buy", lambda w: ca(cb("Total buy (new cars)"), w), None, "#,##0"),
+        ("Total Sold", lambda w: ca(cb("Total sold"), w), None, "#,##0"),
+        ("On Road Cars EIP", lambda w: ca(cb("EIP cars"), w), lambda w: raw_day("eip_vehicles_cnt", w), "#,##0"),
+        ("On Road Cars Own Now", lambda w: ca(cb("Own Now cars on Road - WE"), w), lambda w: raw_day("own_now_cars_eod", w), "#,##0"),
+        ("On Road Cars Leasing + DTO", lambda w: ca(cb("Leasing + DTO cars on Road - WE"), w),
+         lambda w: raw_day("allotted_cars_eod", w) + "-" + raw_day("own_now_cars_eod", w) + "-" + raw_day("eip_vehicles_cnt", w), "#,##0"),
+        ("Placements (Own Now + L+DTO)", lambda w: ca(cb("Total placements (Own Now + L+DTO)"), w), None, "#,##0"),
+    ]
+    r = SV_FIRST_BLOCK
+    for title, plan_f, raw_f, fmt in blocks:
+        ws.cell(r, 1, title).font = F_HDR
+        ws.cell(r, 1).fill = fill(NAVY)
+        labels = ["2026 plan", "2026 actual", "2025 actual (same week LY)"]
+        for k in range(SV_WEEKS):
+            col = get_column_letter(2 + k)
+            h = ws[f"{col}{r}"]
+            h.value = f"={col}$4"
+            h.number_format = 'dd" "mmm'
+            h.font = F_HDR
+            h.fill = fill(NAVY)
+            h.alignment = CENTER
+            wk, ly = f"{col}$4", f"{col}$5"
+            vals = [
+                "=" + plan_f(wk),
+                (f'=IF({wk}+6<={RAWMAX},{raw_f(wk)},"")' if raw_f else None),
+                (f'=IF({ly}+6<={RAWMAX},{raw_f(ly)},"")' if raw_f else None),
+            ]
+            for i, v in enumerate(vals):
+                c = ws.cell(r + 1 + i, 2 + k, v)
+                c.number_format = fmt
+                c.font = F_BOLD if i == 0 else F_BODY
+                c.border = BOX
+        for i, lab in enumerate(labels):
+            c = ws.cell(r + 1 + i, 1, lab if (raw_f or i == 0) else lab + " - n/a")
+            c.font = F_BOLD if i == 0 else F_BODY
+            c.border = BOX
+        if title in ("Util", "Recruitment", "Net Attrition %"):
+            for i in range(2):
+                ws.conditional_formatting.add(
+                    f"B{r + 1 + i * 2}:{last_col}{r + 1 + i * 2}",
+                    ColorScaleRule(start_type="min", start_color="FFE67C73", mid_type="percentile", mid_value=50,
+                                   mid_color="FFFFFFFF", end_type="max", end_color="FF57BB8A"))
+        r += 5
+    ws.cell(r, 1, "Plan row = Combined All (4 actual weeks, then the plan). Actual row fills in once raw_performance "
+                  "covers the whole week - paste a fresh SSOT query into raw_performance to track plan vs actual. "
+                  "Last year = same week 364 days earlier.").font = F_NOTE
+    ws.freeze_panes = "B7"
+    ws.sheet_view.zoomScale = 90
+
+
 def build_raw(wb, raw):
     """raw_performance: the SSOT query output, one row per date x city x fuel type."""
     ws = wb.create_sheet("raw_performance")
@@ -1105,6 +1335,8 @@ def main(out, raw_path):
     for i, city in enumerate(CITIES):
         build_city(wb, i, city)
     build_compare(wb)
+    build_summary(wb)
+    build_combined(wb)
     build_raw(wb, raw)
     wb.save(out)
 
