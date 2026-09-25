@@ -259,6 +259,7 @@ G_OPEN_DATE = f"Inputs!$B${R_GLOBAL + 1}"
 G_PLAN_END = f"Inputs!$B${R_GLOBAL + 3}"
 G_WPM = f"Inputs!$B${R_GLOBAL + 4}"
 G_FLOOR = f"Inputs!$B${R_GLOBAL + 6}"
+G_CAP = f"Inputs!$B${R_GLOBAL + 7}"
 
 # City-input columns on the Inputs tab
 CI = {k: i + 1 for i, k in enumerate([
@@ -500,10 +501,10 @@ def build_city(wb, idx, city):
             # new cars and the Diwali dips still to come, spread over the non-Diwali weeks left
             "BL": (f'=IF(AF{r}="Diwali",BS{r},IFERROR(((BY{r}-G{r})-SUMIFS(BJ{r}:$BJ${LAST},BU{r}:$BU${LAST},BU{r})'
                    f'-G{r}*SUMIFS(BR{r}:$BR${LAST},BU{r}:$BU${LAST},BU{r}))*BF{r}/BZ{r},0))'),
-            "BM": f'=BJ{r}+IF(AF{r}="Diwali",BL{r},MIN(BL{r},BI{r}))',
+            "BM": f'=BJ{r}+IF(AF{r}="Diwali",BL{r},IF({G_CAP}="No",BL{r},MIN(BL{r},BI{r})))',
             "BN": f"=BM{r}/G{r}",
             "BO": f"=(BM{r}-BJ{r})/G{r}",
-            "BP": f'=IF(AF{r}="Diwali","Diwali dip (2024/25 avg)",IF(BL{r}<=BI{r}+0.5,"Yes","Capped at LY pace"))',
+            "BP": f'=IF(AF{r}="Diwali","Diwali dip (2024/25 avg)",IF(BL{r}<=BI{r}+0.5,"Yes",IF({G_CAP}="No","Above LY pace (cap off)","Capped at LY pace")))',
             "BQ": f"={ci('t_onroad', idx)}-Y{r}",
             "BR": f'=IF(AF{r}="Diwali",IFERROR(INDEX(Inputs!$B${R_DIP0 + idx}:$C${R_DIP0 + idx},MATCH(Inputs!$O${cal},Inputs!$B${R_DIP_H}:$C${R_DIP_H},0)),0),0)',
             "BS": f"=G{r}*BR{r}",
@@ -676,6 +677,8 @@ def build_inputs(wb):
         ("India CNG on-road goal, Dec", 15000, NUM, True, "Lakshya lands at 15,082. ~1,000 EV held flat on top = 16,000."),
         ("Largest recruitment drop in one week", -0.75, "0%", True,
          "Floor on the festival impact (section 7). Some history values are below -100% (e.g. Delhi Diwali -163%)."),
+        ("Hold weekly growth to last year's pace?", "Yes", None, True,
+         "Yes = realistic plan (section 8 caps each week). No = every week takes what Lakshya's month-end needs, even above last year's pace (the Diwali dip still applies)."),
     ]
     for k, (label, val, fmt, is_input, note) in enumerate(rows):
         r = R_GLOBAL + 1 + k
@@ -687,7 +690,7 @@ def build_inputs(wb):
     # ---- sources
     F_LINK = Font(name="Calibri", size=10, color="FF1155CC", underline="single")
     for k, (label, url, text) in enumerate(SOURCES):
-        r = R_GLOBAL + 7 + k
+        r = R_GLOBAL + 8 + k
         put(ws, r, 1, label, bold=True)
         put(ws, r, 2, link(url, text), font=F_LINK)
         ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=8)
@@ -1218,11 +1221,14 @@ def build_compare(wb):
     section(r, "5.  THE PATH TO DECEMBER - India books on Lakshya's month-end Sundays")
     r += 1
     heads = [("Week ending", NAVY), ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
-             ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY), ("Status", NAVY)]
+             ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY), ("Status", NAVY),
+             ("Why it differs (cars short by city)", NAVY)]
     for j, (t, col) in enumerate(heads, start=1):
         hdr(ws, r, j, t, col)
+    ws.column_dimensions["I"].width = 11
     ws.row_dimensions[r].height = 32
     first = r + 1
+    s5_rows = []
     for m, (d, wrow) in enumerate(zip([dt.date(2026, 9, 27), dt.date(2026, 10, 25), dt.date(2026, 11, 29),
                                        dt.date(2026, 12, 27)], ME_WEEK_ROWS)):
         r += 1
@@ -1234,6 +1240,7 @@ def build_compare(wb):
         put(ws, r, 6, all_cities(f"W{wrow}"), NUM)
         put(ws, r, 7, f"=F{r}-E{r}", NUM)
         put(ws, r, 8, f'=IF(AND(ABS(D{r})<0.5,ABS(G{r})<0.5),"Match","Differs - catching up")')
+        s5_rows.append(r)
     status_rules(f"H{first}:H{r}", f"H{first}")
     ws.cell(r + 1, 1, "Each plan week works towards Lakshya's next month-end book (Inputs, section 10). September has only one plan week (from the 20 Sep actual), "
                       "so it cannot close; later months miss only where last year's pace or the Diwali dip does not allow it. City detail below.").font = F_NOTE
@@ -1243,11 +1250,13 @@ def build_compare(wb):
     section(r, "5b.  MONTH-END BY CITY - Lakshya's Own Now and Leasing + DTO books vs the plan")
     r += 1
     heads = [("City", NAVY), ("Month-end", NAVY), ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
-             ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY), ("Status", NAVY)]
+             ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY), ("Status", NAVY),
+             ("Why it differs / what it would take", NAVY)]
     for j, (t, col) in enumerate(heads, start=1):
         hdr(ws, r, j, t, col)
     ws.row_dimensions[r].height = 32
     first = r + 1
+    b_rows = {}
     dates = [dt.date(2026, 9, 27), dt.date(2026, 10, 25), dt.date(2026, 11, 29), dt.date(2026, 12, 27)]
     for i, city in enumerate(CITIES):
         s_ = q(city)
@@ -1262,9 +1271,29 @@ def build_compare(wb):
             put(ws, r, 7, f"={s_}!W{wrow}", NUM)
             put(ws, r, 8, f"=G{r}-F{r}", NUM)
             put(ws, r, 9, f'=IF(AND(ABS(E{r})<0.5,ABS(H{r})<0.5),"Match","Differs")')
+            b_rows[(i, m)] = r
+            mon = MONTHS[m]
+            bu, bp, af = (f"{s_}!$BU${FIRST}:$BU${LAST}", f"{s_}!$BP${FIRST}:$BP${LAST}", f"{s_}!$AF${FIRST}:$AF${LAST}")
+            pace = f"Inputs!$B${R_PACE0 + i}" if m < 2 else f"Inputs!$D${R_PACE0 + i}"
+            weeks = f'COUNTIFS({bu},"{mon}",{af},"<>Diwali")'
+            capped = f'COUNTIFS({bu},"{mon}",{bp},"Capped at LY pace")'
+            why = (f'=IF(I{r}="Match","",IF(E{r}+H{r}>0,"Plan above Lakshya by "&TEXT(E{r}+H{r},"#,##0")&" cars.",'
+                   f'TEXT(-(E{r}+H{r}),"#,##0")&" cars short. "'
+                   + ('&"Only 1 plan week after the 20 Sep actual. "' if m == 0 else "")
+                   + f'&{capped}&" of "&{weeks}&" week(s) held to the best pace of 2024/25 ("&TEXT({pace},"0.0%")&" a week)"'
+                   + (f'&"; Diwali dip "&TEXT(Inputs!$D${R_DIP0 + i},"0%")' if m == 2 else "")
+                   + f'&". To close: about "&TEXT(-(E{r}+H{r})/MAX(1,{weeks}),"#,##0")&" more cars a week than that pace allows."))')
+            put(ws, r, 10, why)
     status_rules(f"I{first}:I{r}", f"I{first}")
+    # India reasons in section 5: which cities are short at each month-end
+    for m, r5 in enumerate(s5_rows):
+        terms = "&".join(f'IF(ABS(E{b_rows[(i, m)]}+H{b_rows[(i, m)]})>=0.5,"{c} "&TEXT(E{b_rows[(i, m)]}+H{b_rows[(i, m)]},"+#,##0;-#,##0")&"  ","")'
+                         for i, c in enumerate(CITIES))
+        lead = '"Only 1 plan week after the 20 Sep actual. "&' if m == 0 else ""
+        put(ws, r5, 9, f'=IF(H{r5}="Match","",{lead}"Short: "&{terms}&"(details in 5b)")', font=F_NOTE)
     ws.cell(r + 1, 1, "Differs in September: one week from the 20 Sep actual. Differs later: the city's proven pace (Inputs, section 8) or the Diwali dip (section 9) "
-                      "stops it closing the gap that month - the city tab column BP shows 'Capped at LY pace' in those weeks. Every city matches in December.").font = F_NOTE
+                      "stops it closing the gap that month - the city tab column BP shows 'Capped at LY pace' in those weeks. Every city matches in December. "
+                      "To see the plan fill every month-end regardless, set Inputs 'Hold weekly growth to last year's pace?' to No.").font = F_NOTE
 
     # ---- 6. weekly India
     r += 4
