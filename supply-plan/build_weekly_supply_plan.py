@@ -1684,10 +1684,8 @@ def build_dashboard(wb):
     R_PB_TOT = R_PB0 + 4
     R_IN_T = R_PB_TOT + 3          # 3. insights
     N_INS = 10
-    R_CT = R_IN_T + N_INS + 3      # 4. by city banner
-    BANDS = [R_CT + 2, R_CT + 14, R_CT + 26, R_CT + 38]   # table title rows; header +1, cities +2..+8, INDIA +9
     PICK = "$B$3"
-    city_list = f"$A${BANDS[0] + 2}:$A${BANDS[0] + 8}"
+    city_list = f"Inputs!$A${R_SUM0}:$A${R_SUM0 + len(CITIES) - 1}"   # city names in Inputs C1
 
     def pick(exprs, india=None):
         india = india or "+".join(exprs)
@@ -1709,7 +1707,7 @@ def build_dashboard(wb):
     dv = DataValidation(type="list", formula1='"' + ",".join(["India"] + CITIES) + '"', allow_blank=False)
     ws.add_data_validation(dv)
     dv.add("B3")
-    ws["C3"] = "Headline and sections 1-2 follow this pick; insights and section 4 always show all cities."
+    ws["C3"] = "Headline and sections 1-2 follow this pick; section 2b and the insights always show India."
     ws["C3"].font = F_NOTE
 
     # ---- 1. month by month (picked)
@@ -1971,208 +1969,49 @@ def build_dashboard(wb):
     ws.row_dimensions[R_TILE].height = 30
     ws.row_dimensions[R_TILE + 1].height = 30
 
-    # ---- 3. by city tables
-    banner(ws, R_CT, "4.  BY CITY  -  every city side by side, month by month", NAVY)
-
-    def table(r0, c0, title_text, heads):
-        ws.cell(r0, c0, title_text).font = F_SECTION
-        for k, h in enumerate(heads):
-            hdr(ws, r0 + 1, c0 + k, h)
-        ws.row_dimensions[r0 + 1].height = 30
-        for i, city in enumerate(CITIES + ["INDIA"]):
-            put(ws, r0 + 2 + i, c0, city, bold=True, bg=LIGHT if city == "INDIA" else None)
-        return r0 + 1
-
-    def cell(c0, k, r):
-        return f"{L(c0 + k)}{r}"
-
-    # T1: on road by month-end vs Lakshya (A..J)
-    b = BANDS[0]
-    h1 = table(b, 1, "On road at each month-end vs Lakshya's December target",
-               ["City", "Start"] + MONTHS + ["Lakshya Dec", "Plan - Lakshya", "Growth", "Growth %"])
-    for i in range(len(CITIES) + 1):
-        r = h1 + 1 + i
-        india = i == len(CITIES)
-        s = cities[i] if not india else None
-        if india:  # B:H = sum of the cities
-            vals = [f"=SUM({L(k)}{h1 + 1}:{L(k)}{r - 1})" for k in range(2, 9)]
-        else:  # start, Sep..Dec month-ends, Lakshya Dec, plan - Lakshya
-            vals = ([f"={s}!$Y${OPEN_ROW}"] + [f"={_stock(s, 'Y', f'{L(3 + m)}${h1}')}" for m in range(4)]
-                    + [f"={ci('t_onroad', i)}", f"=F{r}-G{r}"])
-        for k, v in enumerate(vals):
-            put(ws, r, 2 + k, v, NUM, bold=india or k == 4, bg=LIGHT if india else None)
-        put(ws, r, 9, f"=F{r}-B{r}", "+#,##0;-#,##0", bold=True, bg=LIGHT if india else None)
-        put(ws, r, 10, f"=F{r}/B{r}-1", "+0%;-0%", bg=LIGHT if india else None)
-    T1_0, T1_I = h1 + 1, h1 + 1 + len(CITIES)
-    red_if(f"H{T1_0}:H{T1_I}", f"H{T1_0}<-0.5")
-
-    # T2: plan - Lakshya at each month-end (L..Q)
-    h2 = table(b, 12, "Plan minus Lakshya at each month-end (on road)", ["City"] + MONTHS + ["Month-ends short"])
-    for i in range(len(CITIES) + 1):
-        r = h2 + 1 + i
-        india = i == len(CITIES)
-        for m in range(4):
-            lk = f"Inputs!${L(14 + m)}${R_MS0 + i}"   # A3 on-road columns N:Q; row 7 = INDIA
-            put(ws, r, 13 + m, f"={L(3 + m)}{r}-{lk}", "+#,##0;-#,##0;0", bold=india, bg=LIGHT if india else None)
-        put(ws, r, 17, f'=COUNTIF(M{r}:P{r},"<-0.5")' if not india else f"=SUM(Q{h2 + 1}:Q{r - 1})", "0",
-            bold=True, bg=LIGHT if india else None)
-    T2_0, T2_I = h2 + 1, h2 + len(CITIES)
-    red_if(f"M{T2_0}:P{T2_I + 1}", f"M{T2_0}<-0.5")
-
-    # T3: net add on road per month (A..H)
-    b = BANDS[1]
-    h3 = table(b, 1, "Net add on road per month", ["City"] + MONTHS + ["Total", "New cars put on road", "Organic"])
-    for i in range(len(CITIES) + 1):
-        r = h3 + 1 + i
-        india = i == len(CITIES)
-        r1 = T1_0 + i
-        for m in range(4):
-            put(ws, r, 2 + m, f"={L(3 + m)}{r1}-{L(2 + m)}{r1}", "+#,##0;-#,##0;0", bold=india, bg=LIGHT if india else None)
-        put(ws, r, 6, f"=SUM(B{r}:E{r})", "+#,##0;-#,##0;0", bold=True, bg=LIGHT if india else None)
-        nc = f"=SUM(G{h3 + 1}:G{r - 1})" if india else f"=SUM({cities[i]}!$BJ${FIRST}:$BJ${LAST})"
-        put(ws, r, 7, nc, NUM, bold=india, bg=LIGHT if india else None)
-        put(ws, r, 8, f"=F{r}-G{r}", "+#,##0;-#,##0;0", bold=india, bg=LIGHT if india else None)
-    T3_I = h3 + 1 + len(CITIES)
-
-    # T4: driver acquisition per month (L..S)
-    h4 = table(b, 12, "Driver Acquisition (recruitment) per month - Own Now + L+DTO",
-               ["City"] + MONTHS + ["Total", "Per week", "Peak week"])
-    for i in range(len(CITIES) + 1):
-        r = h4 + 1 + i
-        india = i == len(CITIES)
-        for m in range(4):
-            v = f"=SUM({L(13 + m)}{h4 + 1}:{L(13 + m)}{r - 1})" if india else f"={_flow(cities[i], 'AU', f'{L(13 + m)}${h4}')}"
-            put(ws, r, 13 + m, v, NUM, bold=india, bg=LIGHT if india else None)
-        put(ws, r, 17, f"=SUM(M{r}:P{r})", NUM, bold=True, bg=LIGHT if india else None)
-        put(ws, r, 18, f"=Q{r}/{N_WEEKS}", NUM, bg=LIGHT if india else None)
-        if india:  # busiest India week = max over weeks of the sum of the cities
-            f = "=MAX(" + "+".join(f"{s}!$AU${FIRST}:$AU${LAST}" for s in cities) + ")"
-            c = put(ws, r, 19, None, NUM, bold=True, bg=LIGHT)
-            c.value = ArrayFormula(f"S{r}", _shift_refs(f, own_sheet=False))
-        else:
-            put(ws, r, 19, f"=MAX({cities[i]}!$AU${FIRST}:$AU${LAST})", NUM)
-    T4_0, T4_I = h4 + 1, h4 + 1 + len(CITIES)
-
-    # T5: churn per month (A..G)
-    b = BANDS[2]
-    h5 = table(b, 1, "Churn per month - drivers to replace (Own Now churn + rollover + L+DTO churn)",
-               ["City"] + MONTHS + ["Total", "% of driver acquisition"])
-    for i in range(len(CITIES) + 1):
-        r = h5 + 1 + i
-        india = i == len(CITIES)
-        for m in range(4):
-            mref = f"{L(2 + m)}${h5}"
-            v = (f"=SUM({L(2 + m)}{h5 + 1}:{L(2 + m)}{r - 1})" if india else
-                 "=" + "+".join(_flow(cities[i], x, mref) for x in ("AK", "AL", "AS")))
-            put(ws, r, 2 + m, v, NUM, bold=india, bg=LIGHT if india else None)
-        put(ws, r, 6, f"=SUM(B{r}:E{r})", NUM, bold=True, bg=LIGHT if india else None)
-        put(ws, r, 7, f"=F{r}/Q{T4_0 + i}", "0%", bg=LIGHT if india else None)
-    T5_I = h5 + 1 + len(CITIES)
-
-    # T6: utilisation at month-end (L..S)
-    h6 = table(b, 12, "Utilisation at each month-end (cars on road / fleet)",
-               ["City"] + MONTHS + ["Fleet 27 Dec", "Max utilisation", "Headroom 27 Dec"])
-    for i in range(len(CITIES) + 1):
-        r = h6 + 1 + i
-        india = i == len(CITIES)
-        for m in range(4):
-            mref = f"{L(13 + m)}${h6}"
-            if india:
-                fleet = "+".join(_stock(s, "E", mref) for s in cities)
-                v = f"={L(3 + m)}{T1_I}/({fleet})"
-            else:
-                v = f"={_stock(cities[i], 'Z', mref)}"
-            put(ws, r, 13 + m, v, PCT, bold=india, bg=LIGHT if india else None)
-        fl = f"=SUM(Q{h6 + 1}:Q{r - 1})" if india else f"={_stock(cities[i], 'E', f'P${h6}')}"
-        put(ws, r, 17, fl, NUM, bg=LIGHT if india else None)
-        put(ws, r, 18, None if india else f"={ci('ceiling', i)}", PCT, bg=LIGHT if india else None)
-        put(ws, r, 19, None if india else f"=R{r}-P{r}", "+0.0%;-0.0%", bold=True, bg=LIGHT if india else None)
-    T6_0 = h6 + 1
-    red_if(f"S{T6_0}:S{T6_0 + len(CITIES) - 1}", f"S{T6_0}<0")
-    # T7: driver acquisition over the 14 weeks, Lakshya vs plan (A..I)
-    b = BANDS[3]
-    h7 = table(b, 1, "Lakshya vs plan - driver acquisition over the same 14 weeks",
-               ["City", "Own Now - Lakshya", "Own Now - plan", "L+DTO - Lakshya", "L+DTO - plan",
-                "Total - Lakshya", "Total - plan", "Plan - Lakshya", "Plan vs Lakshya %"])
-    for i in range(len(CITIES) + 1):
-        r = h7 + 1 + i
-        india = i == len(CITIES)
-        bg = LIGHT if india else None
-        if india:
-            for k in range(2, 9):
-                put(ws, r, k, f"=SUM({L(k)}{h7 + 1}:{L(k)}{r - 1})", DIFF if k == 8 else NUM, bold=True, bg=bg)
-        else:
-            c = CITIES[i]
-            put(ws, r, 2, LK_OWN_PL[c], NUM)
-            put(ws, r, 3, f"=SUM({cities[i]}!$AM${FIRST}:$AM${LAST})", NUM)
-            put(ws, r, 4, LK_LDTO_PL[c], NUM)
-            put(ws, r, 5, f"=SUM({cities[i]}!$AT${FIRST}:$AT${LAST})", NUM)
-            put(ws, r, 6, f"=B{r}+D{r}", NUM, bold=True)
-            put(ws, r, 7, f"=C{r}+E{r}", NUM, bold=True)
-            put(ws, r, 8, f"=G{r}-F{r}", DIFF, bold=True)
-        put(ws, r, 9, f"=G{r}/F{r}-1", "+0%;-0%", bg=bg)
-    T7_I = h7 + 1 + len(CITIES)
-
-    # T8: fleet and utilisation on 27 Dec, Lakshya vs plan (L..S)
-    h8 = table(b, 12, "Lakshya vs plan - fleet and utilisation on 27 Dec",
-               ["City", "Fleet - Lakshya", "Fleet - plan", "Plan - Lakshya", "Util - Lakshya", "Util - plan",
-                "Plan - Lakshya", "Max utilisation"])
-    for i in range(len(CITIES) + 1):
-        r = h8 + 1 + i
-        india = i == len(CITIES)
-        bg = LIGHT if india else None
-        r1 = T1_0 + i
-        if india:
-            put(ws, r, 13, f"=SUM(M{h8 + 1}:M{r - 1})", NUM, bold=True, bg=bg)
-            put(ws, r, 14, f"=SUM(N{h8 + 1}:N{r - 1})", NUM, bold=True, bg=bg)
-        else:
-            put(ws, r, 13, f"={ci('lk_fleet', i)}", NUM)
-            put(ws, r, 14, f"=Q{T6_0 + i}", NUM)
-        put(ws, r, 15, f"=N{r}-M{r}", DIFF, bold=True, bg=bg)
-        put(ws, r, 16, f"=G{r1}/M{r}", PCT, bg=bg)
-        put(ws, r, 17, f"=F{r1}/N{r}", PCT, bg=bg)
-        put(ws, r, 18, f"=Q{r}-P{r}", "+0.0%;-0.0%", bold=True, bg=bg)
-        put(ws, r, 19, None if india else f"={ci('ceiling', i)}", PCT, bg=bg)
-    red_if(f"Q{h8 + 1}:Q{h8 + len(CITIES)}", f"Q{h8 + 1}>S{h8 + 1}")
-
-    ws.cell(T7_I + 2, 1, "Months as in Lakshya (see top). Red = below Lakshya's month-end, or above the city's max utilisation. "
-                         "Peak week = the busiest single week. Lakshya driver acquisition: Lakshya v4 Weekly Own Now and Weekly L+DTO tabs.").font = F_NOTE
-
-    # ---- 2. insights (live, all India)
+    # ---- 3. insights (live, all India): read from section 2b, the Inputs C1 summary and the city tabs
     put(ws, R_IN_T, 1, "3.  INSIGHTS  -  India and cities (live; update with the plan)", font=F_SECTION).border = Border()
-    I = T1_I
+    ri = R_SUM0 + len(CITIES)                      # INDIA row of Inputs C1
+    c1 = lambda col, r=ri: f"Inputs!${col}${r}"    # Inputs C1: B start, C 27 Dec, D target, I fleet, J Lakshya fleet,
+    c1r = lambda col: f"Inputs!${col}${R_SUM0}:${col}${ri - 1}"  # M util, N max, O headroom, S driver acquisition
+    SIGNED = "+#,##0;-#,##0;0"
     wk = [f'COUNTIF({_bu(cities[0])},"{mon}")' for mon in MONTHS]
+    pb = lambda col, m: f"{col}{R_PB0 + m}"      # section 2b, month m
+    pbt = lambda col: f"{col}{R_PB_TOT}"         # section 2b, total
+    newc = "(" + "+".join(f"SUM({s}!$BJ${FIRST}:$BJ${LAST})" for s in cities) + ")"
     dip = "+".join(f"SUM({s}!$BS${FIRST}:$BS${LAST})" for s in cities)
     capped = "+".join(stretch_count(f"{s}!$BP${FIRST}:$BP${LAST}") for s in cities)
     top_org = "MAX(" + ",".join(f"{s}!$BO${FIRST}:$BO${LAST}" for s in cities) + ")"
-    grow = f"$I${T1_0}:$I${T1_I - 1}"
-    cty = f"$A${T1_0}:$A${T1_I - 1}"
-    plc = f"$Q${T4_0}:$Q${T4_I - 1}"
-    t2 = f"$M${T2_0}:$P${T2_I}"
-    t2dec = f"$P${T2_0}:$P${T2_I}"
-    above = "&".join(f'IF(S{T6_0 + i}<0,"{CITIES[i]} "&TEXT(P{T6_0 + i},"0.0%")&" vs max "&TEXT(R{T6_0 + i},"0.0%")&", ","")'
+    growth = f"({c1r('C')}-{c1r('B')})"
+    above = "&".join(f'IF({c1("O", R_SUM0 + i)}<0,"{CITIES[i]} "&TEXT({c1("M", R_SUM0 + i)},"0.0%")&" vs max "&TEXT({c1("N", R_SUM0 + i)},"0.0%")&", ","")'
                      for i in range(len(CITIES)))
-    pw = lambda rng_row, c0: ", ".join(f'{MONTHS[m]} "&TEXT({L(c0 + m)}{rng_row}/{wk[m]},"+#,##0;-#,##0")&"' for m in range(4))
-    pl_w = ", ".join(f'{MONTHS[m]} "&TEXT({L(13 + m)}{T4_I}/{wk[m]},"#,##0")&"' for m in range(4))
+    per_week = lambda col, fmt: ", ".join(f'{MONTHS[m]} "&TEXT({pb(col, m)}/{wk[m]},"{fmt}")&"' for m in range(4))
+    me_gap = ", ".join(f'{MONTHS[m]} "&TEXT({pb("E", m)}-{pb("D", m)},"{SIGNED}")&"' for m in range(4))
+    me_short = "+".join(f"(ABS({pb('E', m)}-{pb('D', m)})>=0.5)" for m in range(4))
     ins = [
-        f'="India: "&TEXT(B{I},"#,##0")&" cars on road at the start, "&TEXT(F{I},"#,##0")&" on 27 Dec ("&TEXT(I{I},"+#,##0")&", "&TEXT(J{I},"+0%")&"). '
-        f'Lakshya: "&TEXT(G{I},"#,##0")&IF(ABS(H{I})<0.5," - the plan lands on it."," - gap "&TEXT(H{I},"#,##0")&".")',
-        f'="Where the growth comes from: "&TEXT(G{T3_I},"#,##0")&" new cars put on road ("&TEXT(G{T3_I}/F{T3_I},"0%")&") and "&TEXT(H{T3_I},"#,##0")&" organic growth from recruitment net of churn ("&TEXT(H{T3_I}/F{T3_I},"0%")&")."',
-        f'="Growth per week, by month: {pw(T3_I, 2)}. The two Diwali weeks (w/c 2 and 9 Nov) take "&TEXT(ABS({dip}),"#,##0")&" cars off the road; new cars that arrive then go on road from w/c 16 Nov."',
-        f'="Recruitment: "&TEXT(Q{T4_I},"#,##0")&" driver acquisitions in {N_WEEKS} weeks ("&TEXT(R{T4_I},"#,##0")&" a week). Per week by month: {pl_w}; busiest week "&TEXT(S{T4_I},"#,##0")&"."',
-        f'="Churn: "&TEXT(F{T5_I},"#,##0")&" drivers to replace, so "&TEXT(G{T5_I},"0%")&" of driver acquisition only replaces churn and "&TEXT(1-G{T5_I},"0%")&" add to the road."',
-        f'="Most growth: "&INDEX({cty},MATCH(MAX({grow}),{grow},0))&" ("&TEXT(MAX({grow}),"+#,##0")&"). Least: "&INDEX({cty},MATCH(MIN({grow}),{grow},0))&" ("&TEXT(MIN({grow}),"+#,##0;-#,##0")&"). '
-        f'Most recruitment: "&INDEX({cty},MATCH(MAX({plc}),{plc},0))&" ("&TEXT(MAX({plc}),"#,##0")&" driver acquisitions, "&TEXT(MAX({plc})/{N_WEEKS},"#,##0")&" a week)."',
-        f'=IF(COUNTIF({t2},"<-0.5")=0,"Every city meets every Lakshya month-end.","Month-ends below Lakshya: "&COUNTIF({t2},"<-0.5")&" of 28 city-months (red in section 4), the largest "&TEXT(MIN({t2}),"#,##0")&" cars - growth held to last year\'s pace or the Diwali dip. "'
-        f'&IF(COUNTIF({t2dec},"<-0.5")=0,"Every city still reaches Lakshya on 27 Dec.",COUNTIF({t2dec},"<-0.5")&" cities end short on 27 Dec."))',
+        f'="India: "&TEXT({c1("B")},"#,##0")&" cars on road at the start, "&TEXT({c1("C")},"#,##0")&" on 27 Dec ("&TEXT({c1("C")}-{c1("B")},"+#,##0")&", "&TEXT({c1("C")}/{c1("B")}-1,"+0%")&"). '
+        f'Lakshya: "&TEXT({c1("D")},"#,##0")&IF(ABS({c1("C")}-{c1("D")})<0.5," - the plan lands on it."," - gap "&TEXT({c1("C")}-{c1("D")},"#,##0")&".")',
+        f'="Where the growth comes from: "&TEXT({newc},"#,##0")&" new cars put on road ("&TEXT({newc}/({c1("C")}-{c1("B")}),"0%")&") and "&TEXT({c1("C")}-{c1("B")}-{newc},"#,##0")'
+        f'&" organic growth from recruitment net of churn ("&TEXT(1-{newc}/({c1("C")}-{c1("B")}),"0%")&")."',
+        f'="Own Now + L+DTO book growth per week: {per_week("G", SIGNED)}. The two Diwali weeks (w/c 2 and 9 Nov) take "&TEXT(ABS({dip}),"#,##0")&" cars off the road; new cars that arrive then go on road from w/c 16 Nov."',
+        f'="Driver acquisition: "&TEXT({pbt("N")},"#,##0")&" in {N_WEEKS} weeks ("&TEXT({pbt("N")}/{N_WEEKS},"#,##0")&" a week). Per week by month: {per_week("N", "#,##0")}."',
+        f'="Churn: "&TEXT({pbt("I")},"#,##0")&" drivers leave ("&TEXT({pbt("K")},"0%")&" of the book a month), so "&TEXT({pbt("I")}/{pbt("N")},"0%")&" of driver acquisition only replaces churn and "&TEXT(1-{pbt("I")}/{pbt("N")},"0%")&" adds to the road."',
+        ("ARRAY", f'="Most growth: "&INDEX({c1r("A")},MATCH(MAX({growth}),{growth},0))&" ("&TEXT(MAX({growth}),"+#,##0")&"). Least: "&INDEX({c1r("A")},MATCH(MIN({growth}),{growth},0))&" ("&TEXT(MIN({growth}),"{SIGNED}")&"). '
+                  f'Most recruitment: "&INDEX({c1r("A")},MATCH(MAX({c1r("S")}),{c1r("S")},0))&" ("&TEXT(MAX({c1r("S")}),"#,##0")&" driver acquisitions, "&TEXT(MAX({c1r("S")})/{N_WEEKS},"#,##0")&" a week)."'),
+        f'="Own Now + L+DTO book vs Lakshya at each month-end: {me_gap}"&IF(({me_short})=0," - on Lakshya every month."," - section 2 shows why.")',
         f'=IF(({above})="","No city ends above its max utilisation.","Above max utilisation on 27 Dec: "&LEFT({above},LEN({above})-2)&" - these need more fleet or fewer cars sold.")',
-        f'="Lakshya vs our plan: "&IF(ABS(H{I})<0.5,"both land on "&TEXT(G{I},"#,##0"),"the plan lands on "&TEXT(F{I},"#,##0")&" vs Lakshya\'s "&TEXT(G{I},"#,##0"))&" on 27 Dec"&IF(COUNTIF({t2},"<-0.5")=0," and match at every month-end. ","; on the way the plan is "&TEXT(M{T2_I + 1},"+#,##0;-#,##0;0")&" at end-Sep, "&TEXT(N{T2_I + 1},"+#,##0;-#,##0;0")&" end-Oct, "&TEXT(O{T2_I + 1},"+#,##0;-#,##0;0")&" end-Nov (starts from the 20 Sep actual, growth held to last year\'s pace, Diwali dip). ")&"It needs "&TEXT(G{T7_I},"#,##0")&" driver acquisitions vs Lakshya\'s "&TEXT(F{T7_I},"#,##0")&" ("&TEXT(H{T7_I},"+#,##0;-#,##0")&"); fleet on 27 Dec "&TEXT(O{T7_I},"+#,##0;-#,##0")&" vs Lakshya."',
+        f'="Lakshya vs our plan: "&IF(ABS({c1("C")}-{c1("D")})<0.5,"both land on "&TEXT({c1("D")},"#,##0"),"the plan lands on "&TEXT({c1("C")},"#,##0")&" vs Lakshya\'s "&TEXT({c1("D")},"#,##0"))&" on 27 Dec. '
+        f'It needs "&TEXT({pbt("N")},"#,##0")&" driver acquisitions vs Lakshya\'s "&TEXT({pbt("M")},"#,##0")&" ("&TEXT({pbt("O")},"{SIGNED}")&"); fleet on 27 Dec "&TEXT({c1("I")}-{c1("J")},"{SIGNED}")&" vs Lakshya."',
         f'=IF({G_CAP}="No","Stretch vs last year: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks need more organic growth than the city\'s best 4-week pace of 2024/25 (red in city tab column BP) - the price of matching Lakshya at every month-end. Biggest single city-week: "&TEXT({top_org},"0.0%")&" organic growth.",'
         f'"Realism: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks are held to last year\'s pace, so no week plans more organic growth than 2024/25 showed (Diwali_Dip Analysis tab).")',
     ]
     for k, f in enumerate(ins):
         r = R_IN_T + 1 + k
-        c = put(ws, r, 1, f)
+        if isinstance(f, tuple):  # needs array evaluation (MAX over a difference of two ranges)
+            c = put(ws, r, 1, None)
+            c.value = ArrayFormula(f"A{r}", f[1])
+        else:
+            c = put(ws, r, 1, f)
         c.border = Border()
         c.alignment = Alignment(wrap_text=True, vertical="top")
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=22)
