@@ -331,6 +331,12 @@ LY_BLOCK = ("AY", "AZ", "BA", "BB", "BC", "BD", "BE", "BF")
 PACE_BLOCK = ("BH", "BI", "BJ", "BK", "BL", "BM", "BN", "BO", "BP", "BQ", "BR", "BS", "BT")
 MS_BLOCK = ("BU", "BV", "BW", "BX", "BY", "BZ", "CA", "CB", "CC")
 TEAL = "FF1F6F5F"
+CAPPED, ABOVE = "Capped at LY pace", "Above LY pace (cap off)"  # BP labels with the pace switch on Yes / No
+
+
+def stretch_count(bp_range):
+    """Weeks whose organic need is above last year's pace: capped (switch Yes) or planned anyway (switch No)."""
+    return f'(COUNTIF({bp_range},"{CAPPED}")+COUNTIF({bp_range},"{ABOVE}"))'
 N_ACTUAL = 4                   # actual weeks shown above the plan (rows 2-5)
 FIRST = 2 + N_ACTUAL           # first plan week row
 OPEN_ROW = FIRST - 1           # last actual week = opening position
@@ -563,7 +569,7 @@ def build_city(wb, idx, city):
         cput(ws, r, letter, f"=SUM({letter}{FIRST}:{letter}{LAST})", NUM, bold=True, bg=LIGHT)
     for letter in ["BI", "BJ", "BK", "BL", "BM"]:
         cput(ws, r, letter, f"=SUM({letter}{FIRST}:{letter}{LAST})", NUM, bold=True, bg=LIGHT)
-    cput(ws, r, "BP", f'=COUNTIF(BP{FIRST}:BP{LAST},"Capped at LY pace")&" weeks capped at LY pace"', bold=True, bg=LIGHT)
+    cput(ws, r, "BP", "=" + stretch_count(f"BP{FIRST}:BP{LAST}") + '&" weeks above LY pace"', bold=True, bg=LIGHT)
     cput(ws, r, "Q", "Closing stock on 27 Dec is the last week row", font=F_NOTE)
 
     # ---- conditional formats
@@ -578,7 +584,7 @@ def build_city(wb, idx, city):
     ws.conditional_formatting.add(f"AV2:AV{LAST}", FormulaRule(formula=[f"ROUND(AV2,6)<>0"], font=red,
                                                                fill=fill("FFFFC7CE")))
     ws.conditional_formatting.add(f"AT{FIRST}:AT{LAST}", FormulaRule(formula=[f"AT{FIRST}<0"], font=red))
-    ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'BP{FIRST}="Capped at LY pace"'], font=red,
+    ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'OR(BP{FIRST}="{CAPPED}",BP{FIRST}="{ABOVE}")'], font=red,
                                                                      fill=fill("FFFFC7CE")))
     ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'LEFT(BP{FIRST},6)="Diwali"'],
                                                                      font=Font(name="Calibri", size=10, bold=True, color="FF9C5700"),
@@ -687,7 +693,7 @@ def build_inputs(wb):
         ("India CNG on-road goal, Dec", 15000, NUM, True, "Reference. Lakshya's city targets (A2) add up to 15,082."),
         ("Largest recruitment drop in one week", -0.75, "0%", True,
          "Floor on the festival impact (B1), so no festival week plans recruitment below 25% of normal."),
-        ("Hold weekly growth to last year's pace?", "Yes", None, True,
+        ("Hold weekly growth to last year's pace?", "No", None, True,
          "Yes = no week grows faster than the city did last year (Diwali_Dip Analysis tab). No = every week takes whatever Lakshya's month-end needs."),
     ]
     for k, (label, val, fmt, is_input, what) in enumerate(rows):
@@ -881,7 +887,7 @@ def build_inputs(wb):
                 "Lakshya start fleet (31 Aug)", "Start fleet difference (plan start - Lakshya start)",
                 "Util 27 Dec", "Max utilisation", "Headroom", "EIP net add", "Own Now placements",
                 "L+DTO placements", "Total placements", "Peak week placements", "Check (0 = OK)",
-                "Weeks held to LY pace", "Top weekly growth %"]
+                "Weeks needing more than LY pace", "Top weekly growth %"]
     for j, t in enumerate(sum_cols, start=1):
         hdr(ws, R_SUM_H, j, t, GREY_HDR)
     ws.row_dimensions[R_SUM_H].height = 54
@@ -899,7 +905,7 @@ def build_inputs(wb):
             (f"={s}!AM{R_TOT}", NUM), (f"={s}!AT{R_TOT}", NUM), (f"={s}!AU{R_TOT}", NUM),
             (f"=MAX({s}!AU{FIRST}:AU{LAST})", NUM),
             (f"=ROUND(SUMPRODUCT(ABS({s}!AV2:AV{LAST})),6)", "0"),
-            (f'=COUNTIF({s}!BP{FIRST}:BP{LAST},"Capped at LY pace")', "0"),
+            ("=" + stretch_count(f"{s}!BP{FIRST}:BP{LAST}"), "0"),
             (f"=MAX({s}!BN{FIRST}:BN{LAST})", "0.0%"),
         ]
         for j, (v, fmt) in enumerate(vals, start=1):
@@ -955,8 +961,8 @@ def build_dip(wb):
     ws.sheet_properties.tabColor = TEAL
     ws["A1"] = "DIWALI DIP AND LAST YEAR'S PACE  -  what 2024 and 2025 showed"
     ws["A1"].font = F_TITLE
-    ws["A2"] = ("The city tabs read the cream cells here: weekly growth is held to section 1, and the two Diwali weeks "
-                "fall by section 2. Grey = last year's history. Type over a cream cell to change what the plan assumes.")
+    ws["A2"] = ("The city tabs read the cream cells here: the two Diwali weeks fall by section 2; section 1 caps weekly growth when the "
+                "Inputs A1 switch is Yes, and flags the weeks above it when No. Grey = last year's history. Type over a cream cell to change it.")
     ws["A2"].font = F_WHAT
 
     # ---- 1. proven weekly pace
@@ -1107,7 +1113,7 @@ def build_compare(wb):
     ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=16)
     rows = [
         ("CNG cars on road, 27 Dec", 15082, all_cities(f"Y{LAST}"), NUM, 0.5,
-         "The weekly plan never grows a city faster than its best 4-week pace of 2024/25 (plus new cars). Where that pace cannot reach the Lakshya number, it lands short - see Read Me."),
+         "Each week works to Lakshya's month-end. Inputs A1 switch: No = match Lakshya every month-end; Yes = hold growth to the city's best 2024/25 pace, so it may land short - see Read Me."),
         ("EIP, 27 Dec", 3038, all_cities(f"R{LAST}"), NUM, 0.5, ""),
         ("Own Now, 27 Dec", 5103, all_cities(f"X{LAST}"), NUM, 0.5, ""),
         ("Leasing + DTO, 27 Dec", 6941, all_cities(f"W{LAST}"), NUM, 0.5, ""),
@@ -1406,9 +1412,8 @@ def build_compare(wb):
                       "'Plan start' Lakshya = where Lakshya's path was on 20 Sep (straight line to its 27 Sep book). Diff on start rows = actual - Lakshya; on month-ends = plan - Lakshya. "
                       "Actual columns fill in from raw_performance once a month-end has passed.").font = F_NOTE
     r += 1
-    ws.cell(r + 1, 1, "Differs in September: one week from the 20 Sep actual. Differs later: the city's proven pace or the Diwali dip (Diwali_Dip Analysis tab) "
-                      "stops it closing the gap that month - the city tab column BP shows 'Capped at LY pace' in those weeks. Every city matches in December. "
-                      "To see the plan fill every month-end regardless, set Inputs A1 'Hold weekly growth to last year's pace?' to No.").font = F_NOTE
+    ws.cell(r + 1, 1, "Inputs A1 'Hold weekly growth to last year's pace?' = No: every month-end matches Lakshya; weeks that need more than last year's pace show red in city tab column BP. "
+                      "Set it to Yes and growth is held to that pace: September (one week from the 20 Sep actual) and months hit by the pace or the Diwali dip can then fall short.").font = F_NOTE
 
     # ---- 6. weekly India
     r += 4
@@ -1486,13 +1491,14 @@ def build_readme(wb):
             ws.row_dimensions[row + 1 + k].height = 30
         return row + len(lines) + 2
 
-    r = para(5, "1.  THE RULE THAT KEEPS THE PLAN REALISTIC", [
+    r = para(5, "1.  HOW EACH WEEK IS PLANNED", [
         "New cars go on road the week after they arrive (2,300 cars, Oct-Nov, Inputs A4) - supply we did not have last year. Everything else is organic growth from recruitment net of churn.",
         "Organic growth: each week is asked for its share of the gap to Lakshya's next month-end (Own Now and L+DTO books on 27 Sep, 25 Oct, 29 Nov, 27 Dec - Inputs A3), after the new cars due in that month, less in festival weeks. "
-        "It is never allowed above the city's proven pace - its best 4-week average weekly growth in the same season of 2024 or 2025 (Diwali_Dip Analysis tab, section 1). If a week needs more, it is capped and the rest rolls into the next month; "
-        "if the gap cannot close by 27 Dec, the city lands short. Nothing forces a jump in the last weeks. Month-end by city vs Lakshya: Lakshya vs Plan tab, section 5b.",
-        "So the plan never assumes organic growth that last year did not show. The two Diwali weeks follow the dip seen in 2024 and 2025 instead of growing (section 4). "
-        "City tab column BP marks each week 'Yes', 'Capped at LY pace' or 'Diwali dip', and the Summary View shows week-on-week growth next to the same week last year.",
+        "The two Diwali weeks follow the dip seen in 2024 and 2025 instead of growing (section 4).",
+        "Inputs A1 'Hold weekly growth to last year's pace?': No = every week takes what Lakshya's month-end needs, so the plan matches Lakshya at every month-end; weeks that need more than the city's best 4-week pace of 2024/25 "
+        "(Diwali_Dip Analysis tab, section 1) are flagged red in city tab column BP. Yes = growth is capped at that pace and the rest rolls into the next month, so month-ends can fall short.",
+        f'=IF({G_CAP}="No","CURRENT SETTING: MATCH LAKSHYA - "&({"+".join(stretch_count(f"{q(c)}!BP{FIRST}:BP{LAST}") for c in CITIES)})&" of {len(CITIES) * N_WEEKS} city-weeks need more organic growth than last year showed. Those are the weeks to watch.",'
+        f'"CURRENT SETTING: LAST YEAR\'S PACE - no week plans more organic growth than 2024/25 showed; "&({"+".join(stretch_count(f"{q(c)}!BP{FIRST}:BP{LAST}") for c in CITIES)})&" city-weeks are capped.")',
     ])
 
     # ---- 2. the bridge
@@ -1500,7 +1506,7 @@ def build_readme(wb):
     r += 1
     heads = ["City", "On road 20 Sep", "Pre-Diwali organic (w/c 21 Sep-26 Oct)", "Diwali organic (w/c 2-9 Nov)",
              "Post-Diwali organic (w/c 16 Nov-21 Dec)", "New cars put on road", "On road 27 Dec (plan)",
-             "Lakshya target", "Short of Lakshya", "Weeks capped at LY pace"]
+             "Lakshya target", "Short of Lakshya", "Weeks needing more than LY pace"]
     for j, t in enumerate(heads, start=1):
         hdr(ws, r, j, t)
     ws.row_dimensions[r].height = 45
@@ -1517,7 +1523,7 @@ def build_readme(wb):
         put(ws, r, 7, f"={s}!Y{LAST}", NUM, bold=True)
         put(ws, r, 8, f"={ci('t_onroad', i)}", NUM)
         put(ws, r, 9, f"=H{r}-G{r}", NUM)
-        put(ws, r, 10, f'=COUNTIF({rng(s, "BP")},"Capped at LY pace")', "0")
+        put(ws, r, 10, "=" + stretch_count(rng(s, "BP")), "0")
     r += 1
     put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
     for j in range(2, 11):
@@ -1526,8 +1532,8 @@ def build_readme(wb):
     red = Font(name="Calibri", size=10, bold=True, color="FFC00000")
     ws.conditional_formatting.add(f"I{first}:I{r}", FormulaRule(formula=[f"I{first}>0.5"], font=red, fill=fill("FFFFC7CE")))
     r += 1
-    ws.cell(r, 1, "Organic = growth from recruitment net of churn, within the proven pace. On road 27 Dec = on road 20 Sep + the three organic columns + new cars. "
-                  "Short of Lakshya > 0 means last year's pace cannot carry the city all the way: that gap needs something last year did not have (more cars earlier, more EIP, lower churn). "
+    ws.cell(r, 1, "Organic = growth from recruitment net of churn. On road 27 Dec = on road 20 Sep + the three organic columns + new cars. "
+                  "Short of Lakshya > 0 (only with the Inputs A1 switch on Yes) means last year's pace cannot carry the city all the way: that gap needs something last year did not have (more cars earlier, more EIP, lower churn). "
                   "New cars: 2,300 over nine weeks is 250-290 a week going on road - confirm deliveries and onboarding; if a delivery slips, change Inputs A4 and the plan re-spreads.").font = F_NOTE
     r += 3
 
@@ -1557,7 +1563,7 @@ def build_readme(wb):
         put(ws, r, 9, f"={allc('BJ')}", NUM)
     ws.conditional_formatting.add(f"E{wfirst}:E{r}", FormulaRule(formula=[f"E{wfirst}>F{wfirst}+0.0005"], font=red, fill=fill("FFFFC7CE")))
     r += 1
-    ws.cell(r, 1, "Organic growth above the India proven pace (red) can happen when cities peak in the same week; each city on its own stays within its own pace. "
+    ws.cell(r, 1, "Red = organic growth above India's proven pace for the season. With Inputs A1 on No these are weeks Lakshya's month-ends need; with Yes each city stays within its own pace. "
                   "Last year's column is India cars on road, same week of 2025 (Diwali 2025 fell on 20 Oct, three weeks earlier than 2026).").font = F_NOTE
     r += 3
 
@@ -2037,7 +2043,8 @@ def build_dashboard(wb):
     I = T1_I
     wk = [f'COUNTIF({_bu(cities[0])},"{mon}")' for mon in MONTHS]
     dip = "+".join(f"SUM({s}!$BS${FIRST}:$BS${LAST})" for s in cities)
-    capped = "+".join(f'COUNTIF({s}!$BP${FIRST}:$BP${LAST},"Capped at LY pace")' for s in cities)
+    capped = "+".join(stretch_count(f"{s}!$BP${FIRST}:$BP${LAST}") for s in cities)
+    top_org = "MAX(" + ",".join(f"{s}!$BO${FIRST}:$BO${LAST}" for s in cities) + ")"
     grow = f"$I${T1_0}:$I${T1_I - 1}"
     cty = f"$A${T1_0}:$A${T1_I - 1}"
     plc = f"$Q${T4_0}:$Q${T4_I - 1}"
@@ -2059,8 +2066,9 @@ def build_dashboard(wb):
         f'=IF(COUNTIF({t2},"<-0.5")=0,"Every city meets every Lakshya month-end.","Month-ends below Lakshya: "&COUNTIF({t2},"<-0.5")&" of 28 city-months (red in section 4), the largest "&TEXT(MIN({t2}),"#,##0")&" cars - growth held to last year\'s pace or the Diwali dip. "'
         f'&IF(COUNTIF({t2dec},"<-0.5")=0,"Every city still reaches Lakshya on 27 Dec.",COUNTIF({t2dec},"<-0.5")&" cities end short on 27 Dec."))',
         f'=IF(({above})="","No city ends above its max utilisation.","Above max utilisation on 27 Dec: "&LEFT({above},LEN({above})-2)&" - these need more fleet or fewer cars sold.")',
-        f'="Lakshya vs our plan: "&IF(ABS(H{I})<0.5,"both land on "&TEXT(G{I},"#,##0"),"the plan lands on "&TEXT(F{I},"#,##0")&" vs Lakshya\'s "&TEXT(G{I},"#,##0"))&" on 27 Dec. On the way the plan is "&TEXT(M{T2_I + 1},"+#,##0;-#,##0;0")&" at end-Sep, "&TEXT(N{T2_I + 1},"+#,##0;-#,##0;0")&" end-Oct, "&TEXT(O{T2_I + 1},"+#,##0;-#,##0;0")&" end-Nov (starts from the 20 Sep actual, growth held to last year\'s pace, Diwali dip). It needs "&TEXT(G{T7_I},"#,##0")&" placements vs Lakshya\'s "&TEXT(F{T7_I},"#,##0")&" ("&TEXT(H{T7_I},"+#,##0;-#,##0")&"); fleet on 27 Dec "&TEXT(O{T7_I},"+#,##0;-#,##0")&" vs Lakshya."',
-        f'="Realism: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks are held to last year\'s pace, so no week plans more organic growth than 2024/25 showed (Diwali_Dip Analysis tab)."',
+        f'="Lakshya vs our plan: "&IF(ABS(H{I})<0.5,"both land on "&TEXT(G{I},"#,##0"),"the plan lands on "&TEXT(F{I},"#,##0")&" vs Lakshya\'s "&TEXT(G{I},"#,##0"))&" on 27 Dec"&IF(COUNTIF({t2},"<-0.5")=0," and match at every month-end. ","; on the way the plan is "&TEXT(M{T2_I + 1},"+#,##0;-#,##0;0")&" at end-Sep, "&TEXT(N{T2_I + 1},"+#,##0;-#,##0;0")&" end-Oct, "&TEXT(O{T2_I + 1},"+#,##0;-#,##0;0")&" end-Nov (starts from the 20 Sep actual, growth held to last year\'s pace, Diwali dip). ")&"It needs "&TEXT(G{T7_I},"#,##0")&" placements vs Lakshya\'s "&TEXT(F{T7_I},"#,##0")&" ("&TEXT(H{T7_I},"+#,##0;-#,##0")&"); fleet on 27 Dec "&TEXT(O{T7_I},"+#,##0;-#,##0")&" vs Lakshya."',
+        f'=IF({G_CAP}="No","Stretch vs last year: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks need more organic growth than the city\'s best 4-week pace of 2024/25 (red in city tab column BP) - the price of matching Lakshya at every month-end. Biggest single city-week: "&TEXT({top_org},"0.0%")&" organic growth.",'
+        f'"Realism: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks are held to last year\'s pace, so no week plans more organic growth than 2024/25 showed (Diwali_Dip Analysis tab).")',
     ]
     for k, f in enumerate(ins):
         r = R_IN_T + 1 + k
