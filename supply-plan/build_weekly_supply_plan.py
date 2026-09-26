@@ -37,7 +37,7 @@ TARGET = {
 }
 # L+DTO net churn / month (Lakshya Inputs sec 6); Own Now churn and purchase rollover
 # per calendar month (derived from Lakshya Weekly Own Now: exits / book-weeks x 52/12);
-# Own Now new-car share of placements (Lakshya Inputs sec 5); utilisation ceiling (sec 7)
+# Own Now new-car share of driver acquisition (Lakshya Inputs sec 5); utilisation ceiling (sec 7)
 RATES = {
     "Mumbai":    (0.58, 0.071, 0.031, 382 / 747, 0.75),
     "Delhi NCR": (0.49, 0.094, 0.0, 45 / 444, 0.62),
@@ -301,11 +301,11 @@ COLS = [  # (letter, header, width)
     ("AF", "Season", 9), ("AG", "EIP net add", 8),
     ("AH", "Own Now book - WB", 8), ("AI", "Own Now need this week (to Lakshya month-end)", 9), ("AJ", "Own Now net add", 8),
     ("AK", "Own Now churn (LY-shaped)", 8), ("AL", "Own Now purchase rollover", 9),
-    ("AM", "Own Now placements", 9), ("AN", "of which new cars", 8),
+    ("AM", "Own Now driver acquisition", 9), ("AN", "of which new cars", 8),
     ("AO", "of which existing cars", 8),
     ("AP", "L+DTO book - WB", 8), ("AQ", "L+DTO need this week (to Lakshya month-end)", 9), ("AR", "L+DTO net add", 8),
-    ("AS", "L+DTO churn (LY-shaped)", 8), ("AT", "L+DTO placements", 9),
-    ("AU", "Total placements (Own Now + L+DTO)", 10), ("AV", "Check: on road = EIP + L+DTO + Own Now", 9),
+    ("AS", "L+DTO churn (LY-shaped)", 8), ("AT", "L+DTO driver acquisition", 9),
+    ("AU", "Total driver acquisition (Own Now + L+DTO)", 10), ("AV", "Check: on road = EIP + L+DTO + Own Now", 9),
     ("AW", "Util headroom", 8), ("AX", "", 2),
     ("AY", "LY week (same week last year)", 9), ("AZ", "LY active partners - WB", 9),
     ("BA", "LY recruitment (new joins + resurrections)", 10), ("BB", "LY net attrition (abs)", 9),
@@ -753,7 +753,7 @@ def build_inputs(wb):
     for j in range(11, 20):
         put(ws, r, j, None, bg=LIGHT)
     note(ws, r + 1, "Leasing + DTO = on road - EIP - Own Now. Perf marketing = 100% - the other channels. "
-                "New-car share only splits placements into new and existing cars on the city tabs.")
+                "New-car share only splits driver acquisition into new and existing cars on the city tabs.")
 
     # ---- A3. Lakshya month-end targets
     title(ws, R_MS_H - 3, "A3", "LAKSHYA MONTH-END TARGETS",
@@ -885,8 +885,8 @@ def build_inputs(wb):
     sum_cols = ["City", "On road at start", "On road 27 Dec", "Lakshya target", "Gap to target",
                 "EIP 27 Dec", "Own Now 27 Dec", "L+DTO 27 Dec", "Fleet 27 Dec", "Lakshya fleet Dec",
                 "Lakshya start fleet (31 Aug)", "Start fleet difference (plan start - Lakshya start)",
-                "Util 27 Dec", "Max utilisation", "Headroom", "EIP net add", "Own Now placements",
-                "L+DTO placements", "Total placements", "Peak week placements", "Check (0 = OK)",
+                "Util 27 Dec", "Max utilisation", "Headroom", "EIP net add", "Own Now driver acquisition",
+                "L+DTO driver acquisition", "Total driver acquisition", "Peak week driver acquisition", "Check (0 = OK)",
                 "Weeks needing more than LY pace", "Top weekly growth %"]
     for j, t in enumerate(sum_cols, start=1):
         hdr(ws, R_SUM_H, j, t, GREY_HDR)
@@ -1047,7 +1047,7 @@ LK_LDTO_OPEN = {"Mumbai": 1164, "Delhi NCR": 1473, "Bangalore": 1040, "Hyderabad
                 "Kolkata": 300, "Pune": 694}
 LK_UTIL_DEC = {"Mumbai": 0.75, "Delhi NCR": 0.6199, "Bangalore": 0.7694, "Hyderabad": 0.7687,
                "Chennai": 0.7759, "Kolkata": 0.5727, "Pune": 0.6869}
-# Placements over the same 14 weeks (w/e 27 Sep - w/e 27 Dec): Weekly L+DTO F:S, Weekly Own Now E:R
+# Driver Acquisition over the same 14 weeks (w/e 27 Sep - w/e 27 Dec): Weekly L+DTO F:S, Weekly Own Now E:R
 LK_LDTO_PL = {"Mumbai": 2258, "Delhi NCR": 2400, "Bangalore": 2054, "Hyderabad": 2284, "Chennai": 1780,
               "Kolkata": 574, "Pune": 1390}
 LK_OWN_PL = {"Mumbai": 693, "Delhi NCR": 397, "Bangalore": 653, "Hyderabad": 541, "Chennai": 461,
@@ -1216,9 +1216,9 @@ def build_compare(wb):
     ws.cell(r + 1, 1, "New cars and sales match Lakshya city by city. Fleet differs only because of the opening fleet "
                       "(see section 1); a city above its ceiling needs more fleet, fewer sales, or a lower target.").font = F_NOTE
 
-    # ---- 4. placements over the same 14 weeks
+    # ---- 4. driver acquisition over the same 14 weeks
     r += 4
-    section(r, "4.  PLACEMENTS OVER THE SAME 14 WEEKS (w/e 27 Sep - w/e 27 Dec)  -  where the plans differ, and why")
+    section(r, "4.  DRIVER ACQUISITION OVER THE SAME 14 WEEKS (w/e 27 Sep - w/e 27 Dec)  -  where the plans differ, and why")
     r += 1
     heads = [("City", NAVY), ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY),
              ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
@@ -1248,7 +1248,7 @@ def build_compare(wb):
     notes = [
         "Why the numbers are close: the weekly plan starts from the actual 20 Sep book (L+DTO 6,271), about 400 below where "
         "Lakshya's path had it, so it needs a bigger net add (+670 vs Lakshya's +261 over these weeks). But a smaller book "
-        "loses fewer drivers to churn, which offsets most of it - total placements end up within about 2% of Lakshya's.",
+        "loses fewer drivers to churn, which offsets most of it - total driver acquisition ends up within about 2% of Lakshya's.",
         "Both plans let the book dip in the festival weeks and recover later. Lakshya sets that dip by hand; the weekly plan "
         "takes it from last year's weekly attrition and the festival impact on recruitment (Inputs A6 and B1; city tabs AY:BJ).",
     ]
@@ -1417,12 +1417,12 @@ def build_compare(wb):
 
     # ---- 6. weekly India
     r += 4
-    section(r, "6.  WEEK BY WEEK - INDIA  (placements = drivers to place in Own Now and Leasing + DTO that week)")
+    section(r, "6.  WEEK BY WEEK - INDIA  (driver acquisition = drivers to acquire for Own Now and Leasing + DTO that week)")
     r += 1
-    heads = [("Week (Mon)", NAVY), ("Week end", NAVY), ("L+DTO placements - Lakshya", GREY_HDR),
-             ("L+DTO placements - plan", NAVY), ("Difference", NAVY), ("Own Now placements - Lakshya", GREY_HDR),
-             ("Own Now placements - plan", NAVY), ("Difference", NAVY), ("EIP net add - plan", NAVY),
-             ("Total placements - plan", NAVY), ("On road, week end - plan", NAVY), ("Fleet - plan", NAVY),
+    heads = [("Week (Mon)", NAVY), ("Week end", NAVY), ("L+DTO driver acquisition - Lakshya", GREY_HDR),
+             ("L+DTO driver acquisition - plan", NAVY), ("Difference", NAVY), ("Own Now driver acquisition - Lakshya", GREY_HDR),
+             ("Own Now driver acquisition - plan", NAVY), ("Difference", NAVY), ("EIP net add - plan", NAVY),
+             ("Total driver acquisition - plan", NAVY), ("On road, week end - plan", NAVY), ("Fleet - plan", NAVY),
              ("Util - plan", NAVY)]
     for j, (t, col) in enumerate(heads, start=1):
         hdr(ws, r, j, t, col)
@@ -1603,23 +1603,23 @@ def build_readme(wb):
 
     r = para(r, "5.  WHERE THE PLAN DROPS, WHERE IT GAINS, AND THE WEEKS IN BETWEEN", [
         "PRE-DIWALI (w/c 21 Sep - 26 Oct): last year cars on road fell in these weeks (India -0.1% at best, weeks of -2.6% to -5.4%); in 2024 the best was +1.5% a week. The plan allows each city its better of the two years "
-        "and adds the October new cars the week after they land. Last year's attrition peaks here (LY attrition index up to 1.2-1.4), so more placements are needed just to hold the book.",
+        "and adds the October new cars the week after they land. Last year's attrition peaks here (LY attrition index up to 1.2-1.4), so more driver acquisition is needed just to hold the book.",
         "DIWALI (w/c 2 and 9 Nov): cars on road fell in these weeks in both years - India -9.8% in 2024 and -8.5% in 2025 over the two weeks (drivers go home; recruitment stops). "
         "The plan now falls by each city's two-year average (section 4 above; Diwali_Dip Analysis tab), all of it from the Leasing + DTO book, and holds new cars back until the recovery week. This is where the plan dips.",
         "POST-DIWALI (w/c 16 Nov - 21 Dec): the season where we have shown real recovery - India +2.7% to +2.9% a week at best, Mumbai and Pune above 5%. Most of the remaining gap is closed here, "
         "but no city goes above its own best 4-week pace.",
         "WEEKS WITH NO FESTIVAL (the middle of each season): no seasonality is applied - the factor is 1, so the week is simply asked for an equal share of the gap still open, capped by the season's pace. "
-        "Only last year's attrition shape (city tab column BD) changes how many placements such a week needs.",
+        "Only last year's attrition shape (city tab column BD) changes how much driver acquisition such a week needs.",
     ])
     r = para(r, "6.  HOW TO READ A CITY TAB", [
         "Rows 2-5 are actual weeks from raw_performance. Plan weeks start at row 6. Columns A-AC follow the Weekly Supply Plan layout; the Lakshya build-up is AF-AW.",
         "Brown block BH-BQ is the realism check: BH proven pace, BI organic capacity, BJ new cars going on road, BK most we can add, BL organic add needed, BM what we plan (new cars + the smaller of BL and BI), "
         "BN/BO planned and organic growth %, BP 'Yes' / 'Capped at LY pace' / 'Diwali dip', BQ gap to the Lakshya number still open, BR:BS the Diwali dip, BT new cars still to go on road.",
-        "BM is split into EIP / Own Now / Leasing+DTO by each layer's share of the gap it still has to its Lakshya number (the Diwali dip is taken from Leasing+DTO, which then wins it back). Placements = that layer's net add + churn. Recruitment by channel = placements x the city's channel mix.",
+        "BM is split into EIP / Own Now / Leasing+DTO by each layer's share of the gap it still has to its Lakshya number (the Diwali dip is taken from Leasing+DTO, which then wins it back). Driver acquisition = that layer's net add + churn. Recruitment by channel = driver acquisition x the city's channel mix.",
         "Last year (AY:BF): the same week last year (week start - 364 days) from raw_performance. LY net attrition % = (attrition + temp attrition - rejoins - temp rejoins) / (active partners at week start + new joins + resurrections), as in the Weekly Supply Plan; "
         "LY attrition index = that week's % / the 14-week average. Churn (AK, AS) = last week's book x Lakshya monthly rate / 4.33 x that index. Festival factor (BF) = 1 + festival impact (Inputs B1).",
         "Fleet (E) = previous week + Total buy (G) - Total sold (H); each month's cars are split evenly over its weeks (Inputs A4, A5). Util (AB) = cars on road / fleet, red above the Lakshya ceiling (AC). "
-        "Net Attrition (W) = net adds - placements. Check column AV must be 0. Month by month, by city: Monthly Dashboard tab.",
+        "Net Attrition (W) = net adds - driver acquisition. Check column AV must be 0. Month by month, by city: Monthly Dashboard tab.",
     ])
     r = para(r, "7.  UPDATING EACH WEEK", [
         "Paste a fresh SSOT query result (link on the Inputs tab, C2) into raw_performance. The Summary View 'actual' rows fill in for finished weeks. "
@@ -1678,7 +1678,7 @@ def build_dashboard(wb):
     R_LV_S = R_LV_H + 1            # start row
     R_LV0 = R_LV_S + 1             # Sep..Dec
     R_LV_TOT = R_LV0 + 4
-    R_PB_T = R_LV_TOT + 3          # 2b. placements bridge (India)
+    R_PB_T = R_LV_TOT + 3          # 2b. driver acquisition bridge (India)
     R_PB_H = R_PB_T + 2
     R_PB0 = R_PB_H + 1             # Sep..Dec
     R_PB_TOT = R_PB0 + 4
@@ -1716,9 +1716,9 @@ def build_dashboard(wb):
     mv = [  # (header, kind, source)
         ("Weeks", "weeks", None), ("New cars bought", "flow", ["AD"]), ("Cars sold", "flow", ["AE"]),
         ("New cars put on road", "flow", ["BJ"]), ("EIP net add", "flow", ["P"]),
-        ("Own Now placements", "flow", ["AM"]), ("Own Now churn + rollover", "flow", ["AK", "AL"]),
-        ("Own Now net add", "flow", ["AJ"]), ("L+DTO placements", "flow", ["AT"]), ("L+DTO churn", "flow", ["AS"]),
-        ("L+DTO net add", "flow", ["AR"]), ("Total placements", "flow", ["AU"]), ("Net add on road", "netadd", None),
+        ("Own Now driver acquisition", "flow", ["AM"]), ("Own Now churn + rollover", "flow", ["AK", "AL"]),
+        ("Own Now net add", "flow", ["AJ"]), ("L+DTO driver acquisition", "flow", ["AT"]), ("L+DTO churn", "flow", ["AS"]),
+        ("L+DTO net add", "flow", ["AR"]), ("Total driver acquisition", "flow", ["AU"]), ("Net add on road", "netadd", None),
         ("Fleet (month end)", "stock", "E"), ("EIP (month end)", "stock", "R"), ("Own Now (month end)", "stock", "X"),
         ("L+DTO (month end)", "stock", "W"), ("On road (month end)", "stock", "Y"),
         ("Lakshya on road (month end)", "lakshya", None), ("Plan - Lakshya", "diff", None), ("Util (month end)", "util", None),
@@ -1772,7 +1772,7 @@ def build_dashboard(wb):
             v = f"=SUM({c_}{R_MV0}:{c_}{R_MV0 + 3})"
         put(ws, r, column_index_from_string(c_), v, PCT if kind == "util" else NUM, bold=True, bg=LIGHT)
     red_if(f"{DIF}{R_MV0}:{DIF}{R_MV_TOT}", f"{DIF}{R_MV0}<-0.5")
-    ws.cell(R_MV_TOT + 1, 1, "Net add on road = EIP + Own Now + L+DTO net adds. Placements = net add + churn "
+    ws.cell(R_MV_TOT + 1, 1, "Net add on road = EIP + Own Now + L+DTO net adds. Driver acquisition = net add + churn "
                              "(Own Now and L+DTO). Red = below Lakshya's month-end.").font = F_NOTE
 
     # ---- 2. Lakshya plan vs our plan (picked)
@@ -1783,7 +1783,7 @@ def build_dashboard(wb):
         ("LEASING + DTO (month end)", lambda m, i: f"Inputs!${L(10 + m)}${R_MS0 + i}", [col["L+DTO (month end)"]], LK_LDTO_OPEN),
         ("EIP (month end)", lambda m, i: f"Inputs!${L(2 + m)}${R_MS0 + i}", [col["EIP (month end)"]], None),
         ("ON ROAD (month end)", lambda m, i: f"Inputs!${L(14 + m)}${R_MS0 + i}", [col["On road (month end)"]], None),
-        ("PLACEMENTS in the month (Own Now + L+DTO)", None, [col["Own Now placements"], col["L+DTO placements"]], None),
+        ("DRIVER ACQUISITION in the month (Own Now + L+DTO)", None, [col["Own Now driver acquisition"], col["L+DTO driver acquisition"]], None),
     ]
     put(ws, R_LV_T, 1, f'="2.  LAKSHYA PLAN vs OUR PLAN  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
     hdr(ws, R_LV_G, 1, "")
@@ -1815,7 +1815,7 @@ def build_dashboard(wb):
         mv_row = {"start": R_MV_S, "total": R_MV_TOT}.get(key, R_MV0 + key if isinstance(key, int) else None)
         for g, (gt, lk_src, plan_cols, lk_open) in enumerate(groups):
             cl, cp, cd = lv[g]
-            if lk_src is None:  # placements: Lakshya monthly exists for India only; city = 14-week total
+            if lk_src is None:  # driver acquisition: Lakshya monthly exists for India only; city = 14-week total
                 if key == "start":
                     lk, pl = None, None
                 elif key == "total":
@@ -1840,7 +1840,7 @@ def build_dashboard(wb):
             why = ('="Lakshya starts from Own Now ~6 Sep and L+DTO 31 Aug; the plan from the "&TEXT('
                    + G_OPEN_DATE + ',"d mmm")&" actual."')
         elif key == "total":
-            why = (f'=IF(ABS({onr_d})<0.5,"Same 27 Dec landing. Placements differ because the plan\'s churn follows last year\'s weekly shape.",'
+            why = (f'=IF(ABS({onr_d})<0.5,"Same 27 Dec landing. Driver acquisition differs because the plan\'s churn follows last year\'s weekly shape.",'
                    f'"Lands "&TEXT({onr_d},"#,##0")&" short: growth held to last year\'s pace.")')
         else:
             reason = {0: "the plan has one week from the 20 Sep actual to catch up",
@@ -1852,16 +1852,16 @@ def build_dashboard(wb):
     for _, _, cd in lv:
         red_if(f"{cd}{R_LV0}:{cd}{R_LV_TOT}", f"AND(ISNUMBER({cd}{R_LV0}),{cd}{R_LV0}<-0.5)")
     ws.cell(R_LV_TOT + 1, 1, "Lakshya = Lakshya v4 month-end books (Inputs A3; December = the targets). Lakshya has no monthly EIP, "
-                             "so EIP is a straight line to its December target. Lakshya placements by month exist for India only; "
-                             "for a city the total is Lakshya's 14-week figure. Why placements differ: 2b below.").font = F_NOTE
+                             "so EIP is a straight line to its December target. Lakshya driver acquisition by month exists for India only; "
+                             "for a city the total is Lakshya's 14-week figure. Why driver acquisition differs: 2b below.").font = F_NOTE
 
-    # ---- 2b. placements bridge, India: placements = net add of the Own Now + L+DTO book + churn
+    # ---- 2b. driver acquisition bridge, India: driver acquisition = net add of the Own Now + L+DTO book + churn
     # A month | B:C book at start | D:E book at month end | F:G net add | H:I churn | J:K churn % a month |
-    # L Diwali re-placement | M:N placements | O plan - Lakshya | P % | Q:V why
-    put(ws, R_PB_T, 1, "2b.  WHY PLACEMENTS DIFFER  -  INDIA  (placements = book at month end - book at start + churn)",
+    # L Diwali re-acquisition | M:N driver acquisition | O plan - Lakshya | P % | Q:V why
+    put(ws, R_PB_T, 1, "2b.  WHY DRIVER ACQUISITION DIFFERS  -  INDIA  (driver acquisition = book at month end - book at start + churn)",
         font=F_SECTION).border = Border()
     pb_groups = [("BOOK AT START (Own Now + L+DTO)", 2), ("BOOK AT MONTH END", 4), ("NET ADD", 6),
-                 ("CHURN (drivers who leave)", 8), ("CHURN % A MONTH (of the book)", 10), ("PLACEMENTS", 13)]
+                 ("CHURN (drivers who leave)", 8), ("CHURN % A MONTH (of the book)", 10), ("DRIVER ACQUISITION", 13)]
     hdr(ws, R_PB_T + 1, 1, "")
     hdr(ws, R_PB_H, 1, "Month")
     for gt, c0 in pb_groups:
@@ -1870,10 +1870,10 @@ def build_dashboard(wb):
         hdr(ws, R_PB_H, c0, "Lakshya")
         hdr(ws, R_PB_H, c0 + 1, "Plan")
     hdr(ws, R_PB_T + 1, 12, "DIWALI", GREY_HDR)
-    hdr(ws, R_PB_H, 12, "Plan: re-placed after the dip")
+    hdr(ws, R_PB_H, 12, "Plan: re-acquired after the dip")
     hdr(ws, R_PB_T + 1, 15, "PLAN - LAKSHYA", GREY_HDR)
     ws.merge_cells(start_row=R_PB_T + 1, start_column=15, end_row=R_PB_T + 1, end_column=16)
-    hdr(ws, R_PB_H, 15, "Placements")
+    hdr(ws, R_PB_H, 15, "Driver Acquisition")
     hdr(ws, R_PB_H, 16, "%")
     hdr(ws, R_PB_T + 1, 17, "", GREY_HDR)
     hdr(ws, R_PB_H, 17, "Why")
@@ -1919,7 +1919,7 @@ def build_dashboard(wb):
                f'&" (plan book "&TEXT(C{r},"#,##0")&" to "&TEXT(E{r},"#,##0")&", Lakshya "&TEXT(B{r},"#,##0")&" to "&TEXT(D{r},"#,##0")&")"'
                f'&" + churn "&TEXT(I{r}-H{r},"{SIGNED}")&" ("&TEXT(K{r},"0%")&" a month vs Lakshya "&TEXT(J{r},"0%")'
                f'&IF(I{r}<H{r},": last year\'s attrition is low this month)",": last year\'s attrition is high this month)")'
-               f'&IF(ABS(L{r})>=0.5," + Diwali re-placement "&TEXT(L{r},"+#,##0"),"")')
+               f'&IF(ABS(L{r})>=0.5," + Diwali re-acquisition "&TEXT(L{r},"+#,##0"),"")')
         c = put(ws, r, 17, why)
         c.alignment = Alignment(wrap_text=True, vertical="top")
         ws.merge_cells(start_row=r, start_column=17, end_row=r, end_column=22)
@@ -1941,15 +1941,15 @@ def build_dashboard(wb):
             v = f"=SUM({c_}{R_PB0}:{c_}{R_PB0 + 3})"
         put(ws, r, j, v, fmts.get(j, NUM), bold=True, bg=LIGHT)
     c = put(ws, r, 17, (f'=TEXT(O{r},"{SIGNED}")&" = September catch-up from the 20 Sep actual "&TEXT(G{r}-F{r},"{SIGNED}")'
-                        f'&" + churn shaped by last year "&TEXT(I{r}-H{r},"{SIGNED}")&" + Diwali re-placement "&TEXT(L{r},"{SIGNED}")'),
+                        f'&" + churn shaped by last year "&TEXT(I{r}-H{r},"{SIGNED}")&" + Diwali re-acquisition "&TEXT(L{r},"{SIGNED}")'),
             bold=True, bg=LIGHT)
     c.alignment = Alignment(wrap_text=True, vertical="top")
     ws.merge_cells(start_row=r, start_column=17, end_row=r, end_column=22)
     ws.row_dimensions[r].height = 30
     red_if(f"O{R_PB0}:O{R_PB_TOT}", f"O{R_PB0}<-0.5")
-    ws.cell(R_PB_TOT + 1, 1, "Churn % a month = churn / weeks x 52/12 / average book (Own Now + L+DTO). Lakshya churn = its placements - its net add "
+    ws.cell(R_PB_TOT + 1, 1, "Churn % a month = churn / weeks x 52/12 / average book (Own Now + L+DTO). Lakshya churn = its driver acquisition - its net add "
                              "(a flat rate every week); plan churn = the same monthly rates shaped by last year's weekly attrition (city tabs AK, AL, AS). "
-                             "Lakshya's Sep start = its path on the opening date. Diwali: the two dip weeks plan no placements; the cars lost are placed again after.").font = F_NOTE
+                             "Lakshya's Sep start = its path on the opening date. Diwali: the two dip weeks plan no driver acquisition; drivers for the cars lost are acquired again after.").font = F_NOTE
 
     # ---- headline tiles (picked)
     tot = R_MV_TOT
@@ -1958,8 +1958,8 @@ def build_dashboard(wb):
         ("Growth (cars)", f"={ONR}{tot}-{ONR}{R_MV_S}", "+#,##0;-#,##0"), ("Growth %", f"={ONR}{tot}/{ONR}{R_MV_S}-1", "+0%;-0%"),
         ("Lakshya 27 Dec", f"={LKC}{tot}", NUM), ("Plan - Lakshya", f"={DIF}{tot}", "+#,##0;-#,##0;0"),
         ("New cars put on road", f"={col['New cars put on road']}{tot}", NUM),
-        ("Placements (14 weeks)", f"={col['Total placements']}{tot}", NUM),
-        ("Placements a week", f"={col['Total placements']}{tot}/{col['Weeks']}{tot}", NUM),
+        ("Driver Acquisition (14 weeks)", f"={col['Total driver acquisition']}{tot}", NUM),
+        ("Driver Acquisition a week", f"={col['Total driver acquisition']}{tot}/{col['Weeks']}{tot}", NUM),
         ("Churn replaced", f"={col['Own Now churn + rollover']}{tot}+{col['L+DTO churn']}{tot}", NUM),
         ("Util 27 Dec", f"={col['Util (month end)']}{tot}", PCT),
     ]
@@ -2034,8 +2034,8 @@ def build_dashboard(wb):
         put(ws, r, 8, f"=F{r}-G{r}", "+#,##0;-#,##0;0", bold=india, bg=LIGHT if india else None)
     T3_I = h3 + 1 + len(CITIES)
 
-    # T4: placements per month (L..S)
-    h4 = table(b, 12, "Placements (recruitment) per month - Own Now + L+DTO",
+    # T4: driver acquisition per month (L..S)
+    h4 = table(b, 12, "Driver Acquisition (recruitment) per month - Own Now + L+DTO",
                ["City"] + MONTHS + ["Total", "Per week", "Peak week"])
     for i in range(len(CITIES) + 1):
         r = h4 + 1 + i
@@ -2056,7 +2056,7 @@ def build_dashboard(wb):
     # T5: churn per month (A..G)
     b = BANDS[2]
     h5 = table(b, 1, "Churn per month - drivers to replace (Own Now churn + rollover + L+DTO churn)",
-               ["City"] + MONTHS + ["Total", "% of placements"])
+               ["City"] + MONTHS + ["Total", "% of driver acquisition"])
     for i in range(len(CITIES) + 1):
         r = h5 + 1 + i
         india = i == len(CITIES)
@@ -2089,9 +2089,9 @@ def build_dashboard(wb):
         put(ws, r, 19, None if india else f"=R{r}-P{r}", "+0.0%;-0.0%", bold=True, bg=LIGHT if india else None)
     T6_0 = h6 + 1
     red_if(f"S{T6_0}:S{T6_0 + len(CITIES) - 1}", f"S{T6_0}<0")
-    # T7: placements over the 14 weeks, Lakshya vs plan (A..I)
+    # T7: driver acquisition over the 14 weeks, Lakshya vs plan (A..I)
     b = BANDS[3]
-    h7 = table(b, 1, "Lakshya vs plan - placements over the same 14 weeks",
+    h7 = table(b, 1, "Lakshya vs plan - driver acquisition over the same 14 weeks",
                ["City", "Own Now - Lakshya", "Own Now - plan", "L+DTO - Lakshya", "L+DTO - plan",
                 "Total - Lakshya", "Total - plan", "Plan - Lakshya", "Plan vs Lakshya %"])
     for i in range(len(CITIES) + 1):
@@ -2136,7 +2136,7 @@ def build_dashboard(wb):
     red_if(f"Q{h8 + 1}:Q{h8 + len(CITIES)}", f"Q{h8 + 1}>S{h8 + 1}")
 
     ws.cell(T7_I + 2, 1, "Months as in Lakshya (see top). Red = below Lakshya's month-end, or above the city's max utilisation. "
-                         "Peak week = the busiest single week. Lakshya placements: Lakshya v4 Weekly Own Now and Weekly L+DTO tabs.").font = F_NOTE
+                         "Peak week = the busiest single week. Lakshya driver acquisition: Lakshya v4 Weekly Own Now and Weekly L+DTO tabs.").font = F_NOTE
 
     # ---- 2. insights (live, all India)
     put(ws, R_IN_T, 1, "3.  INSIGHTS  -  India and cities (live; update with the plan)", font=F_SECTION).border = Border()
@@ -2159,14 +2159,14 @@ def build_dashboard(wb):
         f'Lakshya: "&TEXT(G{I},"#,##0")&IF(ABS(H{I})<0.5," - the plan lands on it."," - gap "&TEXT(H{I},"#,##0")&".")',
         f'="Where the growth comes from: "&TEXT(G{T3_I},"#,##0")&" new cars put on road ("&TEXT(G{T3_I}/F{T3_I},"0%")&") and "&TEXT(H{T3_I},"#,##0")&" organic growth from recruitment net of churn ("&TEXT(H{T3_I}/F{T3_I},"0%")&")."',
         f'="Growth per week, by month: {pw(T3_I, 2)}. The two Diwali weeks (w/c 2 and 9 Nov) take "&TEXT(ABS({dip}),"#,##0")&" cars off the road; new cars that arrive then go on road from w/c 16 Nov."',
-        f'="Recruitment: "&TEXT(Q{T4_I},"#,##0")&" placements in {N_WEEKS} weeks ("&TEXT(R{T4_I},"#,##0")&" a week). Per week by month: {pl_w}; busiest week "&TEXT(S{T4_I},"#,##0")&"."',
-        f'="Churn: "&TEXT(F{T5_I},"#,##0")&" drivers to replace, so "&TEXT(G{T5_I},"0%")&" of placements only replace churn and "&TEXT(1-G{T5_I},"0%")&" add to the road."',
+        f'="Recruitment: "&TEXT(Q{T4_I},"#,##0")&" driver acquisitions in {N_WEEKS} weeks ("&TEXT(R{T4_I},"#,##0")&" a week). Per week by month: {pl_w}; busiest week "&TEXT(S{T4_I},"#,##0")&"."',
+        f'="Churn: "&TEXT(F{T5_I},"#,##0")&" drivers to replace, so "&TEXT(G{T5_I},"0%")&" of driver acquisition only replaces churn and "&TEXT(1-G{T5_I},"0%")&" add to the road."',
         f'="Most growth: "&INDEX({cty},MATCH(MAX({grow}),{grow},0))&" ("&TEXT(MAX({grow}),"+#,##0")&"). Least: "&INDEX({cty},MATCH(MIN({grow}),{grow},0))&" ("&TEXT(MIN({grow}),"+#,##0;-#,##0")&"). '
-        f'Most recruitment: "&INDEX({cty},MATCH(MAX({plc}),{plc},0))&" ("&TEXT(MAX({plc}),"#,##0")&" placements, "&TEXT(MAX({plc})/{N_WEEKS},"#,##0")&" a week)."',
+        f'Most recruitment: "&INDEX({cty},MATCH(MAX({plc}),{plc},0))&" ("&TEXT(MAX({plc}),"#,##0")&" driver acquisitions, "&TEXT(MAX({plc})/{N_WEEKS},"#,##0")&" a week)."',
         f'=IF(COUNTIF({t2},"<-0.5")=0,"Every city meets every Lakshya month-end.","Month-ends below Lakshya: "&COUNTIF({t2},"<-0.5")&" of 28 city-months (red in section 4), the largest "&TEXT(MIN({t2}),"#,##0")&" cars - growth held to last year\'s pace or the Diwali dip. "'
         f'&IF(COUNTIF({t2dec},"<-0.5")=0,"Every city still reaches Lakshya on 27 Dec.",COUNTIF({t2dec},"<-0.5")&" cities end short on 27 Dec."))',
         f'=IF(({above})="","No city ends above its max utilisation.","Above max utilisation on 27 Dec: "&LEFT({above},LEN({above})-2)&" - these need more fleet or fewer cars sold.")',
-        f'="Lakshya vs our plan: "&IF(ABS(H{I})<0.5,"both land on "&TEXT(G{I},"#,##0"),"the plan lands on "&TEXT(F{I},"#,##0")&" vs Lakshya\'s "&TEXT(G{I},"#,##0"))&" on 27 Dec"&IF(COUNTIF({t2},"<-0.5")=0," and match at every month-end. ","; on the way the plan is "&TEXT(M{T2_I + 1},"+#,##0;-#,##0;0")&" at end-Sep, "&TEXT(N{T2_I + 1},"+#,##0;-#,##0;0")&" end-Oct, "&TEXT(O{T2_I + 1},"+#,##0;-#,##0;0")&" end-Nov (starts from the 20 Sep actual, growth held to last year\'s pace, Diwali dip). ")&"It needs "&TEXT(G{T7_I},"#,##0")&" placements vs Lakshya\'s "&TEXT(F{T7_I},"#,##0")&" ("&TEXT(H{T7_I},"+#,##0;-#,##0")&"); fleet on 27 Dec "&TEXT(O{T7_I},"+#,##0;-#,##0")&" vs Lakshya."',
+        f'="Lakshya vs our plan: "&IF(ABS(H{I})<0.5,"both land on "&TEXT(G{I},"#,##0"),"the plan lands on "&TEXT(F{I},"#,##0")&" vs Lakshya\'s "&TEXT(G{I},"#,##0"))&" on 27 Dec"&IF(COUNTIF({t2},"<-0.5")=0," and match at every month-end. ","; on the way the plan is "&TEXT(M{T2_I + 1},"+#,##0;-#,##0;0")&" at end-Sep, "&TEXT(N{T2_I + 1},"+#,##0;-#,##0;0")&" end-Oct, "&TEXT(O{T2_I + 1},"+#,##0;-#,##0;0")&" end-Nov (starts from the 20 Sep actual, growth held to last year\'s pace, Diwali dip). ")&"It needs "&TEXT(G{T7_I},"#,##0")&" driver acquisitions vs Lakshya\'s "&TEXT(F{T7_I},"#,##0")&" ("&TEXT(H{T7_I},"+#,##0;-#,##0")&"); fleet on 27 Dec "&TEXT(O{T7_I},"+#,##0;-#,##0")&" vs Lakshya."',
         f'=IF({G_CAP}="No","Stretch vs last year: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks need more organic growth than the city\'s best 4-week pace of 2024/25 (red in city tab column BP) - the price of matching Lakshya at every month-end. Biggest single city-week: "&TEXT({top_org},"0.0%")&" organic growth.",'
         f'"Realism: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks are held to last year\'s pace, so no week plans more organic growth than 2024/25 showed (Diwali_Dip Analysis tab).")',
     ]
@@ -2195,7 +2195,7 @@ COMBINED = [  # (header, logical city-tab column or special)
     ("Leasing + DTO cars on Road - WE", "W"), ("Week-ending cars on Road", "Y"), ("Week ending Util", "Z"),
     ("Net Attrition (Abs)", "U"), ("Own Now cars on Road - WE", "X"),
     ("Total buy (new cars)", "AD"), ("Total sold", "AE"), ("Util ceiling (Lakshya)", "AA"),
-    ("Own Now placements", "AM"), ("L+DTO placements", "AT"), ("Total placements (Own Now + L+DTO)", "AU"),
+    ("Own Now driver acquisition", "AM"), ("L+DTO driver acquisition", "AT"), ("Total driver acquisition (Own Now + L+DTO)", "AU"),
     ("Actual / Plan", "TYPE"), ("Net Attrition", "NETATTR"), ("WE Active Pilots", "PILOTS"),
 ]
 CB_ROWS = LAST - 1  # rows per city (actual + plan weeks)
@@ -2391,7 +2391,7 @@ def build_summary(wb):
         ("On Road Cars Own Now", lambda w: ca(cb("Own Now cars on Road - WE"), w), lambda w: raw_day("own_now_cars_eod", w), "#,##0"),
         ("On Road Cars Leasing + DTO", lambda w: ca(cb("Leasing + DTO cars on Road - WE"), w),
          lambda w: raw_day("allotted_cars_eod", w) + "-" + raw_day("own_now_cars_eod", w) + "-" + raw_day("eip_vehicles_cnt", w), "#,##0"),
-        ("Placements (Own Now + L+DTO)", lambda w: ca(cb("Total placements (Own Now + L+DTO)"), w), None, "#,##0"),
+        ("Driver Acquisition (Own Now + L+DTO)", lambda w: ca(cb("Total driver acquisition (Own Now + L+DTO)"), w), None, "#,##0"),
     ]
     r = SV_FIRST_BLOCK
     for title, plan_f, raw_f, fmt in blocks:
