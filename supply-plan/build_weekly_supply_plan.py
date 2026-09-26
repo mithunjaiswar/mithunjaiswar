@@ -1694,9 +1694,6 @@ def build_dashboard(wb):
     # ---- top
     ws["A1"] = "MONTHLY DASHBOARD  -  India and every city, month by month"
     ws["A1"].font = F_TITLE
-    ws["A2"] = ("Months are Lakshya's: Sep = w/e 27 Sep, Oct = to 25 Oct, Nov = to 29 Nov, Dec = to 27 Dec. "
-                "Month-end = the last week of the month. Everything is a live formula from the city tabs.")
-    ws["A2"].font = F_WHAT
     ws["A3"] = "Show (pick):"
     ws["A3"].font = F_BOLD
     c = ws["B3"]
@@ -1707,8 +1704,6 @@ def build_dashboard(wb):
     dv = DataValidation(type="list", formula1='"' + ",".join(["India"] + CITIES) + '"', allow_blank=False)
     ws.add_data_validation(dv)
     dv.add("B3")
-    ws["C3"] = "Headline and sections 1-2 follow this pick; section 2b and the insights always show India."
-    ws["C3"].font = F_NOTE
 
     # ---- 1. month by month (picked)
     mv = [  # (header, kind, source)
@@ -1794,13 +1789,33 @@ def build_dashboard(wb):
         for k, t in enumerate(("Lakshya", "Plan", "Plan - Lakshya")):
             hdr(ws, R_LV_H, c0 + k, t)
         lv.append((L(c0), L(c0 + 1), L(c0 + 2)))
-    WHY = L(2 + 3 * len(groups))
+    # attrition group: Lakshya's flat monthly rates vs the plan's (same rates shaped by last year's weekly attrition)
+    ATT0 = 2 + 3 * len(groups)
+    AL_, AP_, AD_, AX_ = (L(ATT0 + k) for k in range(4))
+    hdr(ws, R_LV_G, ATT0, "ATTRITION % A MONTH (Own Now + L+DTO book)", GREY_HDR)
+    ws.merge_cells(start_row=R_LV_G, start_column=ATT0, end_row=R_LV_G, end_column=ATT0 + 3)
+    for k, t in enumerate(("Lakshya", "Plan (last year's shape)", "Plan - Lakshya", "Extra drivers to replace churn")):
+        hdr(ws, R_LV_H, ATT0 + k, t)
+    for j in range(23, 27):
+        ws.column_dimensions[L(j)].width = 11
+    WHY = L(ATT0 + 4)
     hdr(ws, R_LV_G, column_index_from_string(WHY), "")
-    hdr(ws, R_LV_H, column_index_from_string(WHY), "Why they differ (on road)")
+    hdr(ws, R_LV_H, column_index_from_string(WHY), "Why they differ")
     ws.merge_cells(f"{WHY}{R_LV_G}:{L(column_index_from_string(WHY) + 5)}{R_LV_G}")
     ws.merge_cells(f"{WHY}{R_LV_H}:{L(column_index_from_string(WHY) + 5)}{R_LV_H}")
     ws.row_dimensions[R_LV_G].height = 30
+    ws.row_dimensions[R_LV_H].height = 42
     DIFF = "+#,##0;-#,##0;0"
+    OWN_ME, LD_ME = col["Own Now (month end)"], col["L+DTO (month end)"]
+    CH_OWN, CH_LD = col["Own Now churn + rollover"], col["L+DTO churn"]
+
+    def flat_churn(i, mon):
+        """City i's Own Now + L+DTO churn in a month at Lakshya's flat monthly rates (no last-year shape)."""
+        s_ = cities[i]
+        days = f"{s_}!$AC${FIRST}:$AC${LAST}"
+        own = f"SUMPRODUCT(({_bu(s_)}={mon})*{s_}!$AH${FIRST}:$AH${LAST}*{days})/7"
+        ldto = f"SUMPRODUCT(({_bu(s_)}={mon})*{s_}!$AP${FIRST}:$AP${LAST}*{days})/7"
+        return (f"({ci('r_own', i)}+{ci('r_roll', i)})/{G_WPM}*{own}+{ci('r_ldto', i)}/{G_WPM}*{ldto}")
     rows = [("start", R_LV_S)] + [(m, R_LV0 + m) for m in range(4)] + [("total", R_LV_TOT)]
     for key, r in rows:
         bg = ACTUAL if key == "start" else (LIGHT if key == "total" else None)
@@ -1834,24 +1849,61 @@ def build_dashboard(wb):
             dv_ = None if lk is None else f'=IF(OR({cl}{r}="",{cp}{r}=""),"",ROUND({cp}{r}-{cl}{r},0))'
             put(ws, r, column_index_from_string(cd), dv_, DIFF, bold=True, bg=bg)
         onr_d = f"{lv[3][2]}{r}"
+        acq_d = f"{lv[4][2]}{r}"
+        # attrition % a month = churn / weeks x 52/12 / average Own Now + L+DTO book
+        if key == "start":
+            for k in range(4):
+                put(ws, r, ATT0 + k, None, bg=bg)
+        else:
+            if key == "total":
+                weeks, prev = str(N_WEEKS), R_MV_S
+                extra = f"=SUM({AX_}{R_LV0}:{AX_}{R_LV0 + 3})"
+            else:
+                weeks, prev = f'COUNTIF({_bu(cities[0])},"{MONTHS[key]}")', mv_row - 1
+                extra = (f"={CH_OWN}{mv_row}+{CH_LD}{mv_row}-("
+                         + pick([flat_churn(i, f'"{MONTHS[key]}"') for i in range(ncity)])[1:] + ")")
+            book = f"AVERAGE({OWN_ME}{prev}+{LD_ME}{prev},{OWN_ME}{mv_row}+{LD_ME}{mv_row})"
+            churn = f"({CH_OWN}{mv_row}+{CH_LD}{mv_row})"
+            pbr = R_PB_TOT if key == "total" else R_PB0 + key   # same month in 2b (India)
+            put(ws, r, ATT0, f'=IF({PICK}="India",J{pbr},({churn}-{AX_}{r})/{weeks}*{G_WPM}/{book})', PCT, bg=bg)
+            put(ws, r, ATT0 + 1, f"={churn}/{weeks}*{G_WPM}/{book}", PCT, bg=bg)
+            put(ws, r, ATT0 + 2, f"={AP_}{r}-{AL_}{r}", "+0.0%;-0.0%;0.0%", bold=True, bg=bg)
+            put(ws, r, ATT0 + 3, f'=IF({PICK}="India",I{pbr}-H{pbr},{extra[1:]})', DIFF, bold=True, bg=bg)
+        att = (f'"last year\'s attrition "&TEXT({AP_}{r},"0%")&" a month vs Lakshya\'s "&TEXT({AL_}{r},"0%")&" = "'
+               f'&TEXT(ABS({AX_}{r}),"#,##0")&IF({AX_}{r}>=0," more"," fewer")&" drivers to replace churn"')
+        acq = (f'IF(ISNUMBER({acq_d}),TEXT({acq_d},"+#,##0;-#,##0;0")&" drivers vs Lakshya: ",'
+               f'"No Lakshya monthly driver figure by city; ")')
+        if key not in ("start",):
+            pbr = R_PB_TOT if key == "total" else R_PB0 + key
+            # India: driver gap = catch-up (net add) + churn + Diwali re-acquisition, exactly as in 2b
+            india_why = (f'TEXT(O{pbr},"+#,##0;-#,##0;0")&" drivers vs Lakshya = "'
+                         f'&IF(ABS(G{pbr}-F{pbr})>=0.5,TEXT(G{pbr}-F{pbr},"#,##0;-#,##0")&" catch-up from the 20 Sep actual"&IF(I{pbr}-H{pbr}<0," - "," + "),IF(I{pbr}-H{pbr}<0,"-",""))'
+                         f'&TEXT(ABS(I{pbr}-H{pbr}),"#,##0")&" for churn (last year\'s attrition "&TEXT(K{pbr},"0%")&" a month vs Lakshya\'s "&TEXT(J{pbr},"0%")&")"'
+                         f'&IF(ABS(L{pbr})>=0.5," + "&TEXT(L{pbr},"#,##0")&" re-acquired after the Diwali dip","")&"."')
         if key == "start":
             why = ('="Lakshya starts from Own Now ~6 Sep and L+DTO 31 Aug; the plan from the "&TEXT('
                    + G_OPEN_DATE + ',"d mmm")&" actual."')
         elif key == "total":
-            why = (f'=IF(ABS({onr_d})<0.5,"Same 27 Dec landing. Driver acquisition differs because the plan\'s churn follows last year\'s weekly shape.",'
-                   f'"Lands "&TEXT({onr_d},"#,##0")&" short: growth held to last year\'s pace.")')
+            why = (f'=IF(ABS({onr_d})<0.5,"Same 27 Dec landing. ","Lands "&TEXT({onr_d},"#,##0")&" short (growth held to last year\'s pace). ")'
+                   f'&"Over {N_WEEKS} weeks: "&IF({PICK}="India",{india_why},{acq}&{att}&".")')
         else:
-            reason = {0: "the plan has one week from the 20 Sep actual to catch up",
+            reason = {0: "one week from the 20 Sep actual to catch up",
                       1: "growth held to last year's pace", 2: "Diwali dip + growth held to last year's pace",
                       3: "growth held to last year's pace"}[key]
-            why = f'=IF(ABS({onr_d})<0.5,"On Lakshya",TEXT({onr_d},"#,##0")&" - {reason}")'
-        put(ws, r, column_index_from_string(WHY), why, bg=bg)
+            tail = {0: '&" + catching up from the 20 Sep actual."', 2: '&" + drivers re-acquired after the Diwali dip."'}.get(key, '&"."')
+            why = (f'=IF(ABS({onr_d})<0.5,"",TEXT({onr_d},"#,##0")&" on road ({reason}). ")'
+                   f'&IF({PICK}="India",{india_why},{acq}&{att}{tail})')
+        c = put(ws, r, column_index_from_string(WHY), why, bg=bg)
+        c.alignment = Alignment(wrap_text=True, vertical="top")
         ws.merge_cells(f"{WHY}{r}:{L(column_index_from_string(WHY) + 5)}{r}")
+        ws.row_dimensions[r].height = 30
     for _, _, cd in lv:
         red_if(f"{cd}{R_LV0}:{cd}{R_LV_TOT}", f"AND(ISNUMBER({cd}{R_LV0}),{cd}{R_LV0}<-0.5)")
     ws.cell(R_LV_TOT + 1, 1, "Lakshya = Lakshya v4 month-end books (Inputs A3; December = the targets). Lakshya has no monthly EIP, "
                              "so EIP is a straight line to its December target. Lakshya driver acquisition by month exists for India only; "
-                             "for a city the total is Lakshya's 14-week figure. Why driver acquisition differs: 2b below.").font = F_NOTE
+                             "for a city the total is Lakshya's 14-week figure. Attrition % a month = churn / weeks x 52/12 / average Own Now + L+DTO book: "
+                             "Plan = Lakshya's monthly rates shaped by last year's weekly attrition. Lakshya: for India, the churn implied by its own driver numbers (as in 2b); "
+                             "for a city, its flat monthly rates (Inputs A2), as Lakshya has no monthly driver numbers by city. Extra drivers = plan churn - Lakshya churn.").font = F_NOTE
 
     # ---- 2b. driver acquisition bridge, India: driver acquisition = net add of the Own Now + L+DTO book + churn
     # A month | B:C book at start | D:E book at month end | F:G net add | H:I churn | J:K churn % a month |
