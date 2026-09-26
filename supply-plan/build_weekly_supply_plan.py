@@ -1072,6 +1072,7 @@ def all_cities(cell):
 
 def build_compare(wb):
     ws = wb.create_sheet("Lakshya vs Plan", 0)
+    ws.sheet_state = "hidden"  # kept for reference; the Monthly Dashboard shows Lakshya vs plan
     widths = [22, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
@@ -1659,15 +1660,13 @@ def build_dashboard(wb):
         ws.column_dimensions[get_column_letter(j)].width = 11
     L = get_column_letter
     cities = [q(c) for c in CITIES]
-    F_TILE = Font(name="Calibri", size=15, bold=True, color=NAVY)
     F_WHAT = Font(name="Calibri", size=10, italic=True, color="FF404040")
 
     def red_if(rng, cond):
         ws.conditional_formatting.add(rng, FormulaRule(formula=[cond], font=RED_FONT, fill=fill("FFFFC7CE")))
 
     # ---- layout
-    R_TILE = 5
-    R_MV_T = 8                     # 1. month by month
+    R_MV_T = 5                     # 1. month by month
     R_MV_H = R_MV_T + 1
     R_MV_S = R_MV_H + 1            # start row
     R_MV0 = R_MV_S + 1             # Sep..Dec
@@ -2001,25 +2000,6 @@ def build_dashboard(wb):
                              "(a flat rate every week); plan churn = the same monthly rates shaped by last year's weekly attrition (city tabs AK, AL, AS). "
                              "Lakshya's Sep start = its path on the opening date. Diwali: the two dip weeks plan no driver acquisition; drivers for the cars lost are acquired again after.").font = F_NOTE
 
-    # ---- headline tiles (picked)
-    tot = R_MV_TOT
-    tiles = [
-        ("On road at start", f"={ONR}{R_MV_S}", NUM), ("On road 27 Dec", f"={ONR}{tot}", NUM),
-        ("Growth (cars)", f"={ONR}{tot}-{ONR}{R_MV_S}", "+#,##0;-#,##0"), ("Growth %", f"={ONR}{tot}/{ONR}{R_MV_S}-1", "+0%;-0%"),
-        ("Lakshya 27 Dec", f"={LKC}{tot}", NUM), ("Plan - Lakshya", f"={DIF}{tot}", "+#,##0;-#,##0;0"),
-        ("New cars put on road", f"={col['New cars put on road']}{tot}", NUM),
-        ("Driver Acquisition (14 weeks)", f"={col['Total driver acquisition']}{tot}", NUM),
-        ("Driver Acquisition a week", f"={col['Total driver acquisition']}{tot}/{col['Weeks']}{tot}", NUM),
-        ("Churn replaced", f"={col['Own Now churn + rollover']}{tot}+{col['L+DTO churn']}{tot}", NUM),
-        ("Util 27 Dec", f"={col['Util (month end)']}{tot}", PCT),
-    ]
-    put(ws, R_TILE - 1, 1, f'="HEADLINE  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
-    for k, (label, v, fmt) in enumerate(tiles):
-        c1 = hdr(ws, R_TILE, 1 + k, label)
-        c2 = put(ws, R_TILE + 1, 1 + k, v, fmt, font=F_TILE, bg=LIGHT)
-        c2.alignment = CENTER
-    ws.row_dimensions[R_TILE].height = 30
-    ws.row_dimensions[R_TILE + 1].height = 30
 
     # ---- 3. insights (live, all India): read from section 2b, the Inputs C1 summary and the city tabs
     put(ws, R_IN_T, 1, "3.  INSIGHTS  -  India and cities (live; update with the plan)", font=F_SECTION).border = Border()

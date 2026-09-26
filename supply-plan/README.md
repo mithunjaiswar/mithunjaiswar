@@ -13,7 +13,7 @@ python3 build_weekly_supply_plan.py out.xlsx raw.json   # raw.json = {"hdr": [..
 | Tab | What it is |
 |---|---|
 | Read Me | How the plan bridges 20 Sep to 27 Dec: the rule, the bridge by season, India week by week vs last year |
-| Lakshya vs Plan | Lakshya v4 as given next to this plan, for sharing |
+| Lakshya vs Plan | Lakshya v4 as given next to this plan (hidden; the Monthly Dashboard now carries the comparison) |
 | Summary View | Dashboard with a city picker: plan, actual and same week last year per metric |
 | Monthly Dashboard | Month by month (Lakshya months) for India or a picked city, Lakshya plan vs our plan (books, on road, driver acquisition), why driver acquisition differs (India), and live insights |
 | Inputs | Everything the plan is built from, in three parts: **A** what you set (A1 dates and switches, A2 city start / Dec targets / rates, A3 Lakshya month-end targets, A4 new cars, A5 cars sold, A6 weekly calendar), **B** learnt from last year (B1 festival impact), **C** output and sources |
