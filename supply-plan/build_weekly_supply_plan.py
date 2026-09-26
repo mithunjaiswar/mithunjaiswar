@@ -1678,7 +1678,11 @@ def build_dashboard(wb):
     R_LV_S = R_LV_H + 1            # start row
     R_LV0 = R_LV_S + 1             # Sep..Dec
     R_LV_TOT = R_LV0 + 4
-    R_IN_T = R_LV_TOT + 3          # 3. insights
+    R_PB_T = R_LV_TOT + 3          # 2b. placements bridge (India)
+    R_PB_H = R_PB_T + 2
+    R_PB0 = R_PB_H + 1             # Sep..Dec
+    R_PB_TOT = R_PB0 + 4
+    R_IN_T = R_PB_TOT + 3          # 3. insights
     N_INS = 10
     R_CT = R_IN_T + N_INS + 3      # 4. by city banner
     BANDS = [R_CT + 2, R_CT + 14, R_CT + 26, R_CT + 38]   # table title rows; header +1, cities +2..+8, INDIA +9
@@ -1849,7 +1853,78 @@ def build_dashboard(wb):
         red_if(f"{cd}{R_LV0}:{cd}{R_LV_TOT}", f"AND(ISNUMBER({cd}{R_LV0}),{cd}{R_LV0}<-0.5)")
     ws.cell(R_LV_TOT + 1, 1, "Lakshya = Lakshya v4 month-end books (Inputs A3; December = the targets). Lakshya has no monthly EIP, "
                              "so EIP is a straight line to its December target. Lakshya placements by month exist for India only; "
-                             "for a city the total is Lakshya's 14-week figure.").font = F_NOTE
+                             "for a city the total is Lakshya's 14-week figure. Why placements differ: 2b below.").font = F_NOTE
+
+    # ---- 2b. placements bridge, India: placements = net add of the Own Now + L+DTO book + churn
+    put(ws, R_PB_T, 1, "2b.  WHY PLACEMENTS DIFFER  -  INDIA  (placements = book at month end - book at start + churn)",
+        font=F_SECTION).border = Border()
+    pb_groups = [("BOOK AT START (Own Now + L+DTO)", 2), ("BOOK AT MONTH END", 4), ("NET ADD", 6), ("CHURN (drivers who leave)", 8),
+                 ("PLACEMENTS", 11)]
+    hdr(ws, R_PB_T + 1, 1, "")
+    hdr(ws, R_PB_H, 1, "Month")
+    for gt, c0 in pb_groups:
+        hdr(ws, R_PB_T + 1, c0, gt, GREY_HDR)
+        ws.merge_cells(start_row=R_PB_T + 1, start_column=c0, end_row=R_PB_T + 1, end_column=c0 + 1)
+        hdr(ws, R_PB_H, c0, "Lakshya")
+        hdr(ws, R_PB_H, c0 + 1, "Plan")
+    hdr(ws, R_PB_T + 1, 10, "DIWALI", GREY_HDR)
+    hdr(ws, R_PB_H, 10, "Plan: re-placed after the dip")
+    hdr(ws, R_PB_T + 1, 13, "", GREY_HDR)
+    hdr(ws, R_PB_H, 13, "Plan - Lakshya")
+    hdr(ws, R_PB_T + 1, 14, "", GREY_HDR)
+    hdr(ws, R_PB_H, 14, "Why")
+    ws.merge_cells(start_row=R_PB_T + 1, start_column=14, end_row=R_PB_T + 1, end_column=22)
+    ws.merge_cells(start_row=R_PB_H, start_column=14, end_row=R_PB_H, end_column=22)
+    ws.row_dimensions[R_PB_T + 1].height = 30
+    ws.row_dimensions[R_PB_H].height = 30
+    ni = len(CITIES)  # INDIA row of Inputs A3
+    lk_open = sum(LK_OWN_OPEN.values()) + sum(LK_LDTO_OPEN.values())
+    for m, mon in enumerate(MONTHS):
+        r = R_PB0 + m
+        put(ws, r, 1, mon, bold=True)
+        lk_end = f"Inputs!${L(6 + m)}${R_MS0 + ni}+Inputs!${L(10 + m)}${R_MS0 + ni}"
+        if m == 0:
+            # Lakshya's book on the plan's opening date: its path from ~6 Sep (Own Now, 3 weeks) and 31 Aug (L+DTO, 4 weeks)
+            own0, ldto0 = sum(LK_OWN_OPEN.values()), sum(LK_LDTO_OPEN.values())
+            lk_start = (f"={own0}+(Inputs!$F${R_MS0 + ni}-{own0})*2/3+{ldto0}+(Inputs!$J${R_MS0 + ni}-{ldto0})*3/4")
+            pl_start = "=" + "+".join(f"{s}!$X${OPEN_ROW}+{s}!$W${OPEN_ROW}" for s in cities)
+        else:
+            lk_start, pl_start = f"=D{r - 1}", f"=E{r - 1}"
+        mref = f"$A{r}"
+        pl_end = "=" + "+".join(f"{_stock(s, 'X', mref)}+{_stock(s, 'W', mref)}" for s in cities)
+        pl_churn = "=" + "+".join("+".join(_flow(s, x, mref) for x in ("AK", "AL", "AS")) for s in cities)
+        pl_pl = "=" + "+".join(_flow(s, "AU", mref) for s in cities)
+        vals = [(2, lk_start), (3, pl_start), (4, f"={lk_end}"), (5, pl_end), (6, f"=D{r}-B{r}"), (7, f"=E{r}-C{r}"),
+                (8, f"=K{r}-F{r}"), (9, pl_churn), (10, f"=L{r}-G{r}-I{r}"), (11, lk_pl_mon[mon]), (12, pl_pl),
+                (13, f"=L{r}-K{r}")]
+        for j, v in vals:
+            put(ws, r, j, v, DIFF if j in (6, 7, 10, 13) else NUM, bold=(j == 13))
+        why = (f'=TEXT(M{r},"+#,##0;-#,##0;0")&" = net add "&TEXT(G{r}-F{r},"+#,##0;-#,##0;0")'
+               f'&" (plan book "&TEXT(C{r},"#,##0")&" to "&TEXT(E{r},"#,##0")&", Lakshya "&TEXT(B{r},"#,##0")&" to "&TEXT(D{r},"#,##0")&")"'
+               f'&" + churn "&TEXT(I{r}-H{r},"+#,##0;-#,##0;0")'
+               f'&IF(I{r}<H{r}," (last year\'s attrition is low this month)"," (last year\'s attrition is high this month)")'
+               f'&IF(ABS(J{r})>=0.5," + Diwali re-placement "&TEXT(J{r},"+#,##0"),"")')
+        put(ws, r, 14, why)
+        ws.merge_cells(start_row=r, start_column=14, end_row=r, end_column=22)
+    r = R_PB_TOT
+    put(ws, r, 1, "Total", bold=True, bg=LIGHT)
+    for j in range(2, 14):
+        c_ = L(j)
+        if j in (2, 3):
+            v = f"={c_}{R_PB0}"
+        elif j in (4, 5):
+            v = f"={c_}{R_PB0 + 3}"
+        else:
+            v = f"=SUM({c_}{R_PB0}:{c_}{R_PB0 + 3})"
+        put(ws, r, j, v, DIFF if j in (6, 7, 10, 13) else NUM, bold=True, bg=LIGHT)
+    put(ws, r, 14, (f'=TEXT(M{r},"+#,##0;-#,##0;0")&" = September catch-up from the 20 Sep actual "&TEXT(G{r}-F{r},"+#,##0;-#,##0;0")'
+                    f'&" + churn shaped by last year "&TEXT(I{r}-H{r},"+#,##0;-#,##0;0")&" + Diwali re-placement "&TEXT(J{r},"+#,##0;-#,##0;0")'),
+        bold=True, bg=LIGHT)
+    ws.merge_cells(start_row=r, start_column=14, end_row=r, end_column=22)
+    red_if(f"M{R_PB0}:M{R_PB_TOT}", f"M{R_PB0}<-0.5")
+    ws.cell(R_PB_TOT + 1, 1, "Lakshya churn = Lakshya placements - its net add (a flat rate every week). Plan churn = the same monthly rates "
+                             "shaped by last year's weekly attrition (city tab AK, AL, AS). Lakshya's Sep start = its path on the opening date. "
+                             "Diwali: the two dip weeks plan no placements, and the cars lost are placed again afterwards.").font = F_NOTE
 
     # ---- headline tiles (picked)
     tot = R_MV_TOT
