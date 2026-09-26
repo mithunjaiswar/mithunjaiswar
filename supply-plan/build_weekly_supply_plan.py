@@ -937,23 +937,28 @@ def build_inputs(wb):
 
     # ---- C1. summary
     title(ws, R_SUM_H - 2, "C1", "PLAN SUMMARY BY CITY",
-          "Where the plan lands on 27 Dec, read from the city tabs. Gap to target and Check should be 0.")
+          "Where the plan lands on 27 Dec, read from the city tabs. Gap to target and Check should be 0. "
+          "Fleet 27 Dec differs from Lakshya only by the start fleet difference (column L).")
     sum_cols = ["City", "On road at start", "On road 27 Dec", "Lakshya target", "Gap to target",
                 "EIP 27 Dec", "Own Now 27 Dec", "L+DTO 27 Dec", "Fleet 27 Dec", "Lakshya fleet Dec",
+                "Lakshya start fleet (31 Aug)", "Start fleet difference (plan start - Lakshya start)",
                 "Util 27 Dec", "Max utilisation", "Headroom", "EIP net add", "Own Now placements",
                 "L+DTO placements", "Total placements", "Peak week placements", "Check (0 = OK)",
                 "Weeks held to LY pace", "Top weekly growth %"]
     for j, t in enumerate(sum_cols, start=1):
         hdr(ws, R_SUM_H, j, t, GREY_HDR)
-    ws.row_dimensions[R_SUM_H].height = 30
+    ws.row_dimensions[R_SUM_H].height = 54
     for i, city in enumerate(CITIES):
         r = R_SUM0 + i
         s = q(city)
         vals = [
             (city, None), (f"={s}!Y{OPEN_ROW}", NUM), (f"={s}!Y{LAST}", NUM), (f"={ci('t_onroad', i)}", NUM),
             (f"=C{r}-D{r}", NUM), (f"={s}!R{LAST}", NUM), (f"={s}!X{LAST}", NUM), (f"={s}!W{LAST}", NUM),
-            (f"={s}!E{LAST}", NUM), (f"={ci('lk_fleet', i)}", NUM), (f"=C{r}/I{r}", PCT),
-            (f"={ci('ceiling', i)}", PCT), (f"=L{r}-K{r}", PCT), (f"={s}!P{R_TOT}", NUM),
+            (f"={s}!E{LAST}", NUM), (f"={ci('lk_fleet', i)}", NUM),
+            # Lakshya's start = its Dec fleet less its new cars plus its cars sold (A4 / A5, column G)
+            (f"=J{r}-Inputs!$G${R_ADD0 + i}+Inputs!$G${R_SALE0 + i}", NUM),
+            (f"={ci('fleet', i)}-K{r}", NUM),
+            (f"=C{r}/I{r}", PCT), (f"={ci('ceiling', i)}", PCT), (f"=N{r}-M{r}", PCT), (f"={s}!P{R_TOT}", NUM),
             (f"={s}!AM{R_TOT}", NUM), (f"={s}!AT{R_TOT}", NUM), (f"={s}!AU{R_TOT}", NUM),
             (f"=MAX({s}!AU{FIRST}:AU{LAST})", NUM),
             (f"=ROUND(SUMPRODUCT(ABS({s}!AV2:AV{LAST})),6)", "0"),
@@ -966,24 +971,25 @@ def build_inputs(wb):
     put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
     for j in range(2, len(sum_cols) + 1):
         L = get_column_letter(j)
-        if L == "K":
+        if L == "M":
             v, fmt = f"=C{r}/I{r}", PCT
-        elif L in ("L", "M"):
+        elif L in ("N", "O"):
             v, fmt = None, PCT
-        elif L == "U":
-            v, fmt = f"=MAX(U{R_SUM0}:U{r - 1})", "0.0%"
+        elif L == "W":
+            v, fmt = f"=MAX(W{R_SUM0}:W{r - 1})", "0.0%"
         else:
             v, fmt = f"=SUM({L}{R_SUM0}:{L}{r - 1})", NUM
         put(ws, r, j, v, fmt, bold=True, bg=LIGHT)
     r_india = r
-    note(ws, r_india + 1, "Headroom below 0 (red) = planned above the city's max utilisation. "
-                      "Fleet = fleet_total_cars_cnt, as in the Weekly Supply Plan.")
-    ws.conditional_formatting.add(f"M{R_SUM0}:M{r_india - 1}",
-                                  FormulaRule(formula=[f"M{R_SUM0}<0"], font=RED_FONT, fill=fill("FFFFC7CE")))
+    note(ws, r_india + 1, "Start fleet difference: the plan starts from the actual fleet on the opening date (A2, fleet_total_cars_cnt, "
+                          "as in the Weekly Supply Plan); Lakshya started from its own 31 Aug base. Same cars bought and sold on both sides, "
+                          "so the gap carries to 27 Dec. Headroom below 0 (red) = planned above the city's max utilisation.")
+    ws.conditional_formatting.add(f"O{R_SUM0}:O{r_india - 1}",
+                                  FormulaRule(formula=[f"O{R_SUM0}<0"], font=RED_FONT, fill=fill("FFFFC7CE")))
     ws.conditional_formatting.add(f"E{R_SUM0}:E{r_india}",
                                   FormulaRule(formula=[f"ROUND(E{R_SUM0},0)<>0"], font=RED_FONT))
-    ws.conditional_formatting.add(f"S{R_SUM0}:S{r_india}",
-                                  FormulaRule(formula=[f"S{R_SUM0}<>0"], font=RED_FONT, fill=fill("FFFFC7CE")))
+    ws.conditional_formatting.add(f"U{R_SUM0}:U{r_india}",
+                                  FormulaRule(formula=[f"U{R_SUM0}<>0"], font=RED_FONT, fill=fill("FFFFC7CE")))
 
     # ---- C2. sources
     title(ws, R_SRC_H - 2, "C2", "SOURCES", "Where the numbers come from.")
