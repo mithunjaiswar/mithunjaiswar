@@ -5,8 +5,17 @@
 plan with live numbers; this file is the short version.
 
 ```
-python3 build_weekly_supply_plan.py out.xlsx raw.json   # raw.json = {"hdr": [...], "data": [[...]]} from the SSOT query
+python3 build_weekly_supply_plan.py out.xlsx raw.json         # raw.json = {"hdr": [...], "data": [[...]]} from the SSOT query
+python3 build_weekly_supply_plan.py out_v2.xlsx raw.json --v2  # v2: Lakshya as given
 ```
+
+**v2 – Lakshya as given** (Google Sheet "Lakshya 15,000 - Weekly Supply Plan v2 - Lakshya as given"): every Own Now and
+Leasing + DTO number on the city tabs is Lakshya v4's. Weekly driver acquisition is as given; churn and rollover are
+Lakshya's monthly figures spread evenly over the month's weeks; each city starts from Lakshya's own 20 Sep book and
+fleet base (`LK_WEEKLY`, shown on the v2-only **Lakshya Weekly** tab). EIP runs in a straight line to its December
+target. Month-end books, driver acquisition, churn, fleet and utilisation all equal Lakshya. The actual on 20 Sep is
+473 below Lakshya's book (India); v1 closes that gap, v2 assumes it away. The pace switch, Diwali dip and last-year
+churn shape are not used in v2.
 
 ## Tabs
 

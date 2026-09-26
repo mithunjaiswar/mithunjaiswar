@@ -7,7 +7,8 @@ Lakshya build-up (the logic behind each weekly number) to the right of it.
 
 Every number on a city tab is a formula that reads from the Inputs tab.
 
-Usage: python3 build_weekly_supply_plan.py <output.xlsx> <raw.json>
+Usage: python3 build_weekly_supply_plan.py <output.xlsx> <raw.json> [--v2]
+  --v2 builds "Lakshya as given": every Own Now and L+DTO number is Lakshya v4's (see LK_WEEKLY).
   raw.json = {"hdr": [...], "data": [[...], ...]}: the SSOT query output (see SSOT_URL).
 """
 import datetime as dt
@@ -534,6 +535,8 @@ def build_city(wb, idx, city):
             "CB": f"=(CA{r}+AI{r}+AQ{r})-BM{r}",
             "CC": f"=MAX(CA{r},0)+MAX(AI{r},0)+MAX(AQ{r},0)",
         }
+        if V2:
+            f.update(v2_city_overrides(idx, w, r, p))
         for letter, _, _ in COLS:
             if letter in ("AB", "AX", "BG"):
                 continue
@@ -895,12 +898,12 @@ def build_inputs(wb):
         r = R_SUM0 + i
         s = q(city)
         vals = [
-            (city, None), (f"={s}!Y{OPEN_ROW}", NUM), (f"={s}!Y{LAST}", NUM), (f"={ci('t_onroad', i)}", NUM),
+            (city, None), (f"={s}!G{FIRST}", NUM), (f"={s}!Y{LAST}", NUM), (f"={ci('t_onroad', i)}", NUM),
             (f"=C{r}-D{r}", NUM), (f"={s}!R{LAST}", NUM), (f"={s}!X{LAST}", NUM), (f"={s}!W{LAST}", NUM),
             (f"={s}!E{LAST}", NUM), (f"={ci('lk_fleet', i)}", NUM),
             # Lakshya's start = its Dec fleet less its new cars plus its cars sold (A4 / A5, column G)
             (f"=J{r}-Inputs!$G${R_ADD0 + i}+Inputs!$G${R_SALE0 + i}", NUM),
-            (f"={ci('fleet', i)}-K{r}", NUM),
+            (f"={s}!E{FIRST}-{s}!F{FIRST}-K{r}", NUM),
             (f"=C{r}/I{r}", PCT), (f"={ci('ceiling', i)}", PCT), (f"=N{r}-M{r}", PCT), (f"={s}!P{R_TOT}", NUM),
             (f"={s}!AM{R_TOT}", NUM), (f"={s}!AT{R_TOT}", NUM), (f"={s}!AU{R_TOT}", NUM),
             (f"=MAX({s}!AU{FIRST}:AU{LAST})", NUM),
@@ -1064,6 +1067,142 @@ LK_OWN_ME = {"Mumbai": (549, 711, 869, 1006), "Delhi NCR": (688, 757, 804, 850),
              "Chennai": (438, 537, 641, 725), "Kolkata": (205, 245, 274, 305),
              "Pune": (287, 345, 395, 442)}
 ME_WEEK_ROWS = (FIRST, FIRST + 4, FIRST + 9, FIRST + 13)  # plan weeks ending 27 Sep, 25 Oct, 29 Nov, 27 Dec
+
+# Lakshya v4 weekly books by city (Weekly L+DTO and Weekly Own Now tabs), used by the v2 workbook.
+# ld_pre / own_pre: driver acquisition in the weeks before the plan (L+DTO w/e 6, 13, 20 Sep; Own Now w/e 13, 20 Sep);
+# ld_wk / own_wk: the 14 plan weeks (w/e 27 Sep ... 27 Dec); churn and rollover by Lakshya month (Sep, Oct, Nov, Dec).
+LK_WEEKLY = {
+    "Mumbai": dict(ld_open=1164, ld_pre=(172, 172, 172), ld_wk=(174, 198, 189, 163, 138, 93, 78, 107, 178, 199, 195, 222, 213, 111), ld_churn=(675, 684, 686, 668),
+                own_open=511, own_pre=(27, 27), own_wk=(27, 65, 62, 53, 45, 32, 27, 37, 61, 68, 57, 65, 62, 32), own_churn=(30, 44, 47, 55), own_roll=(13, 19, 20, 24)),
+    "Delhi NCR": dict(ld_open=1473, ld_pre=(184, 184, 184), ld_wk=(185, 210, 201, 173, 146, 97, 82, 112, 187, 209, 209, 239, 229, 121), ld_churn=(722, 729, 730, 709),
+                own_open=661, own_pre=(24, 23), own_wk=(23, 38, 36, 32, 27, 16, 14, 19, 32, 35, 33, 37, 36, 19), own_churn=(43, 64, 69, 79), own_roll=(0, 0, 0, 0)),
+    "Bangalore": dict(ld_open=1040, ld_pre=(150, 150, 150), ld_wk=(152, 176, 169, 146, 122, 84, 72, 98, 162, 182, 181, 207, 199, 104), ld_churn=(562, 583, 599, 599),
+                own_open=668, own_pre=(23, 23), own_wk=(23, 60, 58, 50, 42, 30, 26, 35, 59, 66, 53, 61, 59, 31), own_churn=(50, 73, 79, 90), own_roll=(0, 0, 0, 0)),
+    "Hyderabad": dict(ld_open=1035, ld_pre=(173, 173, 173), ld_wk=(173, 200, 191, 165, 138, 95, 80, 109, 182, 203, 196, 224, 215, 113), ld_churn=(673, 685, 691, 677),
+                own_open=281, own_pre=(20, 20), own_wk=(20, 50, 48, 41, 35, 25, 21, 29, 49, 54, 44, 51, 49, 25), own_churn=(10, 15, 16, 19), own_roll=(17, 25, 28, 32)),
+    "Chennai": dict(ld_open=899, ld_pre=(132, 132, 132), ld_wk=(133, 154, 147, 127, 108, 73, 62, 84, 141, 158, 156, 178, 170, 89), ld_churn=(503, 518, 528, 522),
+                own_open=428, own_pre=(15, 14), own_wk=(14, 42, 41, 35, 29, 22, 19, 25, 42, 48, 38, 43, 41, 22), own_churn=(33, 48, 52, 60), own_roll=(0, 0, 0, 0)),
+    "Kolkata": dict(ld_open=300, ld_pre=(50, 50, 50), ld_wk=(52, 54, 52, 45, 37, 23, 20, 27, 45, 49, 45, 51, 49, 25), ld_churn=(219, 207, 193, 172),
+                own_open=185, own_pre=(12, 11), own_wk=(11, 17, 17, 14, 12, 7, 6, 8, 14, 15, 15, 17, 16, 8), own_churn=(14, 20, 21, 25), own_roll=(0, 0, 0, 0)),
+    "Pune": dict(ld_open=694, ld_pre=(114, 114, 114), ld_wk=(114, 126, 121, 104, 88, 57, 48, 66, 109, 122, 114, 130, 125, 66), ld_churn=(472, 461, 446, 416),
+                own_open=267, own_pre=(14, 13), own_wk=(13, 25, 24, 21, 18, 12, 10, 13, 22, 25, 22, 25, 24, 13), own_churn=(20, 30, 32, 37), own_roll=(0, 0, 0, 0)),
+}
+LK_WEEKS_IN_MONTH = {"ld": (4, 4, 5, 4), "own": (3, 4, 5, 4)}  # Lakshya months: L+DTO from 31 Aug, Own Now from ~6 Sep
+
+
+# ---------------------------------------------------------------- v2: Lakshya as given
+# python3 build_weekly_supply_plan.py out.xlsx raw.json --v2
+# Every Own Now and L+DTO number on the city tabs is Lakshya v4's: weekly driver acquisition as given, churn and
+# rollover by Lakshya month spread evenly over its weeks, starting from Lakshya's own book on the opening date.
+# EIP (not weekly in Lakshya) runs in a straight line from the actual to its December target.
+V2 = False
+LW_TAB = "Lakshya Weekly"
+LW = f"'{LW_TAB}'"
+R_LW_LD0 = 5                    # L+DTO driver acquisition, city rows (header row above)
+R_LW_OW0 = R_LW_LD0 + 11        # Own Now driver acquisition
+R_LW_CH0 = R_LW_OW0 + 11        # churn / rollover by month
+R_LW_WK = R_LW_CH0 + 8          # weeks in each Lakshya month
+R_LW_ST0 = R_LW_WK + 4          # start book on the opening date
+
+
+def build_lk_weekly(wb):
+    ws = wb.create_sheet(LW_TAB, 2)
+    ws.sheet_properties.tabColor = TEAL
+    ws.column_dimensions["A"].width = 16
+    for j in range(2, 18):
+        ws.column_dimensions[get_column_letter(j)].width = 10
+    ws["A1"] = "LAKSHYA WEEKLY  -  the Lakshya v4 numbers the v2 city tabs run on"
+    ws["A1"].font = F_TITLE
+    ws["A2"] = ("Source: Lakshya_15000_Model_v4, Weekly L+DTO and Weekly Own Now tabs. Opening book + weekly driver acquisition "
+                "- monthly churn = Lakshya's month-end books, for every city. Cream = Lakshya's figures, typed as given.")
+    ws["A2"].font = F_NOTE
+    n = len(CITIES)
+    week_hdr = [f"w/e {d}" for d in ("27 Sep", "4 Oct", "11 Oct", "18 Oct", "25 Oct", "1 Nov", "8 Nov", "15 Nov",
+                                     "22 Nov", "29 Nov", "6 Dec", "13 Dec", "20 Dec", "27 Dec")]
+
+    def weekly(r0, title, key):
+        ws.cell(r0 - 2, 1, title).font = F_SECTION
+        for j, t in enumerate(["City"] + week_hdr + ["Total"], start=1):
+            hdr(ws, r0 - 1, j, t)
+        for i, c in enumerate(CITIES):
+            put(ws, r0 + i, 1, c, bold=True)
+            for w in range(N_WEEKS):
+                inp(ws, r0 + i, 2 + w, LK_WEEKLY[c][key][w], NUM)
+            put(ws, r0 + i, 2 + N_WEEKS, f"=SUM(B{r0 + i}:{get_column_letter(1 + N_WEEKS)}{r0 + i})", NUM, bold=True)
+        india_row(ws, r0 + n, range(2, 3 + N_WEEKS))
+
+    weekly(R_LW_LD0, "1.  LEASING + DTO - driver acquisition per week", "ld_wk")
+    weekly(R_LW_OW0, "2.  OWN NOW - driver acquisition per week (new + existing cars)", "own_wk")
+    ws.cell(R_LW_CH0 - 2, 1, "3.  CHURN BY LAKSHYA MONTH - spread evenly over the month's weeks on the city tabs").font = F_SECTION
+    for c0, t in ((2, "L+DTO churn"), (6, "Own Now churn"), (10, "Own Now purchase rollover")):
+        for m, mon in enumerate(MONTHS):
+            hdr(ws, R_LW_CH0 - 1, c0 + m, f"{t} {mon}")
+    hdr(ws, R_LW_CH0 - 1, 1, "City")
+    ws.row_dimensions[R_LW_CH0 - 1].height = 30
+    for i, c in enumerate(CITIES):
+        put(ws, R_LW_CH0 + i, 1, c, bold=True)
+        for m in range(4):
+            inp(ws, R_LW_CH0 + i, 2 + m, LK_WEEKLY[c]["ld_churn"][m], NUM)
+            inp(ws, R_LW_CH0 + i, 6 + m, LK_WEEKLY[c]["own_churn"][m], NUM)
+            inp(ws, R_LW_CH0 + i, 10 + m, LK_WEEKLY[c]["own_roll"][m], NUM)
+    india_row(ws, R_LW_CH0 + n, range(2, 14))
+    put(ws, R_LW_WK, 1, "Weeks in the month", bold=True)
+    for m in range(4):
+        for c0, key in ((2, "ld"), (6, "own"), (10, "own")):
+            inp(ws, R_LW_WK, c0 + m, LK_WEEKS_IN_MONTH[key][m], "0")
+    ws.cell(R_LW_WK + 1, 1, "Lakshya's September runs from 31 Aug for L+DTO (4 weeks) and from ~6 Sep for Own Now (3 weeks); "
+                            "only the week to 27 Sep is in the plan.").font = F_NOTE
+
+    ws.cell(R_LW_ST0 - 2, 1, "4.  START - Lakshya's own book on the opening date (where the v2 plan starts)").font = F_SECTION
+    heads = ["City", "L+DTO opening 31 Aug", "L+DTO acquisition w/e 6-20 Sep", "L+DTO on 20 Sep", "Own Now opening ~6 Sep",
+             "Own Now acquisition w/e 13-20 Sep", "Own Now on 20 Sep", "Fleet at start (Lakshya base)",
+             "Actual on 20 Sep: L+DTO", "Actual: Own Now", "Start gap (Own Now + L+DTO)"]
+    for j, t in enumerate(heads, start=1):
+        hdr(ws, R_LW_ST0 - 1, j, t)
+    ws.row_dimensions[R_LW_ST0 - 1].height = 42
+    for i, c in enumerate(CITIES):
+        r = R_LW_ST0 + i
+        put(ws, r, 1, c, bold=True)
+        inp(ws, r, 2, LK_WEEKLY[c]["ld_open"], NUM)
+        inp(ws, r, 3, sum(LK_WEEKLY[c]["ld_pre"]), NUM)
+        put(ws, r, 4, f"=B{r}+C{r}-B{R_LW_CH0 + i}*3/B{R_LW_WK}", NUM, bold=True)          # 3 of Sep's 4 weeks of churn
+        inp(ws, r, 5, LK_WEEKLY[c]["own_open"], NUM)
+        inp(ws, r, 6, sum(LK_WEEKLY[c]["own_pre"]), NUM)
+        put(ws, r, 7, f"=E{r}+F{r}-(F{R_LW_CH0 + i}+J{R_LW_CH0 + i})*2/F{R_LW_WK}", NUM, bold=True)  # 2 of 3 weeks
+        put(ws, r, 8, f"={ci('lk_fleet', i)}-Inputs!$G${R_ADD0 + i}+Inputs!$G${R_SALE0 + i}", NUM)
+        put(ws, r, 9, f"={ci('ldto', i)}", NUM, bg=ACTUAL)
+        put(ws, r, 10, f"={ci('own', i)}", NUM, bg=ACTUAL)
+        put(ws, r, 11, f"=I{r}+J{r}-D{r}-G{r}", "+#,##0;-#,##0;0", bold=True)
+    india_row(ws, R_LW_ST0 + n, range(2, 12))
+    ws.cell(R_LW_ST0 + n + 1, 1, "v2 starts every city from Lakshya's own 20 Sep book (columns D and G) and fleet (H), not the actual. "
+                                 "Start gap = how far the actual is from it: the plan in v1 closes this gap, v2 assumes it away.").font = F_NOTE
+    ws.freeze_panes = "B4"
+
+
+def v2_city_overrides(idx, w, r, p):
+    """City-tab formulas that make a plan week equal Lakshya's (logical column letters)."""
+    m = MONTHS.index(WEEK_MONTH[w])
+    wk = get_column_letter(2 + w)
+    f = {
+        "AT": f"={LW}!${wk}${R_LW_LD0 + idx}",
+        "AS": f"={LW}!${get_column_letter(2 + m)}${R_LW_CH0 + idx}/{LW}!${get_column_letter(2 + m)}${R_LW_WK}",
+        "AR": f"=AT{r}-AS{r}",
+        "AM": f"={LW}!${wk}${R_LW_OW0 + idx}",
+        "AK": f"={LW}!${get_column_letter(6 + m)}${R_LW_CH0 + idx}/{LW}!${get_column_letter(6 + m)}${R_LW_WK}",
+        "AL": f"={LW}!${get_column_letter(10 + m)}${R_LW_CH0 + idx}/{LW}!${get_column_letter(10 + m)}${R_LW_WK}",
+        "AJ": f"=AM{r}-AK{r}-AL{r}",
+        "AG": f"=({ci('t_eip', idx)}-$R${OPEN_ROW})/{N_WEEKS}",
+        "BM": f"=AG{r}+AJ{r}+AR{r}",
+        "X": f"=AH{r}+AJ{r}", "W": f"=AP{r}+AR{r}",
+        "BP": f'=IF(AF{r}="Diwali","Diwali (Lakshya)",IF(BM{r}-BJ{r}<=BI{r}+0.5,"Yes","{ABOVE}"))',
+    }
+    if w == 0:  # start from Lakshya's own book and fleet on the opening date
+        f.update({
+            "AH": f"={LW}!$G${R_LW_ST0 + idx}", "AP": f"={LW}!$D${R_LW_ST0 + idx}",
+            "G": f"=R{p}+AH{r}+AP{r}", "H": f"=AH{r}+AP{r}",
+            "E": f"={LW}!$H${R_LW_ST0 + idx}+AD{r}-AE{r}", "F": f"=E{r}-{LW}!$H${R_LW_ST0 + idx}",
+        })
+    return f
 
 
 def all_cities(cell):
@@ -1476,6 +1615,15 @@ def build_readme(wb):
     ws.sheet_view.showGridLines = False
     r = 1
     ws.cell(r, 1, "READ ME - how this plan gets from today to 27 December").font = F_TITLE
+    if V2:
+        ws.cell(r, 1, "READ ME - v2: LAKSHYA AS GIVEN").font = F_TITLE
+        c = ws.cell(r + 3, 1, "v2: every Own Now and Leasing + DTO number on the city tabs is Lakshya v4's - weekly driver acquisition as given, churn and "
+                              "rollover by month spread evenly, starting from Lakshya's own 20 Sep book and fleet (Lakshya Weekly tab). EIP runs in a straight line to its target. "
+                              "The pace switch, Diwali dip and last-year churn shape described below are NOT used in v2; the 'Above LY pace' flags only compare Lakshya with last year.")
+        c.font = Font(name="Calibri", size=10, bold=True, color="FFC00000")
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells(start_row=r + 3, start_column=1, end_row=r + 3, end_column=12)
+        ws.row_dimensions[r + 3].height = 42
     r += 1
     ws.cell(r, 1, "Lakshya 15,000 weekly supply plan. Numbers in the tables below are live formulas from the city tabs.").font = F_NOTE
     ws.cell(r + 1, 1, "Lakshya source:").font = F_BOLD
@@ -1517,7 +1665,7 @@ def build_readme(wb):
         r += 1
         s = q(city)
         put(ws, r, 1, city, bold=True)
-        put(ws, r, 2, f"={s}!Y{OPEN_ROW}", NUM)
+        put(ws, r, 2, f"={s}!G{FIRST}", NUM)
         for j, season in enumerate(SEASONS):
             put(ws, r, 3 + j, f'=SUMIF({rng(s, "AF")},"{season}",{rng(s, "BM")})-SUMIF({rng(s, "AF")},"{season}",{rng(s, "BJ")})', NUM)
         put(ws, r, 6, f"=SUM({rng(s, 'BJ')})", NUM)
@@ -1691,7 +1839,7 @@ def build_dashboard(wb):
         return f'=IF({PICK}="India",{india},CHOOSE(MATCH({PICK},{city_list},0),{",".join(exprs)}))'
 
     # ---- top
-    ws["A1"] = "MONTHLY DASHBOARD  -  India and every city, month by month"
+    ws["A1"] = "MONTHLY DASHBOARD  -  India and every city, month by month" + ("  (v2: LAKSHYA AS GIVEN)" if V2 else "")
     ws["A1"].font = F_TITLE
     ws["A3"] = "Show (pick):"
     ws["A3"].font = F_BOLD
@@ -1724,11 +1872,15 @@ def build_dashboard(wb):
     ws.row_dimensions[R_MV_H].height = 42
     # start row
     r = R_MV_S
-    put(ws, r, 1, f'="Start ("&TEXT({G_OPEN_DATE},"d mmm")&")"', bold=True, bg=ACTUAL)
+    put(ws, r, 1, f'="Start ("&TEXT({G_OPEN_DATE},"d mmm")&")"' if not V2 else "Start (Lakshya 20 Sep)", bold=True, bg=ACTUAL)
     for h, kind, src in mv:
         j = column_index_from_string(col[h])
         if kind == "stock":
-            put(ws, r, j, pick([f"{s}!${src}${OPEN_ROW}" for s in cities]), NUM, bg=ACTUAL)
+            start = {  # the first plan week's opening: the actual in v1, Lakshya's own book in v2
+                "E": lambda s_: f"{s_}!$E${FIRST}-{s_}!$F${FIRST}", "R": lambda s_: f"{s_}!$R${OPEN_ROW}",
+                "X": lambda s_: f"{s_}!$AH${FIRST}", "W": lambda s_: f"{s_}!$AP${FIRST}", "Y": lambda s_: f"{s_}!$G${FIRST}",
+            }[src]
+            put(ws, r, j, pick([start(s_) for s_ in cities]), NUM, bg=ACTUAL)
         elif kind == "util":
             put(ws, r, j, f"={ONR}{r}/{FLT}{r}", PCT, bg=ACTUAL)
         else:
@@ -1793,7 +1945,7 @@ def build_dashboard(wb):
     AL_, AP_, AD_, AX_ = (L(ATT0 + k) for k in range(4))
     hdr(ws, R_LV_G, ATT0, "ATTRITION % A MONTH (Own Now + L+DTO book)", GREY_HDR)
     ws.merge_cells(start_row=R_LV_G, start_column=ATT0, end_row=R_LV_G, end_column=ATT0 + 3)
-    for k, t in enumerate(("Lakshya", "Plan (last year's shape)", "Plan - Lakshya", "Extra drivers to replace churn")):
+    for k, t in enumerate(("Lakshya", "Plan" if V2 else "Plan (last year's shape)", "Plan - Lakshya", "Extra drivers to replace churn")):
         hdr(ws, R_LV_H, ATT0 + k, t)
     for j in range(23, 27):
         ws.column_dimensions[L(j)].width = 11
@@ -1879,7 +2031,10 @@ def build_dashboard(wb):
                          f'&IF(ABS(G{pbr}-F{pbr})>=0.5,TEXT(G{pbr}-F{pbr},"#,##0;-#,##0")&" catch-up from the 20 Sep actual"&IF(I{pbr}-H{pbr}<0," - "," + "),IF(I{pbr}-H{pbr}<0,"-",""))'
                          f'&TEXT(ABS(I{pbr}-H{pbr}),"#,##0")&" for churn (last year\'s attrition "&TEXT(K{pbr},"0%")&" a month vs Lakshya\'s "&TEXT(J{pbr},"0%")&")"'
                          f'&IF(ABS(L{pbr})>=0.5," + "&TEXT(L{pbr},"#,##0")&" re-acquired after the Diwali dip","")&"."')
-        if key == "start":
+        if key == "start" and V2:
+            why = (f'="v2 starts from Lakshya\'s own 20 Sep book, not the actual (Lakshya Weekly tab: the actual is "'
+                   f'&TEXT(-{LW}!$K${R_LW_ST0 + ncity},"#,##0")&" below it for India)."')
+        elif key == "start":
             why = ('="Lakshya starts from Own Now ~6 Sep and L+DTO 31 Aug; the plan from the "&TEXT('
                    + G_OPEN_DATE + ',"d mmm")&" actual."')
         elif key == "total":
@@ -1947,7 +2102,9 @@ def build_dashboard(wb):
             # Lakshya's book on the plan's opening date: its path from ~6 Sep (Own Now, 3 weeks) and 31 Aug (L+DTO, 4 weeks)
             own0, ldto0 = sum(LK_OWN_OPEN.values()), sum(LK_LDTO_OPEN.values())
             lk_start = f"={own0}+(Inputs!$F${R_MS0 + ni}-{own0})*2/3+{ldto0}+(Inputs!$J${R_MS0 + ni}-{ldto0})*3/4"
-            pl_start = "=" + "+".join(f"{s}!$X${OPEN_ROW}+{s}!$W${OPEN_ROW}" for s in cities)
+            if V2:  # Lakshya's exact book on the opening date (Lakshya Weekly tab)
+                lk_start = f"={LW}!$D${R_LW_ST0 + ni}+{LW}!$G${R_LW_ST0 + ni}"
+            pl_start = "=" + "+".join(f"{s}!$AH${FIRST}+{s}!$AP${FIRST}" for s in cities)
         else:
             lk_start, pl_start = f"=D{r - 1}", f"=E{r - 1}"
         mref = f"$A{r}"
@@ -1958,7 +2115,7 @@ def build_dashboard(wb):
             (8, f"=M{r}-F{r}"),
             (9, "=" + "+".join("+".join(_flow(s, x, mref) for x in ("AK", "AL", "AS")) for s in cities)),
             (10, churn_pct(f"H{r}", f"B{r}", f"D{r}", weeks)), (11, churn_pct(f"I{r}", f"C{r}", f"E{r}", weeks)),
-            (12, f"=N{r}-G{r}-I{r}"), (13, lk_pl_mon[mon]),
+            (12, f"=ROUND(N{r}-G{r}-I{r},0)"), (13, lk_pl_mon[mon]),
             (14, "=" + "+".join(_flow(s, "AU", mref) for s in cities)),
             (15, f"=N{r}-M{r}"), (16, f"=N{r}/M{r}-1"),
         ]
@@ -1996,6 +2153,9 @@ def build_dashboard(wb):
     ws.merge_cells(start_row=r, start_column=17, end_row=r, end_column=22)
     ws.row_dimensions[r].height = 30
     red_if(f"O{R_PB0}:O{R_PB_TOT}", f"O{R_PB0}<-0.5")
+    if V2:
+        ws.cell(R_PB_TOT + 2, 1, "v2: the plan's churn is Lakshya's monthly churn spread evenly over the weeks, and it starts from Lakshya's own 20 Sep book, "
+                                 "so every column matches.").font = F_NOTE
     ws.cell(R_PB_TOT + 1, 1, "Churn % a month = churn / weeks x 52/12 / average book (Own Now + L+DTO). Lakshya churn = its driver acquisition - its net add "
                              "(a flat rate every week); plan churn = the same monthly rates shaped by last year's weekly attrition (city tabs AK, AL, AS). "
                              "Lakshya's Sep start = its path on the opening date. Diwali: the two dip weeks plan no driver acquisition; drivers for the cars lost are acquired again after.").font = F_NOTE
@@ -2025,7 +2185,8 @@ def build_dashboard(wb):
         f'Lakshya: "&TEXT({c1("D")},"#,##0")&IF(ABS({c1("C")}-{c1("D")})<0.5," - the plan lands on it."," - gap "&TEXT({c1("C")}-{c1("D")},"#,##0")&".")',
         f'="Where the growth comes from: "&TEXT({newc},"#,##0")&" new cars put on road ("&TEXT({newc}/({c1("C")}-{c1("B")}),"0%")&") and "&TEXT({c1("C")}-{c1("B")}-{newc},"#,##0")'
         f'&" organic growth from recruitment net of churn ("&TEXT(1-{newc}/({c1("C")}-{c1("B")}),"0%")&")."',
-        f'="Own Now + L+DTO book growth per week: {per_week("G", SIGNED)}. The two Diwali weeks (w/c 2 and 9 Nov) take "&TEXT(ABS({dip}),"#,##0")&" cars off the road; new cars that arrive then go on road from w/c 16 Nov."',
+        (f'="Own Now + L+DTO book growth per week: {per_week("G", SIGNED)}. Lakshya\'s Diwali trough is in its weekly driver acquisition (w/e 8 and 15 Nov)."' if V2 else
+         f'="Own Now + L+DTO book growth per week: {per_week("G", SIGNED)}. The two Diwali weeks (w/c 2 and 9 Nov) take "&TEXT(ABS({dip}),"#,##0")&" cars off the road; new cars that arrive then go on road from w/c 16 Nov."'),
         f'="Driver acquisition: "&TEXT({pbt("N")},"#,##0")&" in {N_WEEKS} weeks ("&TEXT({pbt("N")}/{N_WEEKS},"#,##0")&" a week). Per week by month: {per_week("N", "#,##0")}."',
         f'="Churn: "&TEXT({pbt("I")},"#,##0")&" drivers leave ("&TEXT({pbt("K")},"0%")&" of the book a month), so "&TEXT({pbt("I")}/{pbt("N")},"0%")&" of driver acquisition only replaces churn and "&TEXT(1-{pbt("I")}/{pbt("N")},"0%")&" adds to the road."',
         ("ARRAY", f'="Most growth: "&INDEX({c1r("A")},MATCH(MAX({growth}),{growth},0))&" ("&TEXT(MAX({growth}),"+#,##0")&"). Least: "&INDEX({c1r("A")},MATCH(MIN({growth}),{growth},0))&" ("&TEXT(MIN({growth}),"{SIGNED}")&"). '
@@ -2033,7 +2194,7 @@ def build_dashboard(wb):
         f'="Own Now + L+DTO book vs Lakshya at each month-end: {me_gap}"&IF(({me_short})=0," - on Lakshya every month."," - section 2 shows why.")',
         f'=IF(({above})="","No city ends above its max utilisation.","Above max utilisation on 27 Dec: "&LEFT({above},LEN({above})-2)&" - these need more fleet or fewer cars sold.")',
         f'="Lakshya vs our plan: "&IF(ABS({c1("C")}-{c1("D")})<0.5,"both land on "&TEXT({c1("D")},"#,##0"),"the plan lands on "&TEXT({c1("C")},"#,##0")&" vs Lakshya\'s "&TEXT({c1("D")},"#,##0"))&" on 27 Dec. '
-        f'It needs "&TEXT({pbt("N")},"#,##0")&" driver acquisitions vs Lakshya\'s "&TEXT({pbt("M")},"#,##0")&" ("&TEXT({pbt("O")},"{SIGNED}")&"); fleet on 27 Dec "&TEXT({c1("I")}-{c1("J")},"{SIGNED}")&" vs Lakshya."',
+        f'It needs "&TEXT({pbt("N")},"#,##0")&" driver acquisitions vs Lakshya\'s "&TEXT({pbt("M")},"#,##0")&" ("&TEXT({pbt("O")},"{SIGNED}")&"); fleet on 27 Dec "&TEXT(ROUND({c1("I")}-{c1("J")},0),"{SIGNED}")&" vs Lakshya."',
         f'=IF({G_CAP}="No","Stretch vs last year: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks need more organic growth than the city\'s best 4-week pace of 2024/25 (red in city tab column BP) - the price of matching Lakshya at every month-end. Biggest single city-week: "&TEXT({top_org},"0.0%")&" organic growth.",'
         f'"Realism: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks are held to last year\'s pace, so no week plans more organic growth than 2024/25 showed (Diwali_Dip Analysis tab).")',
     ]
@@ -2339,6 +2500,8 @@ def main(out, raw_path):
     wb = Workbook()
     build_inputs(wb)
     build_dip(wb)
+    if V2:
+        build_lk_weekly(wb)
     for i, city in enumerate(CITIES):
         build_city(wb, i, city)
     build_compare(wb)
@@ -2351,4 +2514,5 @@ def main(out, raw_path):
 
 
 if __name__ == "__main__":
+    V2 = "--v2" in sys.argv[3:]
     main(sys.argv[1], sys.argv[2])
