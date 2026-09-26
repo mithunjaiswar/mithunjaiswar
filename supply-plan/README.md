@@ -15,7 +15,7 @@ python3 build_weekly_supply_plan.py out.xlsx raw.json   # raw.json = {"hdr": [..
 | Read Me | How the plan bridges 20 Sep to 27 Dec: the rule, the bridge by season, India week by week vs last year |
 | Lakshya vs Plan | Lakshya v4 as given next to this plan, for sharing |
 | Summary View | Dashboard with a city picker: plan, actual and same week last year per metric |
-| Inputs | Everything editable: targets, rates, new cars / sales by month, calendar, festival impacts, proven pace |
+| Inputs | Everything the plan is built from, in three parts: **A** what you set (A1 dates and switches, A2 city start / Dec targets / rates, A3 Lakshya month-end targets, A4 new cars, A5 cars sold, A6 weekly calendar), **B** learnt from last year (B1 proven pace, B2 Diwali dip, B3 festival impact), **C** output and sources |
 | Mumbai … Pune | One tab per city, Weekly Supply Plan layout (A–AC), Lakshya build-up (AF–AW), last year and seasonality (AY–BF), realism check (BH–BQ) |
 | Combined All | One QUERY stacking every city tab (same columns as the Weekly Supply Plan's Combined All) |
 | raw_performance | Output of the SSOT query (`analytics.ssot_scorecard_agg`) |
@@ -25,14 +25,14 @@ python3 build_weekly_supply_plan.py out.xlsx raw.json   # raw.json = {"hdr": [..
 1. **New cars** go on road the week after they arrive (2,300 cars, Oct–Nov).
 2. **Organic growth** (recruitment net of churn) is asked for its share of the gap to **Lakshya's next
    month-end** (Own Now and Leasing+DTO books on 27 Sep, 25 Oct, 29 Nov, 27 Dec; EIP on a straight line —
-   Inputs section 10), after the new cars due that month: gap ÷ weeks left in the month, less in festival weeks (festival impact on recruitment from the
+   Inputs A3), after the new cars due that month: gap ÷ weeks left in the month, less in festival weeks (festival impact on recruitment from the
    Weekly Supply Plan's `seasonality_Impect` tab). Weeks with no festival get a factor of 1.
 3. That organic growth is **capped at the city's proven pace**: its best 4-week average weekly growth in
    cars on road in the same season of 2024 or 2025 (Pre-Diwali, Diwali, Post-Diwali), floored at 0%.
    A capped week rolls the rest into the next month; if the gap can't close by 27 Dec the city lands short.
    Nothing forces a spike in the last weeks.
 4. **Diwali weeks (w/c 2 and 9 Nov)** do not grow: cars on road follow each city's average dip of 2024 and
-   2025 in the same festival weeks (India −3.3% then −5.9%, −9.1% over the two weeks; Inputs section 9).
+   2025 in the same festival weeks (India −3.3% then −5.9%, −9.1% over the two weeks; Inputs B2).
    The dip comes out of the Leasing+DTO book, and new cars that land in those weeks wait and go on road
    from the recovery week at up to 1.5× the normal weekly rate. The weeks before and after make up the dip.
 5. Each layer (EIP / Own Now / Leasing+DTO) is planned to its own month-end target; when the pace cap moves the
