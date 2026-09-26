@@ -1831,7 +1831,7 @@ def build_dashboard(wb):
                 pl = f"={plan_cols[0]}{mv_row}"
             put(ws, r, column_index_from_string(cl), lk, NUM, bg=bg)
             put(ws, r, column_index_from_string(cp), pl, NUM, bg=bg)
-            dv_ = None if lk is None else f'=IF(OR({cl}{r}="",{cp}{r}=""),"",{cp}{r}-{cl}{r})'
+            dv_ = None if lk is None else f'=IF(OR({cl}{r}="",{cp}{r}=""),"",ROUND({cp}{r}-{cl}{r},0))'
             put(ws, r, column_index_from_string(cd), dv_, DIFF, bold=True, bg=bg)
         onr_d = f"{lv[3][2]}{r}"
         if key == "start":
