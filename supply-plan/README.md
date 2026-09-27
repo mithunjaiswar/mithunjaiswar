@@ -31,7 +31,8 @@ A realistic path from the current run rate to the December target, with an opera
    the same way by at least 5% (Seasonality Check tab).
 6. **To Lakshya**: a steady extra hiring ramp on top of the run rate — the same extra each week, solved so 27 Dec
    lands on Lakshya — flagged wherever driver acquisition exceeds the city's proven capacity (best 4 weeks since
-   Sep 2025). Inputs A1 picks the plan: `Lakshya`, `Capacity` (same ramp, never above capacity) or `Run rate`.
+   Sep 2025). Inputs A1 picks the plan: `Capacity` (the default: same ramp, but total driver acquisition in any week
+   never above the city's best, so 27 Dec can land below Lakshya), `Lakshya` (full ramp) or `Run rate`.
    All three paths are always shown, next to AOP and Lakshya.
 
 ## Tabs

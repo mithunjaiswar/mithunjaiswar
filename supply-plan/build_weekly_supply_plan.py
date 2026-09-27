@@ -506,7 +506,7 @@ def build_city(wb, idx, city):
             "BK": f"=BH{r}*(1+BE{r})*AC{r}/7",
             # the plan's extra hiring: the steady ramp to Lakshya, the same ramp kept within proven capacity, or none
             "BL": f'=IF({G_CAP}="Lakshya",{STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,IF({G_CAP}="Capacity",CE{r},0))',
-            "CE": f"=MIN({STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,MAX(0,BI{r}*AC{r}/7-BK{r}-BJ{r}))",  # a negative step (run rate above Lakshya) passes through
+            "CE": f"=MIN({STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,BI{r}*AC{r}/7-BK{r}-BJ{r})",  # total acquisition (run rate + new-car drivers + ramp) never above proven capacity
             "CF": (f"=AH{r}+AP{r}+BK{r}+BJ{r}+CE{r}-(AH{r}+AP{r})*BR{r}*AC{r}/7" if w == 0
                    else f"=CF{p}+BK{r}+BJ{r}+CE{r}-CF{p}*BR{r}*AC{r}/7"),
             "CG": f"=R{r}+CF{r}",
@@ -714,9 +714,10 @@ def build_inputs(wb):
         ("Actuals used up to", dt.date(2026, 9, 26), DATE, True,
          "The plan is based on actuals up to this day (Sat 26 Sep): opening numbers, the run rate and the last actual week "
          "(w/c 21 Sep, 6 of 7 days, scaled to a week). Move it on only when newer days are loaded in raw_performance."),
-        ("December target", "Lakshya", None, True,
-         "Lakshya = a steady hiring ramp on top of the run rate (the same extra every week) so 27 Dec lands on Lakshya; weeks above "
-         "proven capacity show red. Capacity = the same ramp, never above proven capacity. Run rate = no extra hiring."),
+        ("December target", "Capacity", None, True,
+         "Capacity (used) = the steady hiring ramp toward Lakshya, but total driver acquisition in a week (run rate + drivers for new "
+         "cars + ramp) never above the city's best (proven capacity, Inputs A3) - 27 Dec may land below Lakshya. Lakshya = the full "
+         "ramp to Lakshya, even above proven capacity (weeks show red). Run rate = no extra hiring."),
         ("Seasonal change: minimum in both years", 0.05, "0%", True,
          f"A season changes hiring or attrition only if 2024 and 2025 both moved the same way by at least this ({SEAS_TAB} tab)."),
     ]
@@ -1438,7 +1439,8 @@ def build_readme(wb):
         "To reach Lakshya on 27 Dec the plan adds a steady hiring ramp on top of the run rate: the same extra number of drivers every "
         "week (1x in week 1, 2x in week 2, ...), never a jump. Each city tab shows the step (column BL) and flags weeks where total "
         "driver acquisition is above the city's proven capacity - its best 4 weeks since Sep 2025 (column BP). Inputs A1 picks the plan: "
-        "'Lakshya' (the full ramp), 'Capacity' (the same ramp, never above proven capacity - it may land short) or 'Run rate' (no extra hiring). "
+        "'Capacity' (used: the same ramp, but total driver acquisition in any week never above the city's proven capacity - so 27 Dec lands "
+        "below Lakshya where hiring can't get there), 'Lakshya' (the full ramp, even above proven capacity) or 'Run rate' (no extra hiring). "
         "All three paths are shown on the Monthly Dashboard and the LY vs CY vs Plan tab whichever is picked.",
         "The path is shown against AOP (the baseline, Inputs A5) and Lakshya (the target, Inputs A4) on the Monthly Dashboard and the "
         "LY vs CY vs Plan tab.",
@@ -1469,7 +1471,7 @@ def build_readme(wb):
                                                                      fill=fill("FFFFC7CE")))
     r += 1
     ws.cell(r, 1, "Run rate = today's hiring and attrition with validated seasonality, plus a driver for every new car. Within capacity = + the "
-                  "extra ramp up to proven capacity. Plan = the option in Inputs A1. Peak week above proven capacity (red) = hiring the city has not shown in the last year.").font = F_NOTE
+                  "extra ramp, total driver acquisition never above proven capacity. Plan = the option in Inputs A1. Peak week above proven capacity (red) = hiring the city has not shown in the last year.").font = F_NOTE
     r += 3
 
     r = para(r, "3.  NEW CARS - linked to drivers", [
@@ -1833,6 +1835,7 @@ def build_dashboard(wb):
     step_cities = "&".join(f'IF(ABS({q(c_)}!{STEP_CELL})>=0.5,"{c_} "&TEXT({q(c_)}!{STEP_CELL},"0;-0")&", ","")' for c_ in CITIES)
     above = "&".join(f'IF(Inputs!$P${R_SUM0 + i}<0,"{c_} "&TEXT(Inputs!$N${R_SUM0 + i},"0.0%")&" vs max "&TEXT(Inputs!$O${R_SUM0 + i},"0.0%")&", ","")'
                      for i, c_ in enumerate(CITIES))
+    short = "&".join(f'IF(Inputs!$E${R_SUM0 + i}<=-0.5,"{c_} "&TEXT(Inputs!$E${R_SUM0 + i},"#,##0")&", ","")' for i, c_ in enumerate(CITIES))
     over_cap = "&".join(f'IF(Inputs!$V${R_SUM0 + i}>0,"{c_} ("&Inputs!$V${R_SUM0 + i}&" wks), ","")' for i, c_ in enumerate(CITIES))
     seas_yes = f'COUNTIF({SQ}!$C${R_CK0}:$N${R_CK0 + 2 * n - 1},"Yes")'
     ins = [
@@ -1875,6 +1878,11 @@ def build_dashboard(wb):
         (f'=IF({c1("Y")}<0.5,"Cars: the fleet carries the plan within every city\'s max utilisation.","Cars: at max utilisation the fleet is "'
          f'&TEXT({c1("Y")},"#,##0")&" cars short of the plan on 27 Dec ("&IF(({above})="","",LEFT({above},LEN({above})-2))&") - the plan needs '
          f'more cars or fewer cars sold.")'),
+        # hiring capped at proven capacity: Lakshya's cars that no driver fills
+        (f'=IF({c1("E")}>-0.5,"Hiring reaches Lakshya in every city.","Short of Lakshya on 27 Dec by "&TEXT(-{c1("E")},"#,##0")'
+         f'&" cars on road, because no city hires above its best week ("&LEFT({short},LEN({short})-2)&"). Util 27 Dec "'
+         f'&TEXT({c1("N")},"0.0%")&" vs Lakshya "&TEXT({c1("D")}/{c1("M")},"0.0%")&": these cities\' new cars stand without drivers '
+         f'unless hiring goes above what they have done in the last year.")'),
     ]
     for k, f in enumerate(ins):
         r = R_IN_T + 1 + k
@@ -2037,7 +2045,7 @@ def build_bridge(wb):
     notes = [
         "Last year, same weeks: cars on road on the same Sunday of 2025; driver acquisition and attrition averaged over the plan's weeks a year earlier.",
         "Run rate: today's hiring (last 4 weeks) and attrition with validated seasonality, plus a driver for every new car - no extra hiring.",
-        "Within proven capacity: the steady extra ramp, but never above the city's best 4 weeks since Sep 2025. Plan: the option chosen in Inputs A1.",
+        "Within proven capacity: the steady extra ramp, but total driver acquisition never above the city's best 4 weeks since Sep 2025. Plan: the option chosen in Inputs A1.",
     ]
     for k, t in enumerate(notes):
         ws.cell(11 + k, 1, t).font = F_NOTE
