@@ -23,6 +23,9 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.utils import column_index_from_string, get_column_letter
 
+sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
+from plan_history import ALIGNED, ATTR_TREND, CAPACITY, SEASON_CHANGE, SEASON_OFFSETS  # noqa: E402
+
 # ---------------------------------------------------------------- data
 CITIES = ["Mumbai", "Delhi NCR", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune"]
 
@@ -60,103 +63,79 @@ CHANNEL = {
 }
 LAKSHYA_FLEET_DEC = {"Mumbai": 4508, "Delhi NCR": 3981, "Bangalore": 3599, "Hyderabad": 3143,
                      "Chennai": 2972, "Kolkata": 1046, "Pune": 1664}
-# New cars by month (Sep 21-30, Oct, Nov, Dec). All land by 30 Nov.
-ADDS = {"Mumbai": (0, 234, 233, 0), "Delhi NCR": (0, 0, 0, 0), "Bangalore": (0, 317, 316, 0),
-        "Hyderabad": (0, 317, 316, 0), "Chennai": (0, 242, 241, 0), "Kolkata": (0, 0, 0, 0),
-        "Pune": (0, 42, 42, 0)}
-LAKSHYA_ADDS = {"Mumbai": 467, "Delhi NCR": 0, "Bangalore": 633, "Hyderabad": 633, "Chennai": 483,
-                "Kolkata": 0, "Pune": 84}
-SALES = {"Mumbai": (0, 50, 50, 51), "Delhi NCR": (0, 70, 70, 69), "Bangalore": (0, 17, 17, 16),
-         "Hyderabad": (0, 17, 17, 16), "Chennai": (0, 17, 17, 16), "Kolkata": (0, 17, 17, 16),
-         "Pune": (0, 54, 54, 53)}
+# Lakshya v4 new cars by month (Sep, Oct, Nov, Dec): 2,300 in all, landed by 30 Nov
+LAKSHYA_ADDS_M = {"Mumbai": (0, 234, 233, 0), "Delhi NCR": (0, 0, 0, 0), "Bangalore": (0, 317, 316, 0),
+                  "Hyderabad": (0, 317, 316, 0), "Chennai": (0, 242, 241, 0), "Kolkata": (0, 0, 0, 0),
+                  "Pune": (0, 42, 42, 0)}
+LAKSHYA_ADDS = {c: sum(v) for c, v in LAKSHYA_ADDS_M.items()}
+# New cars bought and waiting at the stock yard (New Car Stock Report, 27 Sep 2026), by RTO status:
+# (RTO process not started, under RTO process, registration done, ready for delivery)
+NEW_CAR_STOCK = {"Mumbai": (0, 0, 0, 8), "Delhi NCR": (0, 0, 0, 1), "Bangalore": (102, 0, 12, 50),
+                 "Hyderabad": (0, 56, 0, 125), "Chennai": (0, 203, 0, 0), "Kolkata": (0, 0, 0, 0),
+                 "Pune": (0, 0, 0, 25)}
+# When each status reaches the fleet: (status, first plan week, last plan week); spread evenly in between.
+# Plan week 1 = w/c 28 Sep, week 8 = w/c 16 Nov: all 582 cars land within 8 weeks.
+DELIVERY_WINDOWS = [("RTO process not started", 5, 8), ("Under RTO process", 3, 6),
+                    ("Registration done", 2, 3), ("Ready for delivery", 1, 2)]
+# Cars sold by month (Oct, Nov, Dec): Lakshya's 721, even over Oct-Dec
+SALES = {"Mumbai": (50, 50, 51), "Delhi NCR": (70, 70, 69), "Bangalore": (17, 17, 16),
+         "Hyderabad": (17, 17, 16), "Chennai": (17, 17, 16), "Kolkata": (17, 17, 16),
+         "Pune": (54, 54, 53)}
 LAKSHYA_SALES = {"Mumbai": 151, "Delhi NCR": 209, "Bangalore": 50, "Hyderabad": 50, "Chennai": 50,
                  "Kolkata": 50, "Pune": 161}
 
-N_WEEKS = 14  # w/c 21 Sep ... w/c 21 Dec (w/e 27 Dec), the same 14 weeks as Lakshya v4
-# Season of each plan week (Diwali: Sun 8 Nov 2026)
-SEASONS = ["Pre-Diwali", "Diwali", "Post-Diwali"]
-WEEK_SEASON = ["Pre-Diwali"] * 6 + ["Diwali"] * 2 + ["Post-Diwali"] * 6
-# Proven weekly pace: best 4-week average weekly growth in cars on road (allotted_cars_eod, Sunday to
-# Sunday) in the same season of 2024 or 2025, whichever is higher, floored at 0. Order: Pre-Diwali,
-# Diwali, Post-Diwali. Seasons: 2024 Diwali 1 Nov, 2025 Diwali 20 Oct.
-PACE = {
-    "Mumbai":    (0.025, 0.0, 0.052),
-    "Delhi NCR": (0.0, 0.0, 0.048),
-    "Bangalore": (0.026, 0.004, 0.014),
-    "Hyderabad": (0.008, 0.010, 0.024),
-    "Chennai":   (0.023, 0.047, 0.047),
-    "Kolkata":   (0.007, 0.050, 0.049),
-    "Pune":      (0.023, 0.012, 0.054),
-}
-PACE_INDIA = (0.015, 0.0, 0.029)
-# Diwali dip: change in cars on road (allotted_cars_eod, Sunday to Sunday) around Diwali.
-# Run-up week = the week before the week with Bhai Dooj; Diwali week = the week with Bhai Dooj;
-# Recovery = the week after. 2024: w/e 27 Oct, 3 Nov, 10 Nov (Diwali Fri 1 Nov).
-# 2025: w/e 19 Oct, 26 Oct, 2 Nov (Diwali Mon 20 Oct). 2026: w/c 2 Nov, 9 Nov, 16 Nov (Diwali Sun 8 Nov).
-DIWALI_WEEK = {7: "Run-up week", 8: "Diwali week", 9: "Recovery week"}
-DIWALI_CARS = {  # cars on road on the Sundays: (week before run-up, run-up, Diwali, recovery) for 2024, 2025
-    "Mumbai":    ((3023, 2910, 2716, 2645), (2517, 2340, 2228, 2211)),
-    "Delhi NCR": ((2005, 1917, 1761, 1772), (2197, 2150, 2029, 2038)),
-    "Bangalore": ((1745, 1810, 1686, 1741), (2087, 1989, 1930, 1937)),
-    "Hyderabad": ((1039, 1071, 1001, 1004), (1463, 1422, 1395, 1409)),
-    "Chennai":   ((1143, 1111, 892, 1001), (1409, 1259, 1321, 1422)),
-    "Kolkata":   ((516, 543, 533, 545), (513, 503, 473, 498)),
-    "Pune":      ((1154, 1128, 998, 1073), (903, 827, 773, 833)),
-}
-DIWALI_SUNDAYS = (("20 Oct 24", "27 Oct 24", "3 Nov 24", "10 Nov 24"), ("12 Oct 25", "19 Oct 25", "26 Oct 25", "2 Nov 25"))
-# Same measure per year, for reference: (2024, 2025) x (Pre, Diwali, Post)
-PACE_HIST = {
-    "Mumbai":    ((0.025, -0.020, 0.052), (0.009, -0.025, 0.048)),
-    "Delhi NCR": ((0.000, -0.012, 0.048), (-0.012, -0.002, 0.040)),
-    "Bangalore": ((0.026, 0.004, 0.014), (0.012, -0.018, 0.013)),
-    "Hyderabad": ((0.008, 0.007, 0.024), (-0.001, 0.010, 0.022)),
-    "Chennai":   ((0.023, -0.018, 0.034), (0.014, 0.047, 0.047)),
-    "Kolkata":   ((0.007, 0.050, 0.021), (-0.008, 0.013, 0.049)),
-    "Pune":      ((0.023, -0.004, 0.032), (0.001, 0.012, 0.054)),
-    "INDIA":     ((0.015, -0.012, 0.029), (-0.001, -0.001, 0.027)),
-}
-# Event impact on recruitment by city (Mumbai, Delhi NCR, Bangalore, Hyderabad, Chennai, Kolkata, Pune):
-# "Rec Avg" (2024-25 average) from the seasonality_Impect tab of the Weekly Supply Plan. City-only events
-# are 0 in the other cities.
-SEASON_REC = {
-    "Mahatma Gandhi Jayanti": (-0.245, -0.12, -0.13, -0.305, -0.025, -0.67, 0.005),
-    "Dussehra": (-0.075, -0.09, -0.17, -0.475, -0.075, -1.37, -0.025),
-    "Kannada Rajyotsava": (0, 0, -0.19, 0, 0, 0, 0),
-    "Diwali (Laxmi Pujan)": (-0.415, -1.625, -0.385, -0.095, -0.315, -0.205, -0.61),
-    "Bhai Dooj": (-0.415, -1.625, -0.385, -0.095, -0.315, -0.205, -0.61),
-    "Guru Nanak Jayanti": (0.085, 0.06, 0.08, 0.01, -0.055, -0.01, 0.075),
-    "GHMC/MMC/CMC Election Hyderabad 2026": (0, 0, 0, 0, 0, 0, 0),
-    "KMC Election Kolkata 2026": (0, 0, 0, 0, 0, 0, 0),
-    "Christmas": (0.125, -0.005, -0.06, -0.03, -0.075, -0.295, -0.085),
-}
-# Event used for the impact lookup in each plan week (week 8 = Bali Pratipada + Bhai Dooj, same impact)
-WEEK_EVENT = {2: "Mahatma Gandhi Jayanti", 5: "Dussehra", 6: "Kannada Rajyotsava", 7: "Diwali (Laxmi Pujan)",
-              8: "Bhai Dooj", 10: "Guru Nanak Jayanti", 13: "KMC Election Kolkata 2026", 14: "Christmas"}
+N_WEEKS = 13  # the current week w/c 28 Sep ... w/c 21 Dec (w/e 27 Dec, Lakshya's last week)
+# Season block of each plan week, aligned on Diwali (Sun 8 Nov 2026; Bhai Dooj week = w/c 9 Nov). The same
+# blocks are measured in 2024 and 2025 (plan_history.py) and only applied where both years agree.
+SEASONS = ["Pre-Diwali", "Diwali", "Recovery", "December"]
+WEEK_SEASON = ["Pre-Diwali"] * 5 + ["Diwali"] * 2 + ["Recovery"] * 3 + ["December"] * 3
 EVENTS_ALL = {
-    2: "Gandhi Jayanti (Fri 2 Oct)",
-    5: "Dussehra (Tue 20 Oct)",
-    7: "Diwali (Sun 8 Nov) - low week",
-    8: "Bali Pratipada, Bhai Dooj - low week",
-    10: "Guru Nanak Jayanti (Tue 24 Nov)",
-    11: "Last week new cars can land (30 Nov)",
-    14: "Christmas (Fri 25 Dec); last plan week, ends Sun 27 Dec as in Lakshya",
+    1: "Gandhi Jayanti (Fri 2 Oct)",
+    4: "Dussehra (Tue 20 Oct)",
+    6: "Diwali (Sun 8 Nov)",
+    7: "Bali Pratipada, Bhai Dooj",
+    9: "Guru Nanak Jayanti (Tue 24 Nov)",
+    13: "Christmas (Fri 25 Dec); last plan week, ends Sun 27 Dec as in Lakshya",
 }
 EVENTS_CITY = {
-    ("Bangalore", 6): "Kannada Rajyotsava (Sun 1 Nov)",
-    ("Hyderabad", 8): "GHMC election (Sun 15 Nov)",
-    ("Kolkata", 13): "KMC election (Tue 15 Dec)",
+    ("Bangalore", 5): "Kannada Rajyotsava (Sun 1 Nov)",
+    ("Hyderabad", 7): "GHMC election (Sun 15 Nov)",
+    ("Kolkata", 12): "KMC election (Tue 15 Dec)",
+}
+
+# AOP FY27 by city, month-end Sep, Oct, Nov, Dec: cars on road incl. EIP, EIP, driver recruitment in the month
+AOP = {
+    "Mumbai": dict(onroad=(2935, 2628, 2785, 3116), eip=(1029, 929, 1029, 1099), rec=(1212, 772, 681, 1015)),
+    "Delhi NCR": dict(onroad=(2584, 2417, 2572, 2845), eip=(82, 65, 64, 82), rec=(831, 676, 807, 1021)),
+    "Bangalore": dict(onroad=(2231, 2112, 2105, 2468), eip=(391, 341, 291, 321), rec=(803, 763, 716, 868)),
+    "Hyderabad": dict(onroad=(1918, 1871, 2036, 2215), eip=(312, 306, 340, 333), rec=(898, 825, 881, 916)),
+    "Chennai": dict(onroad=(2065, 2112, 2112, 2163), eip=(446, 420, 457, 458), rec=(687, 841, 689, 698)),
+    "Kolkata": dict(onroad=(793, 711, 770, 815), eip=(81, 71, 78, 88), rec=(320, 264, 297, 313)),
+    "Pune": dict(onroad=(1069, 1002, 1066, 1196), eip=(60, 64, 64, 72), rec=(535, 453, 506, 598)),
 }
 
 LAKSHYA_URL = "https://docs.google.com/spreadsheets/d/1Bu8NkgNVcakYondqbyK_jW4nFuFDBqEk"
 AOP_URL = "https://docs.google.com/spreadsheets/d/1yK2NRIK1B7U-K9wSqGvoFgcl3arVB-Ozybl_St0Z_PA"
 SUPPLY_URL = "https://docs.google.com/spreadsheets/d/1Cxg6qsZr6I9nr9OdORAYJVlRc5iB6r0Vnu6k9LKWcjE"
 SSOT_URL = "https://docs.google.com/document/d/1UIKW0voWgrUu2HDonBR4GsWdFz8XLVgWq7r5UoaYMpc"
+V2_URL = "https://docs.google.com/spreadsheets/d/1mYh3raKeU-taJxLsObbOfNbJpDx4wtx_2OPdJhQZjbY/edit?gid=352333344#gid=352333344"
 SOURCES = [
-    ("Lakshya source (targets)", LAKSHYA_URL, "Lakshya_15000_Model_v4.xlsx - source of every target in this plan"),
-    ("AOP (reference only)", AOP_URL, "AOP FY27 - does not match Lakshya; used only for the recruitment channel mix"),
+    ("Lakshya source (targets)", LAKSHYA_URL, "Lakshya_15000_Model_v4.xlsx - the December targets and month-end books"),
+    ("AOP FY27", AOP_URL, "AOP FY27 - month-end on road, EIP and recruitment (baseline); recruitment channel mix"),
     ("Weekly Supply Plan (format)", SUPPLY_URL, "Weekly Supply Plan - city tab layout"),
-    ("SSOT query (raw data)", SSOT_URL, "SSOT query - run from 1 Aug 2026; its output is the raw_performance tab"),
+    ("SSOT query (raw data)", SSOT_URL, "SSOT query - its output is the raw_performance tab (actuals, run rate, last year)"),
+    ("New Car Stock Report", None, "New Car Stock Report, 27 Sep 2026 - 582 cars bought, by city and RTO status (Inputs A6)"),
+    ("History 2024-2026", None, "Reporting DB, weekly by city, Jan 2024 - Sep 2026 (plan_history.py): seasonality and hiring capacity"),
 ]
+DIFF_FMT = "+#,##0;-#,##0;0"
+SEAS_TAB = "Seasonality Check"
+SQ = f"'{SEAS_TAB}'"
+R_SU_H = 8                           # 1. used seasonal changes (group header row above); city rows follow
+R_SU0 = R_SU_H + 1
+R_CK_H = R_SU0 + 8 + 5               # 2. the check (group header above); 2 rows per city (hiring, attrition)
+R_CK0 = R_CK_H + 1
+R_AT_H = R_CK0 + 16 + 5              # 3. attrition this year vs last (group header above), 12 weeks
+R_WK_H = R_AT_H + 12 + 3 + 6         # 4. week by week, aligned on Diwali (first city block header)
 
 
 def link(url, text):
@@ -230,60 +209,70 @@ def q(sheet):
 
 
 # ---------------------------------------------------------------- Inputs tab layout
-# The tab reads top to bottom in three parts:
-#   PART A  what you set          A1 dates & switches, A2 city start/targets/rates, A3 month-end targets,
-#                                 A4 new cars bought, A5 cars sold, A6 weekly calendar
-#   PART B  learnt from last year B1 festival impact
-#   PART C  output and sources    C1 plan summary, C2 sources
-# Proven pace and the Diwali dip live on their own tab (DIP_TAB).
+# The tab reads top to bottom in two parts:
+#   PART A  what the plan starts from and what you set
+#           A1 dates & switches, A2 city start/targets/rates, A3 current run rate (last 4 weeks),
+#           A4 Lakshya month-end targets, A5 AOP month-end, A6 new cars (stock, delivery, pending),
+#           A7 cars sold, A8 weekly calendar
+#   PART C  output and sources: C1 plan summary, C2 sources
+# Seasonality (validated against 2024 and 2025) lives on its own tab (SEAS_TAB).
 # Each section is: title row, one "what it does" row, (group header row), header row, data.
 _r = 9                     # PART A banner row
-R_GLOBAL = _r + 4          # A1 header row; values start next row (7 settings)
-R_CITY_H = R_GLOBAL + 7 + 5   # A2 header (group header row above it)
+N_GLOBAL = 8               # settings in A1
+R_GLOBAL = _r + 4          # A1 header row; values start next row
+R_CITY_H = R_GLOBAL + N_GLOBAL + 5   # A2 header (group header row above it)
 R_CITY0 = R_CITY_H + 1
-R_MS_H = R_CITY0 + 8 + 5      # A3 header (group header row above it)
+R_RR_H = R_CITY0 + 8 + 5      # A3 current run rate header (group header row above it)
+R_RR0 = R_RR_H + 1
+R_MS_H = R_RR0 + 8 + 5        # A4 Lakshya month-end header (group header row above it)
 R_MS0 = R_MS_H + 1
-R_ADD_H = R_MS0 + 8 + 4       # A4 header
+R_AOP_H = R_MS0 + 8 + 5       # A5 AOP header (group header row above it)
+R_AOP0 = R_AOP_H + 1
+R_STK_H = R_AOP0 + 8 + 5      # A6 new-car stock header (group header row above it)
+R_STK0 = R_STK_H + 1
+R_WIN_H = R_STK0 + 8 + 4      # A6 delivery windows header
+R_WIN0 = R_WIN_H + 1
+R_FUT_H = R_WIN0 + len(DELIVERY_WINDOWS) + 4   # A6 future purchases header
+R_FUT0 = R_FUT_H + 1
+R_ADD_H = R_FUT0 + 8 + 4      # A6 weekly deliveries header
 R_ADD0 = R_ADD_H + 1
-R_SALE_H = R_ADD0 + 8 + 4     # A5 header
+R_SALE_H = R_ADD0 + 8 + 4     # A7 header
 R_SALE0 = R_SALE_H + 1
-R_CAL_H = R_SALE0 + 8 + 4     # A6 header
+R_CAL_H = R_SALE0 + 8 + 4     # A8 header
 R_CAL0 = R_CAL_H + 1
-R_SEAS_H = R_CAL0 + N_WEEKS + 1 + 6   # B1 header (PART B banner above the title)
-R_SEAS0 = R_SEAS_H + 1
-R_SEAS1 = R_SEAS0 + len(SEASON_REC) - 1
-R_SUM_H = R_SEAS1 + 7         # C1 header (PART C banner above the title)
+R_SUM_H = R_CAL0 + N_WEEKS + 1 + 7   # C1 header (PART C banner above the title)
 R_SUM0 = R_SUM_H + 1
 R_SRC_H = R_SUM0 + 8 + 4      # C2 header
 
-# ---------------------------------------------------------------- Diwali dip / pace tab layout
-DIP_TAB = "Diwali_Dip Analysis"
-DQ = f"'{DIP_TAB}'"
-R_PACE_H = 7                  # 1. proven pace header
-R_PACE0 = R_PACE_H + 1
-R_DIP_H = R_PACE0 + 8 + 4     # 2. Diwali dip header
-R_DIP0 = R_DIP_H + 1
-R_DIPC_H = R_DIP0 + 8 + 4     # 3. history table header
-R_DIPC0 = R_DIPC_H + 1
-MONTHS = ["Sep", "Oct", "Nov", "Dec"]
-WEEK_MONTH = ["Sep"] + ["Oct"] * 4 + ["Nov"] * 5 + ["Dec"] * 4   # Lakshya month each plan week rolls up to
-MS_WEEKS = (1, 5, 10, 14)  # plan weeks elapsed at each Lakshya month-end (27 Sep, 25 Oct, 29 Nov, 27 Dec)
+MONTHS = ["Sep", "Oct", "Nov", "Dec"]          # Lakshya month-ends (Sep = 27 Sep, now the opening actual)
+PLAN_MONTHS = ["Oct", "Nov", "Dec"]            # months with plan weeks
+WEEK_MONTH = ["Oct"] * 4 + ["Nov"] * 5 + ["Dec"] * 4   # Lakshya month each plan week rolls up to
+MS_WEEKS = (0, 4, 9, 13)  # plan weeks elapsed at each Lakshya month-end (27 Sep, 25 Oct, 29 Nov, 27 Dec)
 
 G_OPEN_DATE = f"Inputs!$B${R_GLOBAL + 1}"
 G_PLAN_END = f"Inputs!$B${R_GLOBAL + 3}"
 G_WPM = f"Inputs!$B${R_GLOBAL + 4}"
-G_FLOOR = f"Inputs!$B${R_GLOBAL + 6}"
-G_CAP = f"Inputs!$B${R_GLOBAL + 7}"
+G_LAST = f"Inputs!$B${R_GLOBAL + 6}"    # latest actual date loaded, up to the opening date
+G_CAP = f"Inputs!$B${R_GLOBAL + 7}"     # December target: "Lakshya" (steady hiring ramp) or "Run rate"
+G_SEAS = f"Inputs!$B${R_GLOBAL + 8}"    # a seasonal change is used only if both years show at least this
 
-# City-input columns on the Inputs tab
+# City-input columns on the Inputs tab (A2)
 CI = {k: i + 1 for i, k in enumerate([
     "city", "fleet", "onroad", "eip", "own", "ldto", "t_eip", "t_own", "t_ldto", "t_onroad",
     "r_ldto", "r_own", "r_roll", "newshare", "ceiling", "fse", "vendor", "referral", "perf",
     "lk_fleet"])}
+# Current run-rate columns (A3)
+RR = {k: i + 1 for i, k in enumerate([
+    "city", "rec", "rec_ly", "rec_yoy", "na", "na_rate", "na_rate_ly", "na_yoy", "eip_wk", "own_wk",
+    "cap", "cap_from", "u_rec", "u_rate", "u_eip", "u_own"])}
 
 
 def ci(key, city_idx):
     return f"Inputs!${get_column_letter(CI[key])}${R_CITY0 + city_idx}"
+
+
+def rr(key, city_idx):
+    return f"Inputs!${get_column_letter(RR[key])}${R_RR0 + city_idx}"
 
 
 # ---------------------------------------------------------------- City tab layout
@@ -299,50 +288,48 @@ COLS = [  # (letter, header, width)
     ("X", "Own Now cars on Road - WE", 9), ("Y", "Week-ending cars on Road", 9),
     ("Z", "Week ending Util", 8), ("AA", "Util ceiling (Lakshya)", 8), ("AB", "", 2),
     ("AC", "Days in plan", 6), ("AD", "Total buy (new cars)", 8), ("AE", "Total sold", 8),
-    ("AF", "Season", 9), ("AG", "EIP net add", 8),
-    ("AH", "Own Now book - WB", 8), ("AI", "Own Now need this week (to Lakshya month-end)", 9), ("AJ", "Own Now net add", 8),
-    ("AK", "Own Now churn (LY-shaped)", 8), ("AL", "Own Now purchase rollover", 9),
+    ("AF", "Season block", 9), ("AG", "EIP net add (run rate)", 8),
+    ("AH", "Own Now book - WB", 8), ("AI", "Drivers for new cars (Own Now)", 9), ("AJ", "Own Now net add", 8),
+    ("AK", "Own Now churn (Lakshya rate)", 8), ("AL", "Own Now purchase rollover", 9),
     ("AM", "Own Now driver acquisition", 9), ("AN", "of which new cars", 8),
     ("AO", "of which existing cars", 8),
-    ("AP", "L+DTO book - WB", 8), ("AQ", "L+DTO need this week (to Lakshya month-end)", 9), ("AR", "L+DTO net add", 8),
-    ("AS", "L+DTO churn (LY-shaped)", 8), ("AT", "L+DTO driver acquisition", 9),
+    ("AP", "L+DTO book - WB", 8), ("AQ", "Net attrition, all drivers (rate x season)", 9), ("AR", "L+DTO net add", 8),
+    ("AS", "L+DTO churn (the rest)", 8), ("AT", "L+DTO driver acquisition", 9),
     ("AU", "Total driver acquisition (Own Now + L+DTO)", 10), ("AV", "Check: on road = EIP + L+DTO + Own Now", 9),
     ("AW", "Util headroom", 8), ("AX", "", 2),
     ("AY", "LY week (same week last year)", 9), ("AZ", "LY active partners - WB", 9),
     ("BA", "LY recruitment (new joins + resurrections)", 10), ("BB", "LY net attrition (abs)", 9),
     ("BC", "LY net attrition %", 8), ("BD", "LY attrition index (1 = average week)", 9),
-    ("BE", "Festival impact on recruitment", 9), ("BF", "Seasonality factor", 8),
+    ("BE", "Hiring: seasonal change (validated)", 9), ("BF", "Attrition: seasonal change (validated)", 9),
     ("BG", "", 2),
-    ("BH", "Proven weekly pace (best 4 weeks, same season 2024/25)", 10),
-    ("BI", "Organic capacity (cars on road WB x pace)", 10), ("BJ", "New cars going on road (bought last week)", 10),
-    ("BK", "Max achievable add (new cars + organic capacity)", 10),
-    ("BL", "Organic add needed (gap after new cars, spread over weeks left)", 11),
-    ("BM", "Planned on-road add = new cars + MIN(needed, capacity)", 11), ("BN", "Planned weekly growth %", 8),
-    ("BO", "Organic growth %", 8), ("BP", "Organic need within last year's pace?", 10),
-    ("BQ", "Gap to Lakshya still open (week end)", 10),
-    ("BR", "Diwali dip % (2024/25 avg, Diwali_Dip Analysis tab)", 9), ("BS", "Diwali dip (cars)", 8),
-    ("BT", "New cars still to go on road (incl. this week)", 10),
+    ("BH", "Current hiring run rate (a week, A3)", 10),
+    ("BI", "Proven hiring capacity (best 4 weeks, a week)", 10), ("BJ", "New cars going on road (landed last week)", 10),
+    ("BK", "Run-rate hiring this week (x season)", 10),
+    ("BL", "Extra hiring to reach Lakshya (step x week #)", 11),
+    ("BM", "Planned on-road add = EIP + hiring + new-car drivers - attrition", 11), ("BN", "Planned weekly growth %", 8),
+    ("BO", "Organic growth % (without new cars)", 8), ("BP", "Driver acquisition vs proven capacity", 10),
+    ("BQ", "Gap to Lakshya Dec (week end)", 10),
+    ("BR", "Net attrition rate this week (A3 x season)", 9), ("BS", "Run-rate path: cars on road (no extra hiring)", 10),
+    ("BT", "Run-rate path: drivers (Own Now + L+DTO)", 10),
     ("BU", "Lakshya month-end this week counts to", 8), ("BV", "EIP month-end target", 8),
     ("BW", "Own Now month-end target (Lakshya)", 9), ("BX", "L+DTO month-end target (Lakshya)", 9),
-    ("BY", "On road month-end target", 9), ("BZ", "Weeks left in the month (weighted)", 8),
-    ("CA", "EIP need this week", 8), ("CB", "Needs not covered by the plan (shared out)", 9),
-    ("CC", "Positive needs", 8),
+    ("BY", "On road month-end target (Lakshya)", 9), ("BZ", "AOP month-end on road", 9),
+    ("CA", "Plan - Lakshya month-end", 9), ("CB", "Plan - AOP month-end", 9),
+    ("CC", "Share of this week's hires still driving on 27 Dec", 9), ("CD", "Share of drivers kept this week", 8),
+    ("CE", "Extra hiring within proven capacity", 9), ("CF", "Within-capacity path: drivers", 9),
+    ("CG", "Within-capacity path: cars on road", 10),
+    ("CH", "Cars short: on road above fleet x max utilisation", 10),
 ]
 LY_BLOCK = ("AY", "AZ", "BA", "BB", "BC", "BD", "BE", "BF")
 PACE_BLOCK = ("BH", "BI", "BJ", "BK", "BL", "BM", "BN", "BO", "BP", "BQ", "BR", "BS", "BT")
-MS_BLOCK = ("BU", "BV", "BW", "BX", "BY", "BZ", "CA", "CB", "CC")
+MS_BLOCK = ("BU", "BV", "BW", "BX", "BY", "BZ", "CA", "CB", "CC", "CD", "CE", "CF", "CG", "CH")
 TEAL = "FF1F6F5F"
-CAPPED, ABOVE = "Capped at LY pace", "Above LY pace (cap off)"  # BP labels with the pace switch on Yes / No
-
-
-def stretch_count(bp_range):
-    """Weeks whose organic need is above last year's pace: capped (switch Yes) or planned anyway (switch No)."""
-    return f'(COUNTIF({bp_range},"{CAPPED}")+COUNTIF({bp_range},"{ABOVE}"))'
 N_ACTUAL = 4                   # actual weeks shown above the plan (rows 2-5)
 FIRST = 2 + N_ACTUAL           # first plan week row
 OPEN_ROW = FIRST - 1           # last actual week = opening position
 LAST = FIRST + N_WEEKS - 1     # 19
-R_TOT = LAST + 2               # 19
+R_TOT = LAST + 2               # totals row
+STEP_CELL = f"$BL${R_TOT + 2}"  # city tab: extra hiring step (drivers a week, added once more each week)
 
 # The formulas below are written against the logical column letters in COLS. On the sheet,
 # "New cars added" (AD) and "Cars sold" (AE) sit right after nULP as G and H ("Total buy",
@@ -404,9 +391,10 @@ def build_city(wb, idx, city):
     ev_col = get_column_letter(7 + idx)  # events columns on Inputs calendar: G..M
 
     # ---- actual weeks (rows 2-5): straight from raw_performance
-    def day(col, r, offset):   # value on one date (week start + offset days)
+    def day(col, r, offset):   # value on one date (week start + offset days; a week end not yet loaded -> latest day)
+        d = f"MIN($D{r}+{offset},{G_LAST})" if offset > 0 else f"$D{r}+{offset}"
         return (f"SUMIFS(raw_performance!${rc(col)}:${rc(col)},raw_performance!$D:$D,$A{r},"
-                f"raw_performance!$E:$E,$B{r},raw_performance!$C:$C,$D{r}+{offset})").replace("+-", "-")
+                f"raw_performance!$E:$E,$B{r},raw_performance!$C:$C,{d})").replace("+-", "-")
 
     def week(col, r):          # sum over the Mon-Sun week
         return (f"SUMIFS(raw_performance!${rc(col)}:${rc(col)},raw_performance!$D:$D,$A{r},"
@@ -459,10 +447,13 @@ def build_city(wb, idx, city):
                 f"raw_performance!$E:$E,$B{r},raw_performance!$B:$B,$AY{r})")
 
     # ---- weekly rows
+    L = get_column_letter
+    wim = {m: WEEK_MONTH.count(m) for m in PLAN_MONTHS}
     for w in range(N_WEEKS):
         r = FIRST + w
         p = r - 1
         cal = R_CAL0 + w
+        m = PLAN_MONTHS.index(WEEK_MONTH[w])
         f = {
             "A": f"=$A$2", "B": f"=$B$2", "C": f"=EOMONTH(D{r},-1)+1", "D": f"=Inputs!$B${cal}",
             "E": f"=E{p}+AD{r}-AE{r}", "F": f"=E{r}-E{p}", "G": f"=Y{p}", "H": f"=W{p}+X{p}",
@@ -474,29 +465,28 @@ def build_city(wb, idx, city):
             "W": f"=W{p}+AR{r}", "X": f"=X{p}+AJ{r}", "Y": f"=G{r}+I{r}", "Z": f"=Y{r}/E{r}",
             "AA": f"={ci('ceiling', idx)}",
             "AC": f"=Inputs!$E${cal}",
-            "AD": f"=INDEX(Inputs!$B${R_ADD0 + idx}:$E${R_ADD0 + idx},MATCH(C{r},Inputs!$B${R_ADD_H}:$E${R_ADD_H},0))/COUNTIF($C${FIRST}:$C${LAST},C{r})",
-            "AE": f"=INDEX(Inputs!$B${R_SALE0 + idx}:$E${R_SALE0 + idx},MATCH(C{r},Inputs!$B${R_SALE_H}:$E${R_SALE_H},0))/COUNTIF($C${FIRST}:$C${LAST},C{r})",
+            # cars reaching the fleet this week (Inputs A6) and cars sold (A7)
+            "AD": f"=Inputs!${L(2 + w)}${R_ADD0 + idx}",
+            "AE": f"=Inputs!${L(2 + m)}${R_SALE0 + idx}/{wim[WEEK_MONTH[w]]}",
             "AF": f"=Inputs!$F${cal}",
-            # the planned on-road add (BM) is split across the three layers by their share of the gap
-            # each layer gets its own need to the Lakshya month-end; anything the pace cap (or new cars) moves
-            # away from the total need is shared out over the layers with a positive need
-            "AG": f"=CA{r}-IFERROR(CB{r}*MAX(CA{r},0)/CC{r},0)",
+            # layers: EIP at its run rate; Own Now = drivers for new cars + its existing-car trend; L+DTO = the rest
+            "AG": f"={rr('u_eip', idx)}*AC{r}/7",
             "AH": f"=X{p}",
-            "AI": f'=IF(AF{r}="Diwali",0,IFERROR((BW{r}-AH{r})*BF{r}/BZ{r},0))',
-            "AJ": f"=AI{r}-IFERROR(CB{r}*MAX(AI{r},0)/CC{r},0)",
-            "AK": f"=AH{r}*{ci('r_own', idx)}/{G_WPM}*AC{r}/7*BD{r}",
+            "AI": f"=BJ{r}",
+            "AJ": f"=AI{r}+{rr('u_own', idx)}*AC{r}/7",
+            "AK": f"=AH{r}*{ci('r_own', idx)}/{G_WPM}*AC{r}/7",
             "AL": f"=AH{r}*{ci('r_roll', idx)}/{G_WPM}*AC{r}/7",
-            "AM": f"=MAX(0,AJ{r}+AK{r}+AL{r})",
-            "AN": f"=AM{r}*{ci('newshare', idx)}",
+            "AM": f"=AJ{r}+AK{r}+AL{r}",
+            "AN": f"=AI{r}",
             "AO": f"=AM{r}-AN{r}",
             "AP": f"=W{p}",
-            "AQ": f'=IF(AF{r}="Diwali",BS{r},IFERROR((BX{r}-AP{r}-G{r}*SUMIFS(BR{r}:$BR${LAST},BU{r}:$BU${LAST},BU{r}))*BF{r}/BZ{r},0))',
-            "AR": f"=BM{r}-AG{r}-AJ{r}",
-            "AS": f"=AP{r}*{ci('r_ldto', idx)}/{G_WPM}*AC{r}/7*BD{r}",
-            "AT": f"=MAX(0,AR{r}+AS{r})",
+            "AQ": f"=(AH{r}+AP{r})*BR{r}*AC{r}/7",
+            "AR": f"=(BK{r}+BL{r}+BJ{r}-AQ{r})-AJ{r}",
+            "AS": f"=AQ{r}-AK{r}-AL{r}",
+            "AT": f"=AR{r}+AS{r}",
             "AU": f"=AM{r}+AT{r}",
             "AV": f"=Y{r}-(R{r}+W{r}+X{r})", "AW": f"=AA{r}-Z{r}",
-            # last year and seasonality
+            # last year, for reference
             "AY": f"=D{r}-364",
             "AZ": "=" + raw_on("uniq_partners_dt_beginning", r),
             "BA": "=" + raw_wk("newjoin_cnt", r) + "+" + raw_wk("resurrection_cnt", r),
@@ -504,36 +494,41 @@ def build_city(wb, idx, city):
                   + raw_wk("rejoin_cnt", r) + "-" + raw_wk("temp_rejoin_cnt", r),
             "BC": f"=IFERROR(BB{r}/(AZ{r}+BA{r}),0)",
             "BD": f"=IFERROR(BC{r}/AVERAGE($BC${FIRST}:$BC${LAST}),1)",
-            "BE": f"=IFERROR(INDEX(Inputs!$B${R_SEAS0}:$H${R_SEAS1},MATCH(Inputs!$N${cal},Inputs!$A${R_SEAS0}:$A${R_SEAS1},0),{idx + 1}),0)",
-            "BF": f"=MAX(1+{G_FLOOR},1+BE{r})",
-            # realism: never grow faster than the city's proven pace for the season, plus new cars
-            "BH": f"=INDEX({DQ}!$B${R_PACE0 + idx}:$D${R_PACE0 + idx},MATCH(AF{r},{DQ}!$B${R_PACE_H}:$D${R_PACE_H},0))",
-            "BI": f"=G{r}*BH{r}",
-            # new cars bought so far and not yet on road go on road this week, unless it is a Diwali week
-            "BJ": "=0" if w == 0 else f'=IF(Inputs!$P${cal}="No",0,MIN(Inputs!$I${R_ADD0 + idx},SUM($AD${FIRST}:AD{p})-SUM($BJ${FIRST}:BJ{p})))',
-            "BK": f"=BI{r}+BJ{r}",
-            # Diwali weeks: organic change = last two years' average dip. Other weeks: the gap left after
-            # new cars and the Diwali dips still to come, spread over the non-Diwali weeks left
-            "BL": (f'=IF(AF{r}="Diwali",BS{r},IFERROR(((BY{r}-G{r})-SUMIFS(BJ{r}:$BJ${LAST},BU{r}:$BU${LAST},BU{r})'
-                   f'-G{r}*SUMIFS(BR{r}:$BR${LAST},BU{r}:$BU${LAST},BU{r}))*BF{r}/BZ{r},0))'),
-            "BM": f'=BJ{r}+IF(AF{r}="Diwali",BL{r},IF({G_CAP}="No",BL{r},MIN(BL{r},BI{r})))',
+            # seasonal changes that showed in both 2024 and 2025 (Seasonality Check tab), else 0
+            "BE": f"=IFERROR(INDEX({SQ}!$B${R_SU0 + idx}:$E${R_SU0 + idx},MATCH(AF{r},{SQ}!$B${R_SU_H}:$E${R_SU_H},0)),0)",
+            "BF": f"=IFERROR(INDEX({SQ}!$F${R_SU0 + idx}:$I${R_SU0 + idx},MATCH(AF{r},{SQ}!$F${R_SU_H}:$I${R_SU_H},0)),0)",
+            # driver acquisition: today's run rate x season, + a driver for every new car, + the steady extra ramp
+            "BH": f"={rr('u_rec', idx)}",
+            "BI": f"={rr('cap', idx)}",
+            "BJ": "=0" if w == 0 else f"=AD{p}",
+            "BK": f"=BH{r}*(1+BE{r})*AC{r}/7",
+            # the plan's extra hiring: the steady ramp to Lakshya, the same ramp kept within proven capacity, or none
+            "BL": f'=IF({G_CAP}="Lakshya",{STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,IF({G_CAP}="Capacity",CE{r},0))',
+            "CE": f"=MIN({STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,MAX(0,BI{r}*AC{r}/7-BK{r}-BJ{r}))",
+            "CF": (f"=AH{r}+AP{r}+BK{r}+BJ{r}+CE{r}-(AH{r}+AP{r})*BR{r}*AC{r}/7" if w == 0
+                   else f"=CF{p}+BK{r}+BJ{r}+CE{r}-CF{p}*BR{r}*AC{r}/7"),
+            "CG": f"=R{r}+CF{r}",
+            "CH": f"=MAX(0,Y{r}-E{r}*AA{r})",
+            "BM": f"=AG{r}+BK{r}+BL{r}+BJ{r}-AQ{r}",
             "BN": f"=BM{r}/G{r}",
             "BO": f"=(BM{r}-BJ{r})/G{r}",
-            "BP": f'=IF(AF{r}="Diwali","Diwali dip (2024/25 avg)",IF(BL{r}<=BI{r}+0.5,"Yes",IF({G_CAP}="No","Above LY pace (cap off)","Capped at LY pace")))',
+            "BP": f'=IF(AU{r}>BI{r}*AC{r}/7+0.5,"Above capacity","Within capacity")',
             "BQ": f"={ci('t_onroad', idx)}-Y{r}",
-            "BR": f'=IF(AF{r}="Diwali",IFERROR(INDEX({DQ}!$B${R_DIP0 + idx}:$C${R_DIP0 + idx},MATCH(Inputs!$O${cal},{DQ}!$B${R_DIP_H}:$C${R_DIP_H},0)),0),0)',
-            "BS": f"=G{r}*BR{r}",
-            "BT": (f"=SUM($AD${FIRST}:$AD${LAST - 1})" if w == 0 else f"=SUM($AD${FIRST}:$AD${LAST - 1})-SUM($BJ${FIRST}:BJ{p})"),
-            # Lakshya month-end targets (Inputs A3)
-            "BU": f"=Inputs!$Q${cal}",
+            "BR": f"={rr('u_rate', idx)}*(1+BF{r})",
+            # run-rate path: same EIP, hiring and new-car drivers, no extra ramp
+            "BT": (f"=AH{r}+AP{r}+BK{r}+BJ{r}-(AH{r}+AP{r})*BR{r}*AC{r}/7" if w == 0
+                   else f"=BT{p}+BK{r}+BJ{r}-BT{p}*BR{r}*AC{r}/7"),
+            "BS": f"=R{r}+BT{r}",
+            # Lakshya and AOP month-ends (Inputs A4, A5)
+            "BU": f"=Inputs!$N${cal}",
             "BV": f"=INDEX(Inputs!$B${R_MS0 + idx}:$E${R_MS0 + idx},MATCH(BU{r},Inputs!$B${R_MS_H}:$E${R_MS_H},0))",
             "BW": f"=INDEX(Inputs!$F${R_MS0 + idx}:$I${R_MS0 + idx},MATCH(BU{r},Inputs!$F${R_MS_H}:$I${R_MS_H},0))",
             "BX": f"=INDEX(Inputs!$J${R_MS0 + idx}:$M${R_MS0 + idx},MATCH(BU{r},Inputs!$J${R_MS_H}:$M${R_MS_H},0))",
             "BY": f"=BV{r}+BW{r}+BX{r}",
-            "BZ": f'=SUMIFS(BF{r}:$BF${LAST},AF{r}:$AF${LAST},"<>Diwali",BU{r}:$BU${LAST},BU{r})',
-            "CA": f'=IF(AF{r}="Diwali",0,IFERROR((BV{r}-R{p})*BF{r}/BZ{r},0))',
-            "CB": f"=(CA{r}+AI{r}+AQ{r})-BM{r}",
-            "CC": f"=MAX(CA{r},0)+MAX(AI{r},0)+MAX(AQ{r},0)",
+            "BZ": f"=INDEX(Inputs!$B${R_AOP0 + idx}:$E${R_AOP0 + idx},MATCH(BU{r},Inputs!$B${R_AOP_H}:$E${R_AOP_H},0))",
+            "CA": f"=Y{r}-BY{r}", "CB": f"=Y{r}-BZ{r}",
+            "CC": "=1" if w == N_WEEKS - 1 else f"=PRODUCT(CD{r + 1}:CD{LAST})",
+            "CD": f"=1-BR{r}*AC{r}/7",
         }
         if V2:
             f.update(v2_city_overrides(idx, w, r, p))
@@ -542,38 +537,42 @@ def build_city(wb, idx, city):
                 continue
             v = f.get(letter)
             fmt = NUM
-            if letter in ("C", "D"):
+            if letter in ("C", "D", "AY"):
                 fmt = DATE
-            elif letter in ("V", "Z", "AA", "AW", "BC", "BE", "BH", "BN", "BO", "BR"):
+            elif letter in ("V", "Z", "AA", "AW", "BC", "BE", "BF", "BN", "BO", "BR", "CC", "CD"):
                 fmt = PCT
-            elif letter in ("AF", "BP", "BU"):
+            elif letter in ("AF", "BP", "BU", "A", "B", "Q"):
                 fmt = None
-            elif letter in ("BD", "BF"):
+            elif letter == "BD":
                 fmt = "0.00"
-            elif letter == "AY":
-                fmt = DATE
-            elif letter in ("A", "B", "Q"):
-                fmt = None
+            elif letter in ("CA", "CB", "BM"):
+                fmt = DIFF_FMT
             bg = None
-            if letter in ("L", "M", "N", "O", "P"):
+            if letter in ("L", "M", "N", "O", "P", "AU"):
                 bg = YELLOW
             elif letter == "K":
                 bg = GREEN
-            elif letter == "AU":
-                bg = YELLOW
             cput(ws, r, letter, v, fmt, bg=bg)
 
     # ---- totals row
     r = R_TOT
-    put(ws, r, 1, "Total 21 Sep - 27 Dec", bold=True)
+    put(ws, r, 1, "Total w/c 28 Sep - 27 Dec", bold=True)
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=4)
-    for letter in ["F", "I", "J", "K", "L", "M", "N", "O", "P", "U", "AD", "AE", "AG", "AJ", "AK",
-                   "AL", "AM", "AN", "AO", "AR", "AS", "AT", "AU"]:
+    for letter in ["F", "I", "J", "K", "L", "M", "N", "O", "P", "U", "AD", "AE", "AG", "AI", "AJ", "AK",
+                   "AL", "AM", "AN", "AO", "AQ", "AR", "AS", "AT", "AU", "BJ", "BK", "BL", "BM", "CE"]:
         cput(ws, r, letter, f"=SUM({letter}{FIRST}:{letter}{LAST})", NUM, bold=True, bg=LIGHT)
-    for letter in ["BI", "BJ", "BK", "BL", "BM"]:
-        cput(ws, r, letter, f"=SUM({letter}{FIRST}:{letter}{LAST})", NUM, bold=True, bg=LIGHT)
-    cput(ws, r, "BP", "=" + stretch_count(f"BP{FIRST}:BP{LAST}") + '&" weeks above LY pace"', bold=True, bg=LIGHT)
+    cput(ws, r, "BP", f'=COUNTIF(BP{FIRST}:BP{LAST},"Above capacity")&" weeks above capacity"', bold=True, bg=LIGHT)
     cput(ws, r, "Q", "Closing stock on 27 Dec is the last week row", font=F_NOTE)
+    # the extra hiring step: the same extra added every week (1x in week 1, 2x in week 2, ...) so that 27 Dec lands on
+    # Lakshya. Solved in one go: each extra hire made in week k is still driving on 27 Dec with the share in CC.
+    r = R_TOT + 2
+    cput(ws, r, "BH", "Extra hiring step (drivers a week, added once more each week)", bold=True)
+    ws.merge_cells(f"BH{r}:BK{r}")
+    rng = lambda c: f"${c}${FIRST}:${c}${LAST}"
+    cput(ws, r, "BL", (f'=MAX(0,({ci("t_onroad", idx)}-BS{LAST})/SUMPRODUCT((ROW({rng("BE")})-{FIRST - 1})'
+                       f'*(1+{rng("BE")})*{rng("AC")}/7*{rng("CC")}))'), "0.0", bold=True, bg=INPUT)
+    cput(ws, r, "BM", "Step = (Lakshya 27 Dec - run-rate path in BS) spread as a steady ramp. Inputs A1 decides how much of it the plan "
+                      "uses: all (Lakshya), only within proven capacity (Capacity, column CE), or none (Run rate).", font=F_NOTE)
 
     # ---- conditional formats
     ws.conditional_formatting.add(
@@ -586,16 +585,13 @@ def build_city(wb, idx, city):
     ws.conditional_formatting.add(f"AW2:AW{LAST}", FormulaRule(formula=[f"AW2<0"], font=red))
     ws.conditional_formatting.add(f"AV2:AV{LAST}", FormulaRule(formula=[f"ROUND(AV2,6)<>0"], font=red,
                                                                fill=fill("FFFFC7CE")))
-    ws.conditional_formatting.add(f"AT{FIRST}:AT{LAST}", FormulaRule(formula=[f"AT{FIRST}<0"], font=red))
-    ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'OR(BP{FIRST}="{CAPPED}",BP{FIRST}="{ABOVE}")'], font=red,
+    ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'BP{FIRST}="Above capacity"'], font=red,
                                                                      fill=fill("FFFFC7CE")))
-    ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'LEFT(BP{FIRST},6)="Diwali"'],
-                                                                     font=Font(name="Calibri", size=10, bold=True, color="FF9C5700"),
-                                                                     fill=fill("FFFFEB9C")))
-    ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'BP{FIRST}="Yes"'],
+    ws.conditional_formatting.add(f"BP{FIRST}:BP{LAST}", FormulaRule(formula=[f'BP{FIRST}="Within capacity"'],
                                                                      font=Font(name="Calibri", size=10, color="FF006100"),
                                                                      fill=fill("FFC6EFCE")))
-    ws.conditional_formatting.add(f"AM{FIRST}:AM{LAST}", FormulaRule(formula=[f"AM{FIRST}<0"], font=red))
+    for c_ in ("CA", "CB"):
+        ws.conditional_formatting.add(f"{c_}{FIRST}:{c_}{LAST}", FormulaRule(formula=[f"{c_}{FIRST}<-0.5"], font=red))
     ws.sheet_view.zoomScale = 90
     return ws
 
@@ -636,37 +632,56 @@ def india_row(ws, r, cols, fmt=NUM):
         put(ws, r, j, f"=SUM({L}{r - len(CITIES)}:{L}{r - 1})", fmt, bold=True, bg=LIGHT)
 
 
+def _raw_sum(field, r, ly=False, date=None):
+    """SUMIFS over raw_performance for the city in column A of row r (CNG). Default window: the 4 weeks to the
+    latest actual date; date= a single day instead. ly=True shifts the window back 364 days."""
+    c = rc(field)
+    back = "-364" if ly else ""
+    base = f"raw_performance!${c}:${c},raw_performance!$D:$D,$A{r},raw_performance!$E:$E,\"CNG\",raw_performance!$C:$C,"
+    if date is not None:
+        return f"SUMIFS({base}{date}{back})"
+    return f"SUMIFS({base}\">\"&({G_OPEN_DATE}-28{back}),raw_performance!$C:$C,\"<=\"&({G_LAST}{back}))"
+
+
+def _raw_avg(field, r, ly=False):
+    c = rc(field)
+    back = "-364" if ly else ""
+    return (f"AVERAGEIFS(raw_performance!${c}:${c},raw_performance!$D:$D,$A{r},raw_performance!$E:$E,\"CNG\","
+            f"raw_performance!$C:$C,\">\"&({G_OPEN_DATE}-28{back}),raw_performance!$C:$C,\"<=\"&({G_LAST}{back}))")
+
+
 def build_inputs(wb):
     ws = wb.active
     ws.title = "Inputs"
     ws.column_dimensions["A"].width = 30
-    for j in range(2, 22):
+    for j in range(2, 23):
         ws.column_dimensions[get_column_letter(j)].width = 11
-    for L in "GHIJKLM":  # calendar event columns
-        ws.column_dimensions[L].width = 14
-    ws.column_dimensions["N"].width = 16
     ws.sheet_properties.tabColor = "FFF1C232"
+    L = get_column_letter
+    n = len(CITIES)
+    WEEKS_RR = f"((({G_LAST})-({G_OPEN_DATE}-28))/7)"   # weeks of actuals in the run-rate window
+
     # ---- top: what this tab is, colour key, contents
     ws["A1"] = "INPUTS  -  every number the plan is built from"
     ws["A1"].font = F_TITLE
-    ws["A2"] = ("Change a cream cell and all 7 city tabs, Summary View and Lakshya vs Plan update. "
-                "Nothing else on this tab needs typing.")
+    ws["A2"] = ("The plan starts from the latest actual and runs on today's hiring and attrition. Change a cream cell and "
+                "every city tab, the dashboards and the Read Me update.")
     ws["A2"].font = F_WHAT
     ws["A3"] = "Colour key:"
     ws["A3"].font = F_BOLD
     for c1, text, bg, font in ((2, "You can change", INPUT, F_INPUT), (4, "Actual (raw_performance)", ACTUAL, F_BODY),
-                               (6, "Formula - leave it", None, F_BODY), (8, "Last year (history)", HIST, F_HIST),
+                               (6, "Formula - leave it", None, F_BODY), (8, "History (reference)", HIST, F_HIST),
                                (10, "Total / output", LIGHT, F_BOLD)):
         c = put(ws, 3, c1, text, font=font, bg=bg)
         c.alignment = CENTER
         put(ws, 3, c1 + 1, None, bg=bg)
         ws.merge_cells(start_row=3, start_column=c1, end_row=3, end_column=c1 + 1)
     parts = [
-        ("PART A  What you set", [("A1", "Dates and switches", R_GLOBAL - 2), ("A2", "City start, Dec targets, rates", R_CITY_H - 3),
-                                  ("A3", "Lakshya month-end targets", R_MS_H - 3), ("A4", "New cars bought", R_ADD_H - 2),
-                                  ("A5", "Cars sold", R_SALE_H - 2), ("A6", "Weekly calendar", R_CAL_H - 2)]),
-        ("PART B  Learnt from last year", [("B1", "Festival impact on recruitment", R_SEAS_H - 2),
-                                           ("tab", f"Proven weekly pace and Diwali dip: {DIP_TAB} tab", None)]),
+        ("PART A  What the plan runs on", [("A1", "Dates and switches", R_GLOBAL - 2), ("A2", "City start, Dec targets", R_CITY_H - 3),
+                                           ("A3", "Current run rate", R_RR_H - 3), ("A4", "Lakshya month-ends", R_MS_H - 3),
+                                           ("A5", "AOP month-ends", R_AOP_H - 3), ("A6", "New cars", R_STK_H - 3),
+                                           ("A7", "Cars sold", R_SALE_H - 2), ("A8", "Weekly calendar", R_CAL_H - 2)]),
+        ("Seasonality", [("tab", f"Checked city by city against 2024 and 2025: {SEAS_TAB} tab", None)]),
         ("PART C  Output and sources", [("C1", "Plan summary by city", R_SUM_H - 2), ("C2", "Sources", R_SRC_H - 2)]),
     ]
     ws["A5"] = "Contents"
@@ -678,41 +693,48 @@ def build_inputs(wb):
         ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=LAST_COL)
 
     # ================================================================ PART A
-    banner(ws, R_GLOBAL - 4, "PART A  -  WHAT YOU SET  (cream cells)", NAVY)
+    banner(ws, R_GLOBAL - 4, "PART A  -  WHAT THE PLAN RUNS ON  (cream cells can be changed)", NAVY)
 
     # ---- A1. dates and switches
     title(ws, R_GLOBAL - 2, "A1", "PLAN DATES AND SWITCHES",
-          "When the plan starts and ends, and two switches that change how it behaves.")
+          "The plan starts from the actual on the opening Sunday and plans the current week onwards.")
     hdr(ws, R_GLOBAL, 1, "Setting")
     hdr(ws, R_GLOBAL, 2, "Value")
     hdr(ws, R_GLOBAL, 3, "What it does")
-    ws.merge_cells(start_row=R_GLOBAL, start_column=3, end_row=R_GLOBAL, end_column=12)
+    ws.merge_cells(start_row=R_GLOBAL, start_column=3, end_row=R_GLOBAL, end_column=14)
     rows = [
-        ("Opening date (last actual Sunday)", dt.date(2026, 9, 20), DATE, True,
-         "The plan starts from the actual on this date (A2 and the 4 actual weeks on each city tab, from raw_performance)."),
-        ("First plan week starts (Monday)", f"=B{R_GLOBAL + 1}+1", DATE, False, "Current week, Mon 21 Sep."),
+        ("Opening date (last actual Sunday)", dt.date(2026, 9, 27), DATE, True,
+         "The plan starts from the actual on this Sunday; the current week (w/c 28 Sep) is plan week 1."),
+        ("First plan week starts (Monday)", f"=B{R_GLOBAL + 1}+1", DATE, False, "The current week."),
         ("Plan ends (Sunday)", dt.date(2026, 12, 27), DATE, True, "Same end as Lakshya v4: w/e Sun 27 Dec."),
-        ("Weeks per month", "=52/12", "0.00", False, "Turns the monthly churn rates in A2 into weekly ones."),
-        ("India CNG on-road goal, Dec", 15000, NUM, True, "Reference. Lakshya's city targets (A2) add up to 15,082."),
-        ("Largest recruitment drop in one week", -0.75, "0%", True,
-         "Floor on the festival impact (B1), so no festival week plans recruitment below 25% of normal."),
-        ("Hold weekly growth to last year's pace?", "No", None, True,
-         "Yes = no week grows faster than the city did last year (Diwali_Dip Analysis tab). No = every week takes whatever Lakshya's month-end needs."),
+        ("Weeks per month", "=52/12", "0.00", False, "Turns monthly churn rates into weekly ones."),
+        ("India CNG on-road goal, Dec", 15000, NUM, True, "Reference. Lakshya's city targets add up to 15,082."),
+        ("Latest actual date loaded", f"=SUMPRODUCT(MAX((raw_performance!$C$2:$C$20000<=B{R_GLOBAL + 1})*raw_performance!$C$2:$C$20000))",
+         DATE, False, "Opening numbers and the run rate use this day: the opening Sunday once it is loaded in raw_performance, "
+                      "else the last day before it."),
+        ("December target", "Lakshya", None, True,
+         "Lakshya = a steady hiring ramp on top of the run rate (the same extra every week) so 27 Dec lands on Lakshya; weeks above "
+         "proven capacity show red. Capacity = the same ramp, never above proven capacity. Run rate = no extra hiring."),
+        ("Seasonal change: minimum in both years", 0.05, "0%", True,
+         f"A season changes hiring or attrition only if 2024 and 2025 both moved the same way by at least this ({SEAS_TAB} tab)."),
     ]
     for k, (label, val, fmt, is_input, what) in enumerate(rows):
         r = R_GLOBAL + 1 + k
         put(ws, r, 1, label, bold=True)
         (inp if is_input else put)(ws, r, 2, val, fmt)
         put(ws, r, 3, what)
-        for j in range(4, 13):
+        for j in range(4, 15):
             put(ws, r, j, None)
-        ws.merge_cells(start_row=r, start_column=3, end_row=r, end_column=12)
+        ws.merge_cells(start_row=r, start_column=3, end_row=r, end_column=14)
+    dv = DataValidation(type="list", formula1='"Lakshya,Capacity,Run rate"', allow_blank=False)
+    ws.add_data_validation(dv)
+    dv.add(f"B{R_GLOBAL + 7}")
 
-    # ---- A2. city inputs
-    title(ws, R_CITY_H - 3, "A2", "CITY START, DECEMBER TARGETS AND RATES",
-          "Where each city starts (actual), where Lakshya wants it on 27 Dec, and the rates each week uses.")
-    groups = [(2, 6, "START - actual on the opening date"), (7, 10, "DECEMBER TARGET - Lakshya v4"),
-              (11, 14, "RATES - per month (Lakshya v4)"), (15, 15, "CEILING"),
+    # ---- A2. city start, targets, rates
+    title(ws, R_CITY_H - 3, "A2", "CITY START AND DECEMBER TARGETS",
+          "Where each city starts (actual, latest day loaded) and where Lakshya wants it on 27 Dec.")
+    groups = [(2, 6, "START - actual (raw_performance)"), (7, 10, "DECEMBER TARGET - Lakshya v4"),
+              (11, 14, "LAKSHYA RATES - per month"), (15, 15, "CEILING"),
               (16, 19, "RECRUITMENT CHANNEL MIX - AOP"), (20, 20, "REFERENCE")]
     for c1, c2, t in groups:
         hdr(ws, R_CITY_H - 1, c1, t, GREY_HDR)
@@ -729,13 +751,12 @@ def build_inputs(wb):
     for i, city in enumerate(CITIES):
         r = R_CITY0 + i
         te, to, tl = TARGET[city]
-        rl, ro, rr, ns, ce = RATES[city]
+        rl, ro, rrl, ns, ce = RATES[city]
         fse, ven, ref = CHANNEL[city]
         put(ws, r, 1, city, bold=True)
         for j, field in ((2, "fleet_total_cars_cnt"), (3, "allotted_cars_eod"), (4, "eip_vehicles_cnt"),
                          (5, "own_now_cars_eod")):
-            put(ws, r, j, f'=SUMIFS(raw_performance!${rc(field)}:${rc(field)},raw_performance!$D:$D,$A{r},'
-                          f'raw_performance!$E:$E,"CNG",raw_performance!$C:$C,{G_OPEN_DATE})', NUM, bg=ACTUAL)
+            put(ws, r, j, "=" + _raw_sum(field, r, date=G_LAST), NUM, bg=ACTUAL)
         put(ws, r, 6, f"=C{r}-D{r}-E{r}", NUM)
         inp(ws, r, 7, te, NUM)
         inp(ws, r, 8, to, NUM)
@@ -743,7 +764,7 @@ def build_inputs(wb):
         put(ws, r, 10, f"=G{r}+H{r}+I{r}", NUM)
         inp(ws, r, 11, rl, "0%")
         inp(ws, r, 12, ro, PCT)
-        inp(ws, r, 13, rr, PCT)
+        inp(ws, r, 13, rrl, PCT)
         inp(ws, r, 14, round(ns, 3), PCT)
         inp(ws, r, 15, ce, PCT)
         inp(ws, r, 16, fse, PCT)
@@ -751,18 +772,75 @@ def build_inputs(wb):
         inp(ws, r, 18, ref, PCT)
         put(ws, r, 19, f"=1-P{r}-Q{r}-R{r}", PCT)
         inp(ws, r, 20, LAKSHYA_FLEET_DEC[city], NUM)
-    r = R_CITY0 + len(CITIES)
+    r = R_CITY0 + n
     india_row(ws, r, [2, 3, 4, 5, 6, 7, 8, 9, 10, 20])
     for j in range(11, 20):
         put(ws, r, j, None, bg=LIGHT)
-    note(ws, r + 1, "Leasing + DTO = on road - EIP - Own Now. Perf marketing = 100% - the other channels. "
-                "New-car share only splits driver acquisition into new and existing cars on the city tabs.")
+    note(ws, r + 1, "Leasing + DTO = on road - EIP - Own Now. Lakshya's Own Now churn and rollover only split the plan's attrition "
+                    "between Own Now and L+DTO; the total comes from the current run rate (A3).")
 
-    # ---- A3. Lakshya month-end targets
-    title(ws, R_MS_H - 3, "A3", "LAKSHYA MONTH-END TARGETS",
-          "Lakshya's book on each month-end Sunday (27 Sep, 25 Oct, 29 Nov, 27 Dec). "
-          "Each plan week works towards the month-end it counts to (A6, last column).")
-    groups = [(2, 5, "EIP - straight line (not monthly in Lakshya)"), (6, 9, "OWN NOW - Lakshya v4"),
+    # ---- A3. current run rate
+    title(ws, R_RR_H - 3, "A3", "CURRENT RUN RATE  -  the last 4 weeks, and the same weeks last year",
+          "What the city is doing now (raw_performance, live). The plan's hiring and attrition start from the cream "
+          "columns on the right; change them only with a reason.")
+    groups = [(2, 4, "DRIVER ACQUISITION a week (new joins + resurrections)"), (5, 8, "NET ATTRITION (attrition + temp - rejoins)"),
+              (9, 10, "BOOK CHANGE a week"), (11, 12, "PROVEN HIRING CAPACITY"), (13, 16, "USED IN THE PLAN")]
+    for c1, c2, t in groups:
+        hdr(ws, R_RR_H - 1, c1, t, GREY_HDR)
+        ws.merge_cells(start_row=R_RR_H - 1, start_column=c1, end_row=R_RR_H - 1, end_column=c2)
+    heads = ["City", "Last 4 weeks", "Same weeks last year", "This year vs last",
+             "Drivers leaving a week", "Rate a week (this year)", "Rate a week (last year)", "This year vs last",
+             "EIP", "Own Now", "Best 4 weeks since Sep 2025 (a week)", "Best 4 weeks began",
+             "Driver acquisition a week", "Net attrition rate a week", "EIP net add a week", "Own Now net add a week (existing cars)"]
+    for j, t in enumerate(heads, start=1):
+        hdr(ws, R_RR_H, j, t)
+    ws.row_dimensions[R_RR_H].height = 44
+    ws.row_dimensions[R_RR_H - 1].height = 30
+    for i, city in enumerate(CITIES):
+        r = R_RR0 + i
+        put(ws, r, 1, city, bold=True)
+        rec = lambda ly=False: f"({_raw_sum('newjoin_cnt', r, ly)}+{_raw_sum('resurrection_cnt', r, ly)})"
+        na = lambda ly=False: (f"({_raw_sum('attrition_cnt', r, ly)}+{_raw_sum('temp_attrition_cnt', r, ly)}"
+                               f"-{_raw_sum('rejoin_cnt', r, ly)}-{_raw_sum('temp_rejoin_cnt', r, ly)})")
+        put(ws, r, 2, f"={rec()}/{WEEKS_RR}", NUM, bg=ACTUAL)
+        put(ws, r, 3, f"={rec(True)}/{WEEKS_RR}", NUM, font=F_HIST, bg=HIST)
+        put(ws, r, 4, f"=IFERROR(B{r}/C{r}-1,0)", "+0%;-0%;0%")
+        put(ws, r, 5, f"={na()}/{WEEKS_RR}", NUM, bg=ACTUAL)
+        put(ws, r, 6, f"=IFERROR(E{r}/{_raw_avg('uniq_partners_dt_beginning', r)},0)", PCT, bg=ACTUAL)
+        put(ws, r, 7, f"=IFERROR({na(True)}/{WEEKS_RR}/{_raw_avg('uniq_partners_dt_beginning', r, True)},0)", PCT,
+            font=F_HIST, bg=HIST)
+        put(ws, r, 8, f"=IFERROR(F{r}/G{r}-1,0)", "+0%;-0%;0%")
+        for j, field in ((9, "eip_vehicles_cnt"), (10, "own_now_cars_eod")):
+            put(ws, r, j, f"=({_raw_sum(field, r, date=G_LAST)}-{_raw_sum(field, r, date=f'({G_OPEN_DATE}-28)')})/{WEEKS_RR}",
+                "+#,##0.0;-#,##0.0;0", bg=ACTUAL)
+        cap, since = CAPACITY[city]
+        put(ws, r, 11, cap, NUM, font=F_HIST, bg=HIST)
+        put(ws, r, 12, dt.date.fromisoformat(since), "dd-mmm-yy", font=F_HIST, bg=HIST)
+        put(ws, r, 13, f"=B{r}", NUM, font=F_INPUT, bg=INPUT)
+        put(ws, r, 14, f"=F{r}", PCT, font=F_INPUT, bg=INPUT)
+        inp(ws, r, 15, 0, "+#,##0.0;-#,##0.0;0")
+        put(ws, r, 16, f"=J{r}", "+#,##0.0;-#,##0.0;0", font=F_INPUT, bg=INPUT)
+    r = R_RR0 + n
+    put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
+    r0, r1 = R_RR0, R_RR0 + n - 1
+    drivers = f"SUMPRODUCT(E{r0}:E{r1}/F{r0}:F{r1})"    # average drivers in the window, from leavers / rate
+    for j in (2, 3, 5, 9, 10, 11, 13, 15, 16):
+        put(ws, r, j, f"=SUM({L(j)}{r0}:{L(j)}{r1})", NUM if j not in (9, 10, 15, 16) else "+#,##0.0;-#,##0.0;0",
+            bold=True, bg=LIGHT)
+    put(ws, r, 4, f"=IFERROR(B{r}/C{r}-1,0)", "+0%;-0%;0%", bold=True, bg=LIGHT)
+    put(ws, r, 6, f"=E{r}/{drivers}", PCT, bold=True, bg=LIGHT)
+    put(ws, r, 7, f"=SUMPRODUCT(G{r0}:G{r1},E{r0}:E{r1}/F{r0}:F{r1})/{drivers}", PCT, bold=True, bg=LIGHT)
+    put(ws, r, 8, f"=IFERROR(F{r}/G{r}-1,0)", "+0%;-0%;0%", bold=True, bg=LIGHT)
+    put(ws, r, 12, None, bg=LIGHT)
+    put(ws, r, 14, f"=SUMPRODUCT(N{r0}:N{r1},E{r0}:E{r1}/F{r0}:F{r1})/{drivers}", PCT, bold=True, bg=LIGHT)
+    note(ws, r + 1, "Window: the 4 weeks to the latest actual date (A1), scaled to a week. Attrition this year is lower than last year "
+                    "(Seasonality Check tab, section 3): the plan keeps this year's rate and adds only the seasonal changes seen in both "
+                    "2024 and 2025. EIP is held flat by default: its 4-week and 8-week trends disagree.")
+
+    # ---- A4. Lakshya month-end targets
+    title(ws, R_MS_H - 3, "A4", "LAKSHYA MONTH-END TARGETS",
+          "Lakshya's book on each month-end Sunday (27 Sep, 25 Oct, 29 Nov, 27 Dec). September is the opening week: compare it with A2.")
+    groups = [(2, 5, "EIP - straight line from the actual"), (6, 9, "OWN NOW - Lakshya v4"),
               (10, 13, "LEASING + DTO - Lakshya v4"), (14, 17, "ON ROAD (sum)")]
     for c1, c2, t in groups:
         hdr(ws, R_MS_H - 1, c1, t, GREY_HDR)
@@ -775,65 +853,130 @@ def build_inputs(wb):
         r = R_MS0 + i
         put(ws, r, 1, city, bold=True)
         for m in range(4):
-            # EIP: straight line from the opening to the December target
             put(ws, r, 2 + m, f"={ci('eip', i)}+({ci('t_eip', i)}-{ci('eip', i)})*{MS_WEEKS[m]}/{N_WEEKS}", NUM)
             if m < 3:
                 inp(ws, r, 6 + m, LK_OWN_ME[city][m], NUM)
                 inp(ws, r, 10 + m, LK_LDTO_ME[city][m], NUM)
-            else:  # December = the Lakshya December target in A2
+            else:
                 put(ws, r, 6 + m, f"={ci('t_own', i)}", NUM)
                 put(ws, r, 10 + m, f"={ci('t_ldto', i)}", NUM)
-            L = [get_column_letter(2 + m), get_column_letter(6 + m), get_column_letter(10 + m)]
-            put(ws, r, 14 + m, f"={L[0]}{r}+{L[1]}{r}+{L[2]}{r}", NUM, bold=True)
-    india_row(ws, R_MS0 + len(CITIES), range(2, 18))
-    note(ws, R_MS0 + len(CITIES) + 1, "December = the targets in A2. If a month-end can't be reached within last year's pace, "
-                                  "the rest rolls into the next month (Lakshya vs Plan tab, section 5 shows why).")
+            Ls = [L(2 + m), L(6 + m), L(10 + m)]
+            put(ws, r, 14 + m, f"={Ls[0]}{r}+{Ls[1]}{r}+{Ls[2]}{r}", NUM, bold=True)
+    india_row(ws, R_MS0 + n, range(2, 18))
+    note(ws, R_MS0 + n + 1, "December = the targets in A2. Lakshya has no monthly EIP, so EIP is a straight line from the actual to its target.")
 
-    # ---- A4 / A5. cars bought / sold by month
-    def month_table(r_h, code, name, what, data, lakshya, note_text, cap_col=False):
-        title(ws, r_h - 2, code, name, what)
-        hdr(ws, r_h, 1, "City")
-        for m in range(4):
-            c = hdr(ws, r_h, 2 + m, dt.date(2026, 9 + m, 1))
-            c.number_format = "mmm-yy"
-        for j, t in enumerate(["Total", "Lakshya total", "Difference"], start=6):
-            hdr(ws, r_h, j, t)
-        if cap_col:
-            hdr(ws, r_h, 9, "Max on road per week")
-        ws.row_dimensions[r_h].height = 30
-        for i, city in enumerate(CITIES):
-            r = r_h + 1 + i
-            put(ws, r, 1, city, bold=True)
+    # ---- A5. AOP month-ends
+    title(ws, R_AOP_H - 3, "A5", "AOP MONTH-ENDS  -  the baseline before Lakshya",
+          "AOP FY27 by city: cars on road (incl. EIP), EIP and driver recruitment in the month. Shown next to the plan and Lakshya.")
+    groups = [(2, 5, "ON ROAD incl. EIP (month end)"), (6, 9, "EIP (month end)"), (10, 13, "DRIVER RECRUITMENT in the month")]
+    for c1, c2, t in groups:
+        hdr(ws, R_AOP_H - 1, c1, t, GREY_HDR)
+        ws.merge_cells(start_row=R_AOP_H - 1, start_column=c1, end_row=R_AOP_H - 1, end_column=c2)
+    hdr(ws, R_AOP_H, 1, "City")
+    for g in range(3):
+        for m, mon in enumerate(MONTHS):
+            hdr(ws, R_AOP_H, 2 + 4 * g + m, mon)
+    for i, city in enumerate(CITIES):
+        r = R_AOP0 + i
+        put(ws, r, 1, city, bold=True)
+        for g, key in enumerate(("onroad", "eip", "rec")):
             for m in range(4):
-                inp(ws, r, 2 + m, data[city][m], NUM)
-            put(ws, r, 6, f"=SUM(B{r}:E{r})", NUM, bold=True)
-            inp(ws, r, 7, lakshya[city], NUM)
-            put(ws, r, 8, f"=F{r}-G{r}", NUM)
-            if cap_col:  # 1.5 x the busiest month's weekly arrivals; type over to change
-                put(ws, r, 9, f"=ROUNDUP(MAX(C{r}/4,D{r}/5)*1.5,0)", NUM, font=F_INPUT, bg=INPUT)
-        r = r_h + 1 + len(CITIES)
-        india_row(ws, r, range(2, 9))
-        note(ws, r + 1, note_text)
-        ws.conditional_formatting.add(f"H{r_h + 1}:H{r}", FormulaRule(formula=[f"H{r_h + 1}<>0"], font=RED_FONT))
+                inp(ws, r, 2 + 4 * g + m, AOP[city][key][m], NUM)
+    india_row(ws, R_AOP0 + n, range(2, 14))
+    note(ws, R_AOP0 + n + 1, "AOP September is where AOP expected to be now: compare with the actual in A2 to see the starting gap.")
 
-    month_table(R_ADD_H, "A4", "NEW CARS BOUGHT, BY MONTH",
-                "Cars arriving each month, split evenly over the month's weeks. They go on road the week after they arrive, "
-                "at most column I a week (cars held back over Diwali catch up this way).",
-                ADDS, LAKSHYA_ADDS,
-                "Lakshya: 2,300 cars (WagonR 1,200, Dzire 600, Rumion 500), all landed by 30 Nov. Sep = 21-30 Sep only. "
-                "Column I = 1.5 x normal weekly arrivals; type a number to change it.", cap_col=True)
-    month_table(R_SALE_H, "A5", "CARS SOLD, BY MONTH",
-                "Cars sold each month. They come out of idle cars, so they lower the fleet (and raise utilisation), not cars on road.",
-                SALES, LAKSHYA_SALES,
-                "Lakshya: 721 cars. Sep = 21-30 Sep only; cars sold 1-20 Sep are already out of the opening fleet.")
+    # ---- A6. new cars
+    title(ws, R_STK_H - 3, "A6", "NEW CARS  -  bought and waiting at the stock yard, when they reach the fleet, and what is still to buy",
+          "The plan adds only cars that are bought (New Car Stock Report, 27 Sep). Each car gets a driver the week after it lands; "
+          "the rest of Lakshya's 2,300 show as pending until ordered.")
+    groups = [(2, 6, "IN STOCK BY RTO STATUS (bought)"), (7, 9, "LAKSHYA PLAN"), (10, 11, "PENDING PURCHASE")]
+    for c1, c2, t in groups:
+        hdr(ws, R_STK_H - 1, c1, t, GREY_HDR)
+        ws.merge_cells(start_row=R_STK_H - 1, start_column=c1, end_row=R_STK_H - 1, end_column=c2)
+    heads = ["City"] + [s for s, _, _ in DELIVERY_WINDOWS] + ["Total bought", "Sep-Oct", "Nov", "Total",
+                                                               "vs Sep-Oct plan", "vs full plan"]
+    for j, t in enumerate(heads, start=1):
+        hdr(ws, R_STK_H, j, t)
+    ws.row_dimensions[R_STK_H].height = 42
+    for i, city in enumerate(CITIES):
+        r = R_STK0 + i
+        put(ws, r, 1, city, bold=True)
+        for s in range(4):
+            inp(ws, r, 2 + s, NEW_CAR_STOCK[city][s], NUM)
+        put(ws, r, 6, f"=SUM(B{r}:E{r})", NUM, bold=True)
+        inp(ws, r, 7, LAKSHYA_ADDS_M[city][0] + LAKSHYA_ADDS_M[city][1], NUM)
+        inp(ws, r, 8, LAKSHYA_ADDS_M[city][2] + LAKSHYA_ADDS_M[city][3], NUM)
+        put(ws, r, 9, f"=G{r}+H{r}", NUM)
+        put(ws, r, 10, f"=MAX(0,G{r}-F{r})", NUM, bold=True)
+        put(ws, r, 11, f"=MAX(0,I{r}-F{r}-SUM(B{R_FUT0 + i}:D{R_FUT0 + i}))", NUM, bold=True)
+    india_row(ws, R_STK0 + n, range(2, 12))
+    note(ws, R_STK0 + n + 1, "Pending = Lakshya's cars not yet bought: shown, not planned. When an order is placed, type it in the "
+                             "future purchases table below and the plan adds it.")
+    # delivery windows
+    ws.cell(R_WIN_H - 1, 1, "When each status reaches the fleet (plan weeks; cars spread evenly across the window)").font = F_BOLD
+    for j, t in enumerate(["RTO status", "First week", "Last week", "First week starts", "Last week starts", "Cars (India)"], start=1):
+        hdr(ws, R_WIN_H, j, t)
+    for s, (status, a, b) in enumerate(DELIVERY_WINDOWS):
+        r = R_WIN0 + s
+        put(ws, r, 1, status, bold=True)
+        inp(ws, r, 2, a, "0")
+        inp(ws, r, 3, b, "0")
+        put(ws, r, 4, f"=INDEX($B${R_CAL0}:$B${R_CAL0 + N_WEEKS - 1},B{r})", DATE)
+        put(ws, r, 5, f"=INDEX($B${R_CAL0}:$B${R_CAL0 + N_WEEKS - 1},C{r})", DATE)
+        put(ws, r, 6, f"={L(2 + s)}{R_STK0 + n}", NUM)
+    # future purchases
+    ws.cell(R_FUT_H - 1, 1, "Future purchases - cars ordered after 27 Sep (leave 0 until an order is placed)").font = F_BOLD
+    for j, t in enumerate(["City"] + PLAN_MONTHS + ["Total"], start=1):
+        hdr(ws, R_FUT_H, j, t)
+    for i, city in enumerate(CITIES):
+        r = R_FUT0 + i
+        put(ws, r, 1, city, bold=True)
+        for m in range(3):
+            inp(ws, r, 2 + m, 0, NUM)
+        put(ws, r, 5, f"=SUM(B{r}:D{r})", NUM, bold=True)
+    india_row(ws, R_FUT0 + n, range(2, 6))
+    # weekly deliveries
+    ws.cell(R_ADD_H - 1, 1, "Cars reaching the fleet each plan week (drivers are hired for them the following week)").font = F_BOLD
+    hdr(ws, R_ADD_H, 1, "City")
+    for w in range(N_WEEKS):
+        c = hdr(ws, R_ADD_H, 2 + w, f"=B{R_CAL0 + w}")
+        c.number_format = DATE
+    hdr(ws, R_ADD_H, 2 + N_WEEKS, "Total")
+    wim = {m: WEEK_MONTH.count(m) for m in PLAN_MONTHS}
+    for i, city in enumerate(CITIES):
+        r = R_ADD0 + i
+        put(ws, r, 1, city, bold=True)
+        for w in range(N_WEEKS):
+            terms = [f"IF(AND({w + 1}>=$B${R_WIN0 + s},{w + 1}<=$C${R_WIN0 + s}),{L(2 + s)}{R_STK0 + i}/($C${R_WIN0 + s}-$B${R_WIN0 + s}+1),0)"
+                     for s in range(len(DELIVERY_WINDOWS))]
+            m = PLAN_MONTHS.index(WEEK_MONTH[w])
+            terms.append(f"{L(2 + m)}{R_FUT0 + i}/{wim[WEEK_MONTH[w]]}")
+            put(ws, r, 2 + w, "=" + "+".join(terms), NUM)
+        put(ws, r, 2 + N_WEEKS, f"=SUM(B{r}:{L(1 + N_WEEKS)}{r})", NUM, bold=True)
+    india_row(ws, R_ADD0 + n, range(2, 3 + N_WEEKS))
 
-    # ---- A6. calendar
-    title(ws, R_CAL_H - 2, "A6", "WEEKLY CALENDAR",
-          "One row per plan week (Mon-Sun). The cream columns tell each week which season, festival and Diwali dip apply, "
-          "and whether new cars go on road.")
-    cal_heads = ["Week #", "Week start (Mon)", "Week end", "Month", "Days in plan", "Season (picks pace)"] + [
-        f"Events - {c}" for c in CITIES] + ["Festival used (picks impact, B1)", "Diwali week (picks dip)",
-                                             "New cars go on road? (No = hold)", "Month-end it counts to (A3)"]
+    # ---- A7. cars sold
+    title(ws, R_SALE_H - 2, "A7", "CARS SOLD, BY MONTH",
+          "Cars sold each month, spread evenly over its weeks. They come out of idle cars, so they lower the fleet, not cars on road.")
+    for j, t in enumerate(["City"] + PLAN_MONTHS + ["Total", "Lakshya total", "Difference"], start=1):
+        hdr(ws, R_SALE_H, j, t)
+    for i, city in enumerate(CITIES):
+        r = R_SALE0 + i
+        put(ws, r, 1, city, bold=True)
+        for m in range(3):
+            inp(ws, r, 2 + m, SALES[city][m], NUM)
+        put(ws, r, 5, f"=SUM(B{r}:D{r})", NUM, bold=True)
+        inp(ws, r, 6, LAKSHYA_SALES[city], NUM)
+        put(ws, r, 7, f"=E{r}-F{r}", NUM)
+    india_row(ws, R_SALE0 + n, range(2, 8))
+    note(ws, R_SALE0 + n + 1, "Lakshya: 721 cars Sep-Dec; cars already sold by 27 Sep are out of the opening fleet.")
+
+    # ---- A8. calendar
+    title(ws, R_CAL_H - 2, "A8", "WEEKLY CALENDAR",
+          "One row per plan week (Mon-Sun). The season block picks the seasonal change (Seasonality Check tab); the last column is "
+          "the Lakshya month-end the week counts to.")
+    cal_heads = ["Week #", "Week start (Mon)", "Week end", "Month", "Days in plan", "Season block"] + [
+        f"Events - {c}" for c in CITIES] + ["Lakshya month-end it counts to"]
     for j, t in enumerate(cal_heads, start=1):
         hdr(ws, R_CAL_H, j, t)
     ws.row_dimensions[R_CAL_H].height = 42
@@ -848,94 +991,68 @@ def build_inputs(wb):
         for k, city in enumerate(CITIES):
             parts_ = [x for x in (EVENTS_ALL.get(w + 1), EVENTS_CITY.get((city, w + 1))) if x]
             inp(ws, r, 7 + k, "; ".join(parts_) if parts_ else "")
-        inp(ws, r, 14, WEEK_EVENT.get(w + 1, ""))
-        inp(ws, r, 15, DIWALI_WEEK.get(w + 1, ""))
-        inp(ws, r, 16, "No" if WEEK_SEASON[w] == "Diwali" else "Yes")
-        inp(ws, r, 17, WEEK_MONTH[w])
+        inp(ws, r, 14, WEEK_MONTH[w])
     r = R_CAL0 + N_WEEKS
     put(ws, r, 1, "Total", bold=True, bg=LIGHT)
-    for j in (2, 3, 4):
-        put(ws, r, j, None, bg=LIGHT)
     put(ws, r, 5, f"=SUM(E{R_CAL0}:E{r - 1})", "0", bold=True, bg=LIGHT)
-    note(ws, r + 1, "Seasons: Pre-Diwali w/c 21 Sep - 26 Oct, Diwali w/c 2 and 9 Nov (Diwali Sun 8 Nov), Post-Diwali w/c 16 Nov - 21 Dec. "
-                "A week counts in the month its Monday falls in. Events columns are for reading; only the festival column is used.")
-
-    # ================================================================ PART B
-    banner(ws, R_SEAS_H - 4, "PART B  -  LEARNT FROM LAST YEAR  (change only if you disagree with history)", TEAL)
-
-    # ---- B1. festival impact on recruitment
-    title(ws, R_SEAS_H - 2, "B1", "FESTIVAL IMPACT ON RECRUITMENT",
-          "Change in recruitment in a festival week vs a normal week (2024-25 average). "
-          "A festival week is asked to grow less: factor = 1 + impact.")
-    hdr(ws, R_SEAS_H, 1, "Festival", TEAL)
-    for k, city in enumerate(CITIES):
-        hdr(ws, R_SEAS_H, 2 + k, city, TEAL)
-    for i, (ev, vals) in enumerate(SEASON_REC.items()):
-        r = R_SEAS0 + i
-        put(ws, r, 1, ev, bold=True)
-        for k, v in enumerate(vals):
-            inp(ws, r, 2 + k, v, "0%")
-    note(ws, R_SEAS1 + 1, "Source: Weekly Supply Plan, seasonality_Impect tab ('Rec Avg'). Floored at the A1 'largest drop'. "
-                      "Weeks with no festival: factor 1. Kannada Rajyotsava is Bangalore only.")
+    note(ws, r + 1, "Season blocks, aligned on Diwali (Sun 8 Nov): Pre-Diwali w/c 28 Sep - 26 Oct, Diwali w/c 2 and 9 Nov, "
+                    "Recovery w/c 16 - 30 Nov, December w/c 7 - 21 Dec. A week counts in the month its Monday falls in.")
 
     # ================================================================ PART C
     banner(ws, R_SUM_H - 4, "PART C  -  OUTPUT AND SOURCES  (nothing to type)", GREY_HDR)
-
-    # ---- C1. summary
     title(ws, R_SUM_H - 2, "C1", "PLAN SUMMARY BY CITY",
-          "Where the plan lands on 27 Dec, read from the city tabs. Gap to target and Check should be 0. "
-          "Fleet 27 Dec differs from Lakshya only by the start fleet difference (column L).")
-    sum_cols = ["City", "On road at start", "On road 27 Dec", "Lakshya target", "Gap to target",
-                "EIP 27 Dec", "Own Now 27 Dec", "L+DTO 27 Dec", "Fleet 27 Dec", "Lakshya fleet Dec",
-                "Lakshya start fleet (31 Aug)", "Start fleet difference (plan start - Lakshya start)",
-                "Util 27 Dec", "Max utilisation", "Headroom", "EIP net add", "Own Now driver acquisition",
-                "L+DTO driver acquisition", "Total driver acquisition", "Peak week driver acquisition", "Check (0 = OK)",
-                "Weeks needing more than LY pace", "Top weekly growth %"]
+          "Where the plan lands on 27 Dec, read from the city tabs, next to the run rate, AOP and Lakshya. Check should be 0.")
+    sum_cols = ["City", "On road at start", "On road 27 Dec (plan)", "Lakshya target", "Plan - Lakshya",
+                "Run rate 27 Dec", "AOP Dec", "Plan - AOP", "EIP 27 Dec", "Own Now 27 Dec", "L+DTO 27 Dec",
+                "Fleet 27 Dec", "Lakshya fleet Dec", "Util 27 Dec", "Max utilisation", "Headroom",
+                "Driver acquisition (13 weeks)", "of which for new cars", "Extra hiring step a week",
+                "Peak week acquisition", "Proven capacity a week", "Weeks above capacity", "Check (0 = OK)",
+                "Within capacity 27 Dec", "Cars short at max utilisation, 27 Dec"]
     for j, t in enumerate(sum_cols, start=1):
         hdr(ws, R_SUM_H, j, t, GREY_HDR)
-    ws.row_dimensions[R_SUM_H].height = 54
+    ws.row_dimensions[R_SUM_H].height = 44
     for i, city in enumerate(CITIES):
         r = R_SUM0 + i
         s = q(city)
         vals = [
             (city, None), (f"={s}!G{FIRST}", NUM), (f"={s}!Y{LAST}", NUM), (f"={ci('t_onroad', i)}", NUM),
-            (f"=C{r}-D{r}", NUM), (f"={s}!R{LAST}", NUM), (f"={s}!X{LAST}", NUM), (f"={s}!W{LAST}", NUM),
-            (f"={s}!E{LAST}", NUM), (f"={ci('lk_fleet', i)}", NUM),
-            # Lakshya's start = its Dec fleet less its new cars plus its cars sold (A4 / A5, column G)
-            (f"=J{r}-Inputs!$G${R_ADD0 + i}+Inputs!$G${R_SALE0 + i}", NUM),
-            (f"={s}!E{FIRST}-{s}!F{FIRST}-K{r}", NUM),
-            (f"=C{r}/I{r}", PCT), (f"={ci('ceiling', i)}", PCT), (f"=N{r}-M{r}", PCT), (f"={s}!P{R_TOT}", NUM),
-            (f"={s}!AM{R_TOT}", NUM), (f"={s}!AT{R_TOT}", NUM), (f"={s}!AU{R_TOT}", NUM),
-            (f"=MAX({s}!AU{FIRST}:AU{LAST})", NUM),
-            (f"=ROUND(SUMPRODUCT(ABS({s}!AV2:AV{LAST})),6)", "0"),
-            ("=" + stretch_count(f"{s}!BP{FIRST}:BP{LAST}"), "0"),
-            (f"=MAX({s}!BN{FIRST}:BN{LAST})", "0.0%"),
+            (f"=C{r}-D{r}", DIFF_FMT), (f"={s}!BS{LAST}", NUM), (f"=Inputs!$E${R_AOP0 + i}", NUM), (f"=C{r}-G{r}", DIFF_FMT),
+            (f"={s}!R{LAST}", NUM), (f"={s}!X{LAST}", NUM), (f"={s}!W{LAST}", NUM),
+            (f"={s}!E{LAST}", NUM), (f"={ci('lk_fleet', i)}", NUM), (f"=C{r}/L{r}", PCT),
+            (f"={ci('ceiling', i)}", PCT), (f"=O{r}-N{r}", PCT),
+            (f"={s}!AU{R_TOT}", NUM), (f"={s}!AI{R_TOT}", NUM), (f"={s}!{STEP_CELL}", "0.0"),
+            (f"=MAX({s}!AU{FIRST}:AU{LAST})", NUM), (f"={rr('cap', i)}", NUM),
+            (f'=COUNTIF({s}!BP{FIRST}:BP{LAST},"Above capacity")', "0"),
+            (f"=ROUND(SUMPRODUCT(ABS({s}!AV2:AV{LAST})),6)", "0"), (f"={s}!CG{LAST}", NUM), (f"={s}!CH{LAST}", NUM),
         ]
         for j, (v, fmt) in enumerate(vals, start=1):
-            put(ws, r, j, v, fmt, bold=(j == 1))
-    r = R_SUM0 + len(CITIES)
+            put(ws, r, j, v, fmt, bold=(j in (1, 3)))
+    r = R_SUM0 + n
     put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
     for j in range(2, len(sum_cols) + 1):
-        L = get_column_letter(j)
-        if L == "M":
-            v, fmt = f"=C{r}/I{r}", PCT
-        elif L in ("N", "O"):
+        Lj = L(j)
+        if Lj == "N":
+            v, fmt = f"=C{r}/L{r}", PCT
+        elif Lj in ("O", "P", "T"):
             v, fmt = None, PCT
-        elif L == "W":
-            v, fmt = f"=MAX(W{R_SUM0}:W{r - 1})", "0.0%"
+        elif Lj == "S":
+            v, fmt = f"=SUM(S{R_SUM0}:S{r - 1})", "0.0"
+        elif Lj in ("E", "H"):
+            v, fmt = f"=SUM({Lj}{R_SUM0}:{Lj}{r - 1})", DIFF_FMT
         else:
-            v, fmt = f"=SUM({L}{R_SUM0}:{L}{r - 1})", NUM
+            v, fmt = f"=SUM({Lj}{R_SUM0}:{Lj}{r - 1})", NUM
         put(ws, r, j, v, fmt, bold=True, bg=LIGHT)
     r_india = r
-    note(ws, r_india + 1, "Start fleet difference: the plan starts from the actual fleet on the opening date (A2, fleet_total_cars_cnt, "
-                          "as in the Weekly Supply Plan); Lakshya started from its own 31 Aug base. Same cars bought and sold on both sides, "
-                          "so the gap carries to 27 Dec. Headroom below 0 (red) = planned above the city's max utilisation.")
-    ws.conditional_formatting.add(f"O{R_SUM0}:O{r_india - 1}",
-                                  FormulaRule(formula=[f"O{R_SUM0}<0"], font=RED_FONT, fill=fill("FFFFC7CE")))
-    ws.conditional_formatting.add(f"E{R_SUM0}:E{r_india}",
-                                  FormulaRule(formula=[f"ROUND(E{R_SUM0},0)<>0"], font=RED_FONT))
-    ws.conditional_formatting.add(f"U{R_SUM0}:U{r_india}",
-                                  FormulaRule(formula=[f"U{R_SUM0}<>0"], font=RED_FONT, fill=fill("FFFFC7CE")))
+    note(ws, r_india + 1, "Run rate = today's hiring and attrition (with validated seasonality) plus a driver for every new car. "
+                          "Plan = run rate + the extra hiring step (added once more each week) when A1 is set to Lakshya. "
+                          "Headroom below 0 (red) = above the city's max utilisation.")
+    ws.conditional_formatting.add(f"P{R_SUM0}:P{r_india - 1}",
+                                  FormulaRule(formula=[f"P{R_SUM0}<0"], font=RED_FONT, fill=fill("FFFFC7CE")))
+    for Lj in ("E", "H"):
+        ws.conditional_formatting.add(f"{Lj}{R_SUM0}:{Lj}{r_india}",
+                                      FormulaRule(formula=[f"ROUND({Lj}{R_SUM0},0)<0"], font=RED_FONT))
+    ws.conditional_formatting.add(f"V{R_SUM0}:V{r_india}", FormulaRule(formula=[f"V{R_SUM0}>0"], font=RED_FONT, fill=fill("FFFFC7CE")))
+    ws.conditional_formatting.add(f"W{R_SUM0}:W{r_india}", FormulaRule(formula=[f"W{R_SUM0}<>0"], font=RED_FONT, fill=fill("FFFFC7CE")))
 
     # ---- C2. sources
     title(ws, R_SRC_H - 2, "C2", "SOURCES", "Where the numbers come from.")
@@ -946,7 +1063,7 @@ def build_inputs(wb):
     for k, (label, url, text) in enumerate(SOURCES):
         r = R_SRC_H + 1 + k
         put(ws, r, 1, label, bold=True)
-        put(ws, r, 2, link(url, text), font=F_LINK)
+        put(ws, r, 2, link(url, text) if url else text, font=F_LINK if url else F_BODY)
         for j in range(3, 13):
             put(ws, r, j, None)
         ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=12)
@@ -955,90 +1072,147 @@ def build_inputs(wb):
     ws.sheet_view.zoomScale = 90
 
 
-def build_dip(wb):
-    """Last year's proven weekly pace and Diwali dip: the history the plan is held to."""
-    ws = wb.create_sheet(DIP_TAB)
-    ws.column_dimensions["A"].width = 30
-    for j in range(2, 13):
-        ws.column_dimensions[get_column_letter(j)].width = 12
+def build_season(wb):
+    """Seasonality checked city by city: a season block changes hiring or attrition only if 2024 and 2025 agree."""
+    ws = wb.create_sheet(SEAS_TAB)
     ws.sheet_properties.tabColor = TEAL
-    ws["A1"] = "DIWALI DIP AND LAST YEAR'S PACE  -  what 2024 and 2025 showed"
+    ws.column_dimensions["A"].width = 18
+    for j in range(2, 20):
+        ws.column_dimensions[get_column_letter(j)].width = 10
+    L = get_column_letter
+    n = len(CITIES)
+    rows_all = CITIES + ["INDIA"]
+    ws["A1"] = "SEASONALITY CHECK  -  is the change real, city by city?"
     ws["A1"].font = F_TITLE
-    ws["A2"] = ("The city tabs read the cream cells here: the two Diwali weeks fall by section 2; section 1 caps weekly growth when the "
-                "Inputs A1 switch is Yes, and flags the weeks above it when No. Grey = last year's history. Type over a cream cell to change it.")
+    ws["A2"] = ("Each season block is compared with the 4 weeks before it (the same 4 weeks the plan's run rate uses), in 2024 and "
+                "in 2025, aligned on Diwali. A change is used only if both years moved the same way by at least the minimum in "
+                "Inputs A1; otherwise the plan assumes no seasonal change.")
     ws["A2"].font = F_WHAT
 
-    # ---- 1. proven weekly pace
-    title(ws, R_PACE_H - 2, "1.", "PROVEN WEEKLY PACE",
-          "The fastest each city's cars on road grew per week, over its best 4 weeks, in the same season of 2024 or 2025. "
-          "Columns B:D are used; with the Inputs A1 switch on Yes, no week grows faster than them.")
-    for j, t in enumerate(["City"] + SEASONS +
-                          ["2024 Pre", "2024 Diwali", "2024 Post", "2025 Pre", "2025 Diwali", "2025 Post"], start=1):
-        hdr(ws, R_PACE_H, j, t, TEAL if j <= 4 else GREY_HDR)
-    ws.row_dimensions[R_PACE_H].height = 30
-    for i, city in enumerate(CITIES + ["INDIA (reference)"]):
-        r = R_PACE0 + i
-        key = city if city in PACE else "INDIA"
-        vals = PACE.get(city, PACE_INDIA)
-        put(ws, r, 1, city, bold=True, bg=None if city in PACE else LIGHT)
-        for k in range(3):
-            if city in PACE:
-                inp(ws, r, 2 + k, vals[k], "0.0%")
-            else:
-                put(ws, r, 2 + k, vals[k], "0.0%", bold=True, bg=LIGHT)
-        for y in range(2):
-            for k in range(3):
-                hist(ws, r, 5 + 3 * y + k, PACE_HIST[key][y][k])
-    note(ws, R_PACE0 + len(CITIES) + 1,
-         "Used = the better of 2024 and 2025, never below 0%. New cars are extra on top of this pace. "
-         "The Diwali column is for reference: the two Diwali weeks follow section 2 instead.")
+    # ---- 1. what the plan uses
+    title(ws, R_SU_H - 3, "1.", "SEASONAL CHANGES USED IN THE PLAN (0 = no clear seasonality)",
+          "Read by every city tab (columns BE and BF). Hiring change applies to driver acquisition; attrition change to the weekly rate.")
+    hdr(ws, R_SU_H - 1, 2, "HIRING (driver acquisition)", GREY_HDR)
+    ws.merge_cells(start_row=R_SU_H - 1, start_column=2, end_row=R_SU_H - 1, end_column=5)
+    hdr(ws, R_SU_H - 1, 6, "NET ATTRITION RATE", GREY_HDR)
+    ws.merge_cells(start_row=R_SU_H - 1, start_column=6, end_row=R_SU_H - 1, end_column=9)
+    hdr(ws, R_SU_H, 1, "City")
+    for g in range(2):
+        for b, blk in enumerate(SEASONS):
+            hdr(ws, R_SU_H, 2 + 4 * g + b, blk)
+    for i, city in enumerate(rows_all):
+        r = R_SU0 + i
+        put(ws, r, 1, city, bold=True, bg=LIGHT if city == "INDIA" else None)
+        for g in range(2):
+            ck = R_CK0 + 2 * i + g
+            for b in range(4):
+                c24, c25, v = L(3 + 3 * b), L(4 + 3 * b), L(5 + 3 * b)
+                put(ws, r, 2 + 4 * g + b, f'=IF({v}{ck}="Yes",AVERAGE({c24}{ck},{c25}{ck}),0)', "+0%;-0%;0%",
+                    bold=True, bg=LIGHT if city == "INDIA" else None)
+    for rng_ in (f"B{R_SU0}:I{R_SU0 + n}",):
+        ws.conditional_formatting.add(rng_, FormulaRule(formula=[f"B{R_SU0}<0"], font=Font(name="Calibri", size=10, bold=True, color="FFC00000")))
+        ws.conditional_formatting.add(rng_, FormulaRule(formula=[f"B{R_SU0}>0"], font=Font(name="Calibri", size=10, bold=True, color="FF006100")))
+    note(ws, R_SU0 + n + 1, "INDIA is for reference: every city uses its own row. Diwali weeks = w/c 2 and 9 Nov 2026; Pre-Diwali = "
+                            "w/c 28 Sep - 26 Oct; Recovery = w/c 16 - 30 Nov; December = w/c 7 - 21 Dec.")
 
-    # ---- 2. Diwali dip
-    title(ws, R_DIP_H - 2, "2.", "DIWALI DIP",
-          "How much cars on road fell in the Diwali weeks of 2024 and 2025. The plan's w/c 2 and 9 Nov fall by the "
-          "two-year average (columns B and C).")
-    heads = ["City", "Run-up week", "Diwali week", "Two weeks together", "Recovery week (info)",
-             "2024 run-up", "2024 Diwali", "2024 recovery", "2025 run-up", "2025 Diwali", "2025 recovery"]
-    for j, t in enumerate(heads, start=1):
-        hdr(ws, R_DIP_H, j, t, TEAL if j <= 5 else GREY_HDR)
-    ws.row_dimensions[R_DIP_H].height = 30
-    cc = R_DIPC0  # history table rows, same city order
-    for i, city in enumerate(CITIES + ["INDIA (reference)"]):
-        r = R_DIP0 + i
-        is_city = city in CITIES
-        put(ws, r, 1, city, bold=True, bg=None if is_city else LIGHT)
-        cr = cc + i
-        # history from the table below: (run-up, Diwali, recovery) = weeks 2/1, 3/2, 4/3 of each year
-        for k, f in enumerate([f"=C{cr}/B{cr}-1", f"=D{cr}/C{cr}-1", f"=E{cr}/D{cr}-1",
-                               f"=G{cr}/F{cr}-1", f"=H{cr}/G{cr}-1", f"=I{cr}/H{cr}-1"]):
-            hist(ws, r, 6 + k, f)
-        avg_ru, avg_dw = f"=AVERAGE(F{r},I{r})", f"=AVERAGE(G{r},J{r})"
-        if is_city:  # typed as the formula so it stays live; type a number over it to override
-            put(ws, r, 2, avg_ru, "0.0%", font=F_INPUT, bg=INPUT)
-            put(ws, r, 3, avg_dw, "0.0%", font=F_INPUT, bg=INPUT)
-        else:
-            put(ws, r, 2, avg_ru, "0.0%", bold=True, bg=LIGHT)
-            put(ws, r, 3, avg_dw, "0.0%", bold=True, bg=LIGHT)
-        put(ws, r, 4, f"=(1+B{r})*(1+C{r})-1", "0.0%", bold=True, bg=None if is_city else LIGHT)
-        put(ws, r, 5, f"=AVERAGE(H{r},K{r})", "0.0%", bg=None if is_city else LIGHT)
-    note(ws, R_DIP0 + len(CITIES) + 1,
-         "Diwali week = the week with Bhai Dooj; run-up = the week before; recovery = the week after (not forced, follows section 1). "
-         "2024: w/e 27 Oct, 3 Nov, 10 Nov. 2025: w/e 19 Oct, 26 Oct, 2 Nov.")
-    title(ws, R_DIPC_H - 2, "3.", "HISTORY - CARS ON ROAD ON THE SUNDAYS AROUND DIWALI",
-          "The numbers section 2 is worked out from (allotted_cars_eod, CNG).")
-    heads = ["City"] + [f"{d}" for d in DIWALI_SUNDAYS[0]] + [f"{d}" for d in DIWALI_SUNDAYS[1]]
-    for j, t in enumerate(heads, start=1):
-        hdr(ws, R_DIPC_H, j, t, GREY_HDR)
-    for i, city in enumerate(CITIES):
-        r = R_DIPC0 + i
-        put(ws, r, 1, city, bold=True)
-        for y in range(2):
-            for k in range(4):
-                hist(ws, r, 2 + 4 * y + k, DIWALI_CARS[city][y][k], NUM)
-    india_row(ws, R_DIPC0 + len(CITIES), range(2, 10))
-    note(ws, R_DIPC0 + len(CITIES) + 1, "2024 Diwali: Fri 1 Nov. 2025 Diwali: Mon 20 Oct. 2026 Diwali: Sun 8 Nov.")
+    # ---- 2. the check
+    title(ws, R_CK_H - 3, "2.", "THE CHECK  -  change vs the 4 weeks before, in 2024 and 2025",
+          "Yes = both years moved the same way by at least the minimum (Inputs A1). Grey = history (reporting DB).")
+    hdr(ws, R_CK_H - 1, 1, "")
+    hdr(ws, R_CK_H - 1, 2, "")
+    for b, blk in enumerate(SEASONS):
+        hdr(ws, R_CK_H - 1, 3 + 3 * b, blk, GREY_HDR)
+        ws.merge_cells(start_row=R_CK_H - 1, start_column=3 + 3 * b, end_row=R_CK_H - 1, end_column=5 + 3 * b)
+    hdr(ws, R_CK_H, 1, "City")
+    hdr(ws, R_CK_H, 2, "Measure")
+    for b in range(4):
+        for k, t in enumerate(("2024", "2025", "Seasonal?")):
+            hdr(ws, R_CK_H, 3 + 3 * b + k, t)
+    for i, city in enumerate(rows_all):
+        for g, (key, label) in enumerate((("rec", "Hiring"), ("att", "Attrition rate"))):
+            r = R_CK0 + 2 * i + g
+            put(ws, r, 1, city if g == 0 else "", bold=True)
+            put(ws, r, 2, label)
+            for b in range(4):
+                y24, y25 = SEASON_CHANGE[city][key][b]
+                hist(ws, r, 3 + 3 * b, y24, "+0%;-0%;0%")
+                hist(ws, r, 4 + 3 * b, y25, "+0%;-0%;0%")
+                a, c = f"{L(3 + 3 * b)}{r}", f"{L(4 + 3 * b)}{r}"
+                put(ws, r, 5 + 3 * b, f'=IF(AND({a}*{c}>0,ABS({a})>={G_SEAS},ABS({c})>={G_SEAS}),"Yes","No")', bold=True)
+    last_ck = R_CK0 + 2 * len(rows_all) - 1
+    for b in range(4):
+        v = L(5 + 3 * b)
+        ws.conditional_formatting.add(f"{v}{R_CK0}:{v}{last_ck}", FormulaRule(formula=[f'{v}{R_CK0}="Yes"'],
+                                      font=Font(name="Calibri", size=10, bold=True, color="FF006100"), fill=fill("FFC6EFCE")))
+    note(ws, last_ck + 1, "Hiring = new joins + resurrections a week. Attrition rate = (attrition + temp attrition - rejoins - temp rejoins) "
+                          "/ drivers at the start of the week. Aligned on the week with Bhai Dooj: w/c 28 Oct 2024, 20 Oct 2025, 9 Nov 2026.")
 
-    ws.freeze_panes = "B2"
+    # ---- 3. attrition this year vs last year
+    title(ws, R_AT_H - 3, "3.", "ATTRITION  -  this year vs the same weeks last year (last 12 weeks)",
+          "Net attrition rate a week. Lower this year in most cities: is it holding? The plan keeps this year's rate (Inputs A3).")
+    hdr(ws, R_AT_H - 1, 1, "")
+    for i, city in enumerate(rows_all):
+        hdr(ws, R_AT_H - 1, 2 + 2 * i, city, GREY_HDR)
+        ws.merge_cells(start_row=R_AT_H - 1, start_column=2 + 2 * i, end_row=R_AT_H - 1, end_column=3 + 2 * i)
+        hdr(ws, R_AT_H, 2 + 2 * i, "This year")
+        hdr(ws, R_AT_H, 3 + 2 * i, "Last year")
+    hdr(ws, R_AT_H, 1, "Week (Mon)")
+    for k in range(12):
+        r = R_AT_H + 1 + k
+        put(ws, r, 1, dt.date.fromisoformat(ATTR_TREND["Mumbai"][k][0]), DATE, bold=True)
+        for i, city in enumerate(rows_all):
+            _, cy, ly = ATTR_TREND[city][k]
+            put(ws, r, 2 + 2 * i, cy, PCT, bg=ACTUAL)
+            hist(ws, r, 3 + 2 * i, ly, PCT)
+    r1, r12 = R_AT_H + 1, R_AT_H + 12
+    for k, (label, a, b) in enumerate((("Last 4 weeks", r12 - 3, r12), ("8 weeks before", r1, r12 - 4))):
+        r = r12 + 1 + k
+        put(ws, r, 1, label, bold=True, bg=LIGHT)
+        for i in range(len(rows_all)):
+            for j in (2 + 2 * i, 3 + 2 * i):
+                put(ws, r, j, f"=AVERAGE({L(j)}{a}:{L(j)}{b})", PCT, bold=True, bg=LIGHT)
+    r = r12 + 3
+    put(ws, r, 1, "This year vs last", bold=True, bg=LIGHT)
+    for i in range(len(rows_all)):
+        c, d = L(2 + 2 * i), L(3 + 2 * i)
+        put(ws, r, 2 + 2 * i, f'=TEXT({c}{r12 + 1}/{d}{r12 + 1}-1,"+0%;-0%")&" now"', None, bold=True, bg=LIGHT)
+        put(ws, r, 3 + 2 * i, f'=TEXT({c}{r12 + 2}/{d}{r12 + 2}-1,"+0%;-0%")&" before"', None, bg=LIGHT)
+    note(ws, r + 1, "Last year's rate rose through September while this year's stayed flat, so most of the gap is last year rising, "
+                    "not this year falling. The plan keeps this year's level and adds only the seasonal changes both years showed (section 1).")
+
+    # ---- 4. week by week, aligned on Diwali, with 4-week moving averages
+    title(ws, R_WK_H - 3, "4.", "WEEK BY WEEK, ALIGNED ON DIWALI  -  4-week moving average vs 2024 and 2025",
+          "Offset 0 = the week with Bhai Dooj. 2026 has actuals up to the current week (offset -7); the plan starts at offset -6.")
+    heads = ["Offset", "w/c 2024", "w/c 2025", "w/c 2026", "Hiring 2024", "Hiring 2025", "Hiring 2026",
+             "Hiring 4-wk avg 2024", "4-wk avg 2025", "4-wk avg 2026", "Attrition 2024", "Attrition 2025", "Attrition 2026",
+             "Attrition 4-wk avg 2024", "4-wk avg 2025", "4-wk avg 2026"]
+    r = R_WK_H
+    for i, city in enumerate(rows_all):
+        ws.cell(r - 1, 1, city).font = F_SECTION
+        for j, t in enumerate(heads, start=1):
+            hdr(ws, r, j, t, TEAL if j >= 5 else NAVY)
+        ws.row_dimensions[r].height = 30
+        top = r + 1
+        for k, row in enumerate(ALIGNED[city]):
+            rr_ = top + k
+            o, w24, h24, a24, w25, h25, a25, w26, h26, a26 = row
+            put(ws, rr_, 1, o, "+0;-0;0", bold=True, bg=LIGHT if -6 <= o else None)
+            for j, v in ((2, w24), (3, w25), (4, w26)):
+                put(ws, rr_, j, dt.date.fromisoformat(v), DATE)
+            for j, v, fmt in ((5, h24, NUM), (6, h25, NUM), (7, h26, NUM), (11, a24, PCT), (12, a25, PCT), (13, a26, PCT)):
+                if v is None:
+                    put(ws, rr_, j, None)
+                elif j in (7, 13):
+                    put(ws, rr_, j, v, fmt, bg=ACTUAL)
+                else:
+                    hist(ws, rr_, j, v, fmt)
+            for src, dst in ((5, 8), (6, 9), (7, 10), (11, 14), (12, 15), (13, 16)):
+                a = max(top, rr_ - 3)
+                col = L(src)
+                fmt = NUM if src < 11 else PCT
+                put(ws, rr_, dst, f'=IF(COUNT({col}{a}:{col}{rr_})=0,"",AVERAGE({col}{a}:{col}{rr_}))', fmt, bold=(dst in (10, 16)))
+        r = top + len(ALIGNED[city]) + 3
+    ws.freeze_panes = "B4"
     ws.sheet_view.zoomScale = 90
 
 
@@ -1048,15 +1222,6 @@ LK_OWN_OPEN = {"Mumbai": 511, "Delhi NCR": 661, "Bangalore": 668, "Hyderabad": 2
                "Kolkata": 185, "Pune": 267}
 LK_LDTO_OPEN = {"Mumbai": 1164, "Delhi NCR": 1473, "Bangalore": 1040, "Hyderabad": 1035, "Chennai": 899,
                 "Kolkata": 300, "Pune": 694}
-LK_UTIL_DEC = {"Mumbai": 0.75, "Delhi NCR": 0.6199, "Bangalore": 0.7694, "Hyderabad": 0.7687,
-               "Chennai": 0.7759, "Kolkata": 0.5727, "Pune": 0.6869}
-# Driver Acquisition over the same 14 weeks (w/e 27 Sep - w/e 27 Dec): Weekly L+DTO F:S, Weekly Own Now E:R
-LK_LDTO_PL = {"Mumbai": 2258, "Delhi NCR": 2400, "Bangalore": 2054, "Hyderabad": 2284, "Chennai": 1780,
-              "Kolkata": 574, "Pune": 1390}
-LK_OWN_PL = {"Mumbai": 693, "Delhi NCR": 397, "Bangalore": 653, "Hyderabad": 541, "Chennai": 461,
-             "Kolkata": 177, "Pune": 267}
-LK_LDTO_WK = [983, 1118, 1070, 923, 777, 522, 442, 603, 1004, 1122, 1096, 1251, 1200, 629]
-LK_OWN_WK = [131, 297, 286, 246, 208, 144, 123, 166, 279, 311, 262, 299, 287, 150]
 # Month-end books (Lakshya months end on w/e 27 Sep, 25 Oct, 29 Nov, 27 Dec) by city
 LK_LDTO_ME = {"Mumbai": (1179, 1183, 1152, 1225), "Delhi NCR": (1488, 1489, 1446, 1535),
               "Bangalore": (1080, 1110, 1109, 1201), "Hyderabad": (1054, 1063, 1041, 1112),
@@ -1066,7 +1231,6 @@ LK_OWN_ME = {"Mumbai": (549, 711, 869, 1006), "Delhi NCR": (688, 757, 804, 850),
              "Bangalore": (687, 824, 961, 1075), "Hyderabad": (314, 448, 582, 700),
              "Chennai": (438, 537, 641, 725), "Kolkata": (205, 245, 274, 305),
              "Pune": (287, 345, 395, 442)}
-ME_WEEK_ROWS = (FIRST, FIRST + 4, FIRST + 9, FIRST + 13)  # plan weeks ending 27 Sep, 25 Oct, 29 Nov, 27 Dec
 
 # Lakshya v4 weekly books by city (Weekly L+DTO and Weekly Own Now tabs), used by the v2 workbook.
 # ld_pre / own_pre: driver acquisition in the weeks before the plan (L+DTO w/e 6, 13, 20 Sep; Own Now w/e 13, 20 Sep);
@@ -1117,7 +1281,7 @@ def build_lk_weekly(wb):
                 "- monthly churn = Lakshya's month-end books, for every city. Cream = Lakshya's figures, typed as given.")
     ws["A2"].font = F_NOTE
     n = len(CITIES)
-    week_hdr = [f"w/e {d}" for d in ("27 Sep", "4 Oct", "11 Oct", "18 Oct", "25 Oct", "1 Nov", "8 Nov", "15 Nov",
+    week_hdr = [f"w/e {d}" for d in ("4 Oct", "11 Oct", "18 Oct", "25 Oct", "1 Nov", "8 Nov", "15 Nov",
                                      "22 Nov", "29 Nov", "6 Dec", "13 Dec", "20 Dec", "27 Dec")]
 
     def weekly(r0, title, key):
@@ -1127,7 +1291,7 @@ def build_lk_weekly(wb):
         for i, c in enumerate(CITIES):
             put(ws, r0 + i, 1, c, bold=True)
             for w in range(N_WEEKS):
-                inp(ws, r0 + i, 2 + w, LK_WEEKLY[c][key][w], NUM)
+                inp(ws, r0 + i, 2 + w, LK_WEEKLY[c][key][w + 1], NUM)   # [0] = w/e 27 Sep, before the plan
             put(ws, r0 + i, 2 + N_WEEKS, f"=SUM(B{r0 + i}:{get_column_letter(1 + N_WEEKS)}{r0 + i})", NUM, bold=True)
         india_row(ws, r0 + n, range(2, 3 + N_WEEKS))
 
@@ -1153,29 +1317,24 @@ def build_lk_weekly(wb):
     ws.cell(R_LW_WK + 1, 1, "Lakshya's September runs from 31 Aug for L+DTO (4 weeks) and from ~6 Sep for Own Now (3 weeks); "
                             "only the week to 27 Sep is in the plan.").font = F_NOTE
 
-    ws.cell(R_LW_ST0 - 2, 1, "4.  START - Lakshya's own book on the opening date (where the v2 plan starts)").font = F_SECTION
-    heads = ["City", "L+DTO opening 31 Aug", "L+DTO acquisition w/e 6-20 Sep", "L+DTO on 20 Sep", "Own Now opening ~6 Sep",
-             "Own Now acquisition w/e 13-20 Sep", "Own Now on 20 Sep", "Fleet at start (Lakshya base)",
-             "Actual on 20 Sep: L+DTO", "Actual: Own Now", "Start gap (Own Now + L+DTO)"]
+    ws.cell(R_LW_ST0 - 2, 1, "4.  START - Lakshya's own book on 27 Sep (its September close: where the v2 plan starts)").font = F_SECTION
+    heads = ["City", "", "", "L+DTO on 27 Sep (Lakshya)", "", "", "Own Now on 27 Sep (Lakshya)", "Fleet at start (Lakshya base)",
+             "Actual L+DTO", "Actual Own Now", "Start gap (Own Now + L+DTO)"]
     for j, t in enumerate(heads, start=1):
         hdr(ws, R_LW_ST0 - 1, j, t)
     ws.row_dimensions[R_LW_ST0 - 1].height = 42
     for i, c in enumerate(CITIES):
         r = R_LW_ST0 + i
         put(ws, r, 1, c, bold=True)
-        inp(ws, r, 2, LK_WEEKLY[c]["ld_open"], NUM)
-        inp(ws, r, 3, sum(LK_WEEKLY[c]["ld_pre"]), NUM)
-        put(ws, r, 4, f"=B{r}+C{r}-B{R_LW_CH0 + i}*3/B{R_LW_WK}", NUM, bold=True)          # 3 of Sep's 4 weeks of churn
-        inp(ws, r, 5, LK_WEEKLY[c]["own_open"], NUM)
-        inp(ws, r, 6, sum(LK_WEEKLY[c]["own_pre"]), NUM)
-        put(ws, r, 7, f"=E{r}+F{r}-(F{R_LW_CH0 + i}+J{R_LW_CH0 + i})*2/F{R_LW_WK}", NUM, bold=True)  # 2 of 3 weeks
-        put(ws, r, 8, f"={ci('lk_fleet', i)}-Inputs!$G${R_ADD0 + i}+Inputs!$G${R_SALE0 + i}", NUM)
+        put(ws, r, 4, f"=Inputs!$J${R_MS0 + i}", NUM, bold=True)
+        put(ws, r, 7, f"=Inputs!$F${R_MS0 + i}", NUM, bold=True)
+        put(ws, r, 8, f"={ci('lk_fleet', i)}-Inputs!$I${R_STK0 + i}+Inputs!$F${R_SALE0 + i}", NUM)
         put(ws, r, 9, f"={ci('ldto', i)}", NUM, bg=ACTUAL)
         put(ws, r, 10, f"={ci('own', i)}", NUM, bg=ACTUAL)
         put(ws, r, 11, f"=I{r}+J{r}-D{r}-G{r}", "+#,##0;-#,##0;0", bold=True)
-    india_row(ws, R_LW_ST0 + n, range(2, 12))
-    ws.cell(R_LW_ST0 + n + 1, 1, "v2 starts every city from Lakshya's own 20 Sep book (columns D and G) and fleet (H), not the actual. "
-                                 "Start gap = how far the actual is from it: the plan in v1 closes this gap, v2 assumes it away.").font = F_NOTE
+    india_row(ws, R_LW_ST0 + n, [4, 7, 8, 9, 10, 11])
+    ws.cell(R_LW_ST0 + n + 1, 1, "v2 starts every city from Lakshya's own 27 Sep book (Inputs A4, September) and fleet base, not the actual. "
+                                 "Start gap = how far the actual is from it: the main plan starts from the actual, v2 assumes the gap away.").font = F_NOTE
     ws.freeze_panes = "B4"
 
 
@@ -1191,10 +1350,13 @@ def v2_city_overrides(idx, w, r, p):
         "AK": f"={LW}!${get_column_letter(6 + m)}${R_LW_CH0 + idx}/{LW}!${get_column_letter(6 + m)}${R_LW_WK}",
         "AL": f"={LW}!${get_column_letter(10 + m)}${R_LW_CH0 + idx}/{LW}!${get_column_letter(10 + m)}${R_LW_WK}",
         "AJ": f"=AM{r}-AK{r}-AL{r}",
+        "AQ": f"=AK{r}+AL{r}+AS{r}",
         "AG": f"=({ci('t_eip', idx)}-$R${OPEN_ROW})/{N_WEEKS}",
         "BM": f"=AG{r}+AJ{r}+AR{r}",
         "X": f"=AH{r}+AJ{r}", "W": f"=AP{r}+AR{r}",
-        "BP": f'=IF(AF{r}="Diwali","Diwali (Lakshya)",IF(BM{r}-BJ{r}<=BI{r}+0.5,"Yes","{ABOVE}"))',
+        # Lakshya's 2,300 new cars (Inputs A6, Lakshya plan): Oct and Nov, spread evenly over the month's weeks
+        "AD": {"Oct": f"=Inputs!$G${R_STK0 + idx}/{WEEK_MONTH.count('Oct')}",
+               "Nov": f"=Inputs!$H${R_STK0 + idx}/{WEEK_MONTH.count('Nov')}"}.get(WEEK_MONTH[w], "=0"),
     }
     if w == 0:  # start from Lakshya's own book and fleet on the opening date
         f.update({
@@ -1205,577 +1367,111 @@ def v2_city_overrides(idx, w, r, p):
     return f
 
 
-def all_cities(cell):
-    return "=" + "+".join(f"{q(c)}!{cell}" for c in CITIES)
-
-
-def build_compare(wb):
-    ws = wb.create_sheet("Lakshya vs Plan", 0)
-    ws.sheet_state = "hidden"  # kept for reference; the Monthly Dashboard shows Lakshya vs plan
-    widths = [22, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11]
-    for i, w in enumerate(widths, start=1):
-        ws.column_dimensions[get_column_letter(i)].width = w
-    ws.column_dimensions["P"].width = 60
-    ws["A1"] = "Lakshya 15,000 - the plan we were given vs the weekly plan we built"
-    ws["A1"].font = F_TITLE
-    ws["A2"] = ("Grey headers = Lakshya_15000_Model_v4 as given (typed from the model). Navy headers = this "
-                "workbook's weekly plan (live formulas from the city tabs). Weekly plan starts from the actual "
-                "position on Sun 20 Sep 2026 and runs to Sun 27 Dec, the same end week as Lakshya.")
-    ws["A2"].font = F_NOTE
-    ws.merge_cells("A2:P2")
-    ws["A3"] = "Lakshya source:"
-    ws["A3"].font = F_BOLD
-    ws["B3"] = link(LAKSHYA_URL, "Lakshya_15000_Model_v4.xlsx (Google Drive)")
-    ws["B3"].font = Font(name="Calibri", size=10, color="FF1155CC", underline="single")
-    ws.merge_cells("B3:H3")
-    ok_fill, diff_fill = fill("FFC6EFCE"), fill("FFFFEB9C")
-    ok_font = Font(name="Calibri", size=10, bold=True, color="FF006100")
-    diff_font = Font(name="Calibri", size=10, bold=True, color="FF9C5700")
-
-    def status_rules(rng, first_cell):
-        ws.conditional_formatting.add(rng, FormulaRule(formula=[f'LEFT({first_cell},1)="M"'], font=ok_font, fill=ok_fill))
-        ws.conditional_formatting.add(rng, FormulaRule(formula=[f'LEFT({first_cell},1)="D"'], font=diff_font, fill=diff_fill))
-
-    def section(row, text):
-        ws.cell(row, 1, text).font = F_SECTION
-
-    def status(diff_cell, tol=0.5):
-        return f'=IF(ABS({diff_cell})<{tol},"Match","Differs")'
-
-    # ---- 1. headline
-    r = 4
-    section(r, "1.  HEADLINE - INDIA")
-    r += 1
-    for j, (t, col) in enumerate([("Metric", NAVY), ("Lakshya v4", GREY_HDR), ("Weekly plan", NAVY),
-                                  ("Difference", NAVY), ("Status", NAVY)], start=1):
-        hdr(ws, r, j, t, col)
-    hdr(ws, r, 6, "Why", NAVY)
-    ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=16)
-    rows = [
-        ("CNG cars on road, 27 Dec", 15082, all_cities(f"Y{LAST}"), NUM, 0.5,
-         "Each week works to Lakshya's month-end. Inputs A1 switch: No = match Lakshya every month-end; Yes = hold growth to the city's best 2024/25 pace, so it may land short - see Read Me."),
-        ("EIP, 27 Dec", 3038, all_cities(f"R{LAST}"), NUM, 0.5, ""),
-        ("Own Now, 27 Dec", 5103, all_cities(f"X{LAST}"), NUM, 0.5, ""),
-        ("Leasing + DTO, 27 Dec", 6941, all_cities(f"W{LAST}"), NUM, 0.5, ""),
-        ("New cars added, Sep-Dec", 2300, all_cities(f"AD{R_TOT}"), NUM, 0.5,
-         "Same 2,300 cars; phased 50% Oct / 50% Nov, all landed by 30 Nov."),
-        ("Cars sold, Sep-Dec", 721, all_cities(f"AE{R_TOT}"), NUM, 0.5, "Same 721 cars; phased evenly Oct-Dec."),
-        ("Fleet, 27 Dec", 20913, all_cities(f"E{LAST}"), NUM, 0.5,
-         f"Opening fleet differs: weekly plan starts from the DB fleet_total_cars_cnt on 20 Sep (19,167), the "
-         f"column the Weekly Supply Plan uses; Lakshya started from 19,334 on 31 Aug."),
-        ("Utilisation, 27 Dec", 0.7212, None, PCT, 0.0005, "Same cars on road on a slightly smaller fleet (see fleet line)."),
-        ("Starting point - cars on road", 11718, "=" + "+".join(f"{q(c)}!Y{OPEN_ROW}" for c in CITIES), NUM, None,
-         "Lakshya starts from the 31 Aug actual; the weekly plan starts from the 20 Sep actual (reporting DB)."),
-    ]
-    first = r + 1
-    for k, (label, lk, plan, fmt, tol, why) in enumerate(rows):
-        r += 1
-        put(ws, r, 1, label, bold=True)
-        put(ws, r, 2, lk, fmt)
-        if plan is None:  # utilisation
-            plan = f"=C{first}/C{first + 6}"
-        put(ws, r, 3, plan, fmt)
-        put(ws, r, 4, f"=C{r}-B{r}", fmt)
-        put(ws, r, 5, status(f"D{r}", tol) if tol is not None else "Info")
-        put(ws, r, 6, why, font=F_NOTE)
-        ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=16)
-    status_rules(f"E{first}:E{r}", f"E{first}")
-
-    # ---- 2. December landing by city and layer
-    r += 3
-    section(r, "2.  31 DECEMBER BY CITY - each layer, Lakshya v4 vs weekly plan")
-    r += 1
-    heads = [("City", NAVY), ("EIP - Lakshya", GREY_HDR), ("EIP - plan", NAVY), ("Own Now - Lakshya", GREY_HDR),
-             ("Own Now - plan", NAVY), ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY),
-             ("On road - Lakshya", GREY_HDR), ("On road - plan", NAVY), ("Difference", NAVY), ("Status", NAVY)]
-    for j, (t, col) in enumerate(heads, start=1):
-        hdr(ws, r, j, t, col)
-    ws.row_dimensions[r].height = 32
-    first = r + 1
-    for city in CITIES:
-        r += 1
-        s = q(city)
-        te, to, tl = TARGET[city]
-        put(ws, r, 1, city, bold=True)
-        put(ws, r, 2, te, NUM)
-        put(ws, r, 3, f"={s}!R{LAST}", NUM)
-        put(ws, r, 4, to, NUM)
-        put(ws, r, 5, f"={s}!X{LAST}", NUM)
-        put(ws, r, 6, tl, NUM)
-        put(ws, r, 7, f"={s}!W{LAST}", NUM)
-        put(ws, r, 8, f"=B{r}+D{r}+F{r}", NUM)
-        put(ws, r, 9, f"={s}!Y{LAST}", NUM)
-        put(ws, r, 10, f"=ABS(C{r}-B{r})+ABS(E{r}-D{r})+ABS(G{r}-F{r})", NUM)
-        put(ws, r, 11, status(f"J{r}"))
-    r += 1
-    put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
-    for j in range(2, 11):
-        L = get_column_letter(j)
-        put(ws, r, j, f"=SUM({L}{first}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
-    put(ws, r, 11, status(f"J{r}"), bold=True, bg=LIGHT)
-    status_rules(f"K{first}:K{r}", f"K{first}")
-    ws.cell(r + 1, 1, "Difference = sum of the absolute gaps across the three layers, so 0 means every layer matches.").font = F_NOTE
-
-    # ---- 3. fleet and utilisation
-    r += 4
-    section(r, "3.  FLEET AND UTILISATION BY CITY - 27 December")
-    r += 1
-    heads = [("City", NAVY), ("New cars - Lakshya", GREY_HDR), ("New cars - plan", NAVY),
-             ("Sold - Lakshya", GREY_HDR), ("Sold - plan", NAVY), ("Fleet - Lakshya", GREY_HDR),
-             ("Fleet - plan", NAVY), ("Fleet difference", NAVY), ("Util - Lakshya", GREY_HDR),
-             ("Util - plan", NAVY), ("Ceiling", NAVY), ("Within ceiling?", NAVY)]
-    for j, (t, col) in enumerate(heads, start=1):
-        hdr(ws, r, j, t, col)
-    ws.row_dimensions[r].height = 32
-    first = r + 1
-    for i, city in enumerate(CITIES):
-        r += 1
-        s = q(city)
-        put(ws, r, 1, city, bold=True)
-        put(ws, r, 2, LAKSHYA_ADDS[city], NUM)
-        put(ws, r, 3, f"={s}!AD{R_TOT}", NUM)
-        put(ws, r, 4, LAKSHYA_SALES[city], NUM)
-        put(ws, r, 5, f"={s}!AE{R_TOT}", NUM)
-        put(ws, r, 6, LAKSHYA_FLEET_DEC[city], NUM)
-        put(ws, r, 7, f"={s}!E{LAST}", NUM)
-        put(ws, r, 8, f"=G{r}-F{r}", NUM)
-        put(ws, r, 9, LK_UTIL_DEC[city], PCT)
-        put(ws, r, 10, f"={s}!Z{LAST}", PCT)
-        put(ws, r, 11, f"={ci('ceiling', i)}", PCT)
-        put(ws, r, 12, f'=IF(J{r}<=K{r}+0.00005,"Match - yes","Differs - above by "&TEXT(J{r}-K{r},"0.0%"))')
-    r += 1
-    put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
-    for j in (2, 3, 4, 5, 6, 7, 8):
-        L = get_column_letter(j)
-        put(ws, r, j, f"=SUM({L}{first}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
-    put(ws, r, 9, 0.7212, PCT, bold=True, bg=LIGHT)
-    put(ws, r, 10, f"=({all_cities(f'Y{LAST}')[1:]})/G{r}", PCT, bold=True, bg=LIGHT)
-    put(ws, r, 11, f"=AVERAGE(K{first}:K{r - 1})", PCT, bold=True, bg=LIGHT)
-    put(ws, r, 12, None, bg=LIGHT)
-    status_rules(f"L{first}:L{r - 1}", f"L{first}")
-    ws.cell(r + 1, 1, "New cars and sales match Lakshya city by city. Fleet differs only because of the opening fleet "
-                      "(see section 1); a city above its ceiling needs more fleet, fewer sales, or a lower target.").font = F_NOTE
-
-    # ---- 4. driver acquisition over the same 14 weeks
-    r += 4
-    section(r, "4.  DRIVER ACQUISITION OVER THE SAME 14 WEEKS (w/e 27 Sep - w/e 27 Dec)  -  where the plans differ, and why")
-    r += 1
-    heads = [("City", NAVY), ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY),
-             ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
-             ("Total - Lakshya", GREY_HDR), ("Total - plan", NAVY), ("Difference", NAVY)]
-    for j, (t, col) in enumerate(heads, start=1):
-        hdr(ws, r, j, t, col)
-    ws.row_dimensions[r].height = 40
-    first = r + 1
-    for city in CITIES:
-        r += 1
-        s = q(city)
-        put(ws, r, 1, city, bold=True)
-        put(ws, r, 2, LK_LDTO_PL[city], NUM)
-        put(ws, r, 3, f"=SUM({s}!AT{FIRST}:AT{LAST})", NUM)
-        put(ws, r, 4, f"=C{r}-B{r}", NUM)
-        put(ws, r, 5, LK_OWN_PL[city], NUM)
-        put(ws, r, 6, f"=SUM({s}!AM{FIRST}:AM{LAST})", NUM)
-        put(ws, r, 7, f"=F{r}-E{r}", NUM)
-        put(ws, r, 8, f"=B{r}+E{r}", NUM)
-        put(ws, r, 9, f"=C{r}+F{r}", NUM)
-        put(ws, r, 10, f"=I{r}-H{r}", NUM)
-    r += 1
-    put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
-    for j in range(2, 11):
-        L = get_column_letter(j)
-        put(ws, r, j, f"=SUM({L}{first}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
-    notes = [
-        "Why the numbers are close: the weekly plan starts from the actual 20 Sep book (L+DTO 6,271), about 400 below where "
-        "Lakshya's path had it, so it needs a bigger net add (+670 vs Lakshya's +261 over these weeks). But a smaller book "
-        "loses fewer drivers to churn, which offsets most of it - total driver acquisition ends up within about 2% of Lakshya's.",
-        "Both plans let the book dip in the festival weeks and recover later. Lakshya sets that dip by hand; the weekly plan "
-        "takes it from last year's weekly attrition and the festival impact on recruitment (Inputs A6 and B1; city tabs AY:BJ).",
-    ]
-    for k, t in enumerate(notes):
-        c = ws.cell(r + 1 + k, 1, t)
-        c.font = F_NOTE
-
-    # ---- 5. month-end path, India
-    r += 5
-    section(r, "5.  THE PATH TO DECEMBER - India books on Lakshya's month-end Sundays")
-    r += 1
-    heads = [("Week ending", NAVY), ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Difference", NAVY),
-             ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("Difference", NAVY), ("Status", NAVY),
-             ("Why", NAVY)]
-    for j, (t, col) in enumerate(heads, start=1):
-        hdr(ws, r, j, t, col)
-    ws.column_dimensions["I"].width = 11
-    ws.row_dimensions[r].height = 32
-    first = r + 1
-    s5_rows = []
-    for m, (d, wrow) in enumerate(zip([dt.date(2026, 9, 27), dt.date(2026, 10, 25), dt.date(2026, 11, 29),
-                                       dt.date(2026, 12, 27)], ME_WEEK_ROWS)):
-        r += 1
-        put(ws, r, 1, d, "dd-mmm-yy", bold=True)
-        put(ws, r, 2, sum(LK_OWN_ME[c][m] for c in CITIES), NUM)
-        put(ws, r, 3, all_cities(f"X{wrow}"), NUM)
-        put(ws, r, 4, f"=C{r}-B{r}", NUM)
-        put(ws, r, 5, sum(LK_LDTO_ME[c][m] for c in CITIES), NUM)
-        put(ws, r, 6, all_cities(f"W{wrow}"), NUM)
-        put(ws, r, 7, f"=F{r}-E{r}", NUM)
-        put(ws, r, 8, f'=IF(AND(ABS(D{r})<0.5,ABS(G{r})<0.5),"Match","Differs - catching up")')
-        s5_rows.append(r)
-    status_rules(f"H{first}:H{r}", f"H{first}")
-    ws.cell(r + 1, 1, "Each plan week works towards Lakshya's next month-end book (Inputs A3). September has only one plan week (from the 20 Sep actual), "
-                      "so it cannot close; later months miss only where last year's pace or the Diwali dip does not allow it. City detail below.").font = F_NOTE
-
-    # ---- 5b. month-end by city, with the actual starting point
-    r += 4
-    section(r, "5b.  BY CITY - where each plan started (actual vs Lakshya), and Lakshya's month-end books vs the plan")
-    r += 1
-    heads = [("City", NAVY), ("Date", NAVY), ("Point", NAVY),
-             ("Own Now - Lakshya", GREY_HDR), ("Own Now - plan", NAVY), ("Own Now - actual", TEAL), ("Own Now diff", NAVY),
-             ("L+DTO - Lakshya", GREY_HDR), ("L+DTO - plan", NAVY), ("L+DTO - actual", TEAL), ("L+DTO diff", NAVY),
-             ("Status", NAVY), ("Why", NAVY)]
-    for j, (t, col) in enumerate(heads, start=1):
-        hdr(ws, r, j, t, col)
-    ws.row_dimensions[r].height = 32
-    first = r + 1
-    b_rows = {}
-    dates = [dt.date(2026, 9, 27), dt.date(2026, 10, 25), dt.date(2026, 11, 29), dt.date(2026, 12, 27)]
-    rawmax = "MAX(raw_performance!$C:$C)"
-
-    def raw(field, city_cell, date_expr):
-        L = rc(field)
-        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{city_cell},raw_performance!$E:$E,\"CNG\","
-                f"raw_performance!$C:$C,{date_expr})")
-
-    def raw_ldto(city_cell, date_expr):
-        return (raw("allotted_cars_eod", city_cell, date_expr) + "-" + raw("own_now_cars_eod", city_cell, date_expr)
-                + "-" + raw("eip_vehicles_cnt", city_cell, date_expr))
-
-    city_blocks = []
-    for i, city in enumerate(CITIES):
-        s_ = q(city)
-        cc = f'"{city}"'
-        top = r + 1
-        # 1. Lakshya's own starting point
-        r += 1
-        put(ws, r, 1, city, bold=True)
-        put(ws, r, 2, "31 Aug / 6 Sep")
-        put(ws, r, 3, "Lakshya start", font=F_NOTE)
-        put(ws, r, 4, LK_OWN_OPEN[city], NUM)
-        put(ws, r, 5, None)
-        put(ws, r, 6, "=" + raw("own_now_cars_eod", cc, "DATE(2026,9,6)"), NUM)
-        put(ws, r, 7, f"=F{r}-D{r}", NUM)
-        put(ws, r, 8, LK_LDTO_OPEN[city], NUM)
-        put(ws, r, 9, None)
-        put(ws, r, 10, "=" + raw_ldto(cc, "DATE(2026,8,31)"), NUM)
-        put(ws, r, 11, f"=J{r}-H{r}", NUM)
-        put(ws, r, 12, "Start")
-        put(ws, r, 13, f'="Actual vs Lakshya start: Own Now "&TEXT(G{r},"+#,##0;-#,##0;0")&", L+DTO "&TEXT(K{r},"+#,##0;-#,##0;0")')
-        lk_row = r
-        # 2. our plan start (20 Sep actual) vs where Lakshya's path was that day
-        r += 1
-        put(ws, r, 2, f"={G_OPEN_DATE}", "dd-mmm")
-        put(ws, r, 3, "Plan start", font=F_NOTE)
-        put(ws, r, 4, f"=D{lk_row}+(Inputs!F{R_MS0 + i}-D{lk_row})*2/3", NUM)   # 6 Sep -> 27 Sep, 2 of 3 weeks
-        put(ws, r, 5, f"={ci('own', i)}", NUM)
-        put(ws, r, 6, "=" + raw("own_now_cars_eod", cc, G_OPEN_DATE), NUM)
-        put(ws, r, 7, f"=F{r}-D{r}", NUM)
-        put(ws, r, 8, f"=H{lk_row}+(Inputs!J{R_MS0 + i}-H{lk_row})*3/4", NUM)  # 31 Aug -> 27 Sep, 3 of 4 weeks
-        put(ws, r, 9, f"={ci('ldto', i)}", NUM)
-        put(ws, r, 10, "=" + raw_ldto(cc, G_OPEN_DATE), NUM)
-        put(ws, r, 11, f"=J{r}-H{r}", NUM)
-        put(ws, r, 12, "Start")
-        put(ws, r, 13, f'="Plan starts from the actual; Lakshya path that day: Own Now "&TEXT(G{r},"+#,##0;-#,##0;0")&", L+DTO "&TEXT(K{r},"+#,##0;-#,##0;0")')
-        # 3-6. Lakshya month-ends
-        for m, (d, wrow) in enumerate(zip(dates, ME_WEEK_ROWS)):
-            r += 1
-            put(ws, r, 2, d, "dd-mmm")
-            put(ws, r, 3, "Month-end", font=F_NOTE)
-            put(ws, r, 4, f"=Inputs!{get_column_letter(6 + m)}{R_MS0 + i}", NUM)
-            put(ws, r, 5, f"={s_}!X{wrow}", NUM)
-            put(ws, r, 6, f'=IF(B{r}<={rawmax},' + raw("own_now_cars_eod", cc, f"B{r}") + ',"")', NUM)
-            put(ws, r, 7, f"=E{r}-D{r}", NUM)
-            put(ws, r, 8, f"=Inputs!{get_column_letter(10 + m)}{R_MS0 + i}", NUM)
-            put(ws, r, 9, f"={s_}!W{wrow}", NUM)
-            put(ws, r, 10, f'=IF(B{r}<={rawmax},' + raw_ldto(cc, f"B{r}") + ',"")', NUM)
-            put(ws, r, 11, f"=I{r}-H{r}", NUM)
-            put(ws, r, 12, f'=IF(AND(ABS(G{r})<0.5,ABS(K{r})<0.5),"Match","Differs")')
-            b_rows[(i, m)] = r
-            mon = MONTHS[m]
-            bu, bp, af = (f"{s_}!$BU${FIRST}:$BU${LAST}", f"{s_}!$BP${FIRST}:$BP${LAST}", f"{s_}!$AF${FIRST}:$AF${LAST}")
-            pace = f"{DQ}!$B${R_PACE0 + i}" if m < 2 else f"{DQ}!$D${R_PACE0 + i}"
-            if m == 0:
-                reason = '"only 1 week after the 20 Sep actual"'
-            else:
-                reason = f'"growth held to last year\'s pace ("&TEXT({pace},"0.0%")&"/wk)"'
-                if m == 2:
-                    reason += f'&" + Diwali dip "&TEXT({DQ}!$D${R_DIP0 + i},"0%")'
-            why = (f'=IF(L{r}="Match","",IF(G{r}+K{r}>0,"Above Lakshya by "&TEXT(G{r}+K{r},"#,##0"),'
-                   f'TEXT(-(G{r}+K{r}),"#,##0")&" short - "&{reason}))')
-            put(ws, r, 13, why)
-        city_blocks.append(top)
-    # INDIA block: sum of the city blocks row by row
-    r += 1
-    labels = [("31 Aug / 6 Sep", "Lakshya start"), (f"={G_OPEN_DATE}", "Plan start")] + [(d, "Month-end") for d in dates]
-    for k, (d, pt) in enumerate(labels):
-        r += 1
-        put(ws, r, 1, "INDIA" if k == 0 else "", bold=True, bg=LIGHT)
-        put(ws, r, 2, d, "dd-mmm", bg=LIGHT)
-        put(ws, r, 3, pt, font=F_NOTE, bg=LIGHT)
-        for j in (4, 5, 6, 8, 9, 10):
-            L = get_column_letter(j)
-            cells = ",".join(f"{L}{t + k}" for t in city_blocks)
-            if k < 2 and j in (5, 9) and k == 0:
-                put(ws, r, j, None, bg=LIGHT)
-            elif j in (6, 10) and k >= 2:
-                put(ws, r, j, f'=IF(COUNT({cells})=0,"",SUM({cells}))', NUM, bold=True, bg=LIGHT)
-            else:
-                put(ws, r, j, f"=SUM({cells})", NUM, bold=True, bg=LIGHT)
-        if k < 2:
-            put(ws, r, 7, f"=F{r}-D{r}", NUM, bold=True, bg=LIGHT)
-            put(ws, r, 11, f"=J{r}-H{r}", NUM, bold=True, bg=LIGHT)
-            put(ws, r, 12, "Start", bg=LIGHT)
-        else:
-            put(ws, r, 7, f"=E{r}-D{r}", NUM, bold=True, bg=LIGHT)
-            put(ws, r, 11, f"=I{r}-H{r}", NUM, bold=True, bg=LIGHT)
-            put(ws, r, 12, f'=IF(AND(ABS(G{r})<0.5,ABS(K{r})<0.5),"Match","Differs")', bg=LIGHT)
-        put(ws, r, 13, None, bg=LIGHT)
-    status_rules(f"L{first}:L{r}", f"L{first}")
-    ws.conditional_formatting.add(f"A{first}:M{r}", FormulaRule(formula=[f'$C{first}<>"Month-end"'], fill=fill(ACTUAL)))
-    # India reasons in section 5: which cities are short at each month-end
-    for m, r5 in enumerate(s5_rows):
-        terms = "&".join(f'IF(ABS(G{b_rows[(i, m)]}+K{b_rows[(i, m)]})>=0.5,"{c} "&TEXT(G{b_rows[(i, m)]}+K{b_rows[(i, m)]},"+#,##0;-#,##0")&"  ","")'
-                         for i, c in enumerate(CITIES))
-        lead = ['"Only 1 week after the 20 Sep actual. "', '"Growth held to last year\'s pace. "',
-                '"Diwali dip + last year\'s pace. "', '""'][m]
-        put(ws, r5, 9, f'=IF(H{r5}="Match","",{lead}&"Short: "&{terms})', font=F_NOTE)
-    ws.cell(r + 1, 1, "Start rows (blue): Lakshya started from Own Now on ~6 Sep and L+DTO on 31 Aug; the plan starts from the actual on 20 Sep. "
-                      "'Plan start' Lakshya = where Lakshya's path was on 20 Sep (straight line to its 27 Sep book). Diff on start rows = actual - Lakshya; on month-ends = plan - Lakshya. "
-                      "Actual columns fill in from raw_performance once a month-end has passed.").font = F_NOTE
-    r += 1
-    ws.cell(r + 1, 1, "Inputs A1 'Hold weekly growth to last year's pace?' = No: every month-end matches Lakshya; weeks that need more than last year's pace show red in city tab column BP. "
-                      "Set it to Yes and growth is held to that pace: September (one week from the 20 Sep actual) and months hit by the pace or the Diwali dip can then fall short.").font = F_NOTE
-
-    # ---- 6. weekly India
-    r += 4
-    section(r, "6.  WEEK BY WEEK - INDIA  (driver acquisition = drivers to acquire for Own Now and Leasing + DTO that week)")
-    r += 1
-    heads = [("Week (Mon)", NAVY), ("Week end", NAVY), ("L+DTO driver acquisition - Lakshya", GREY_HDR),
-             ("L+DTO driver acquisition - plan", NAVY), ("Difference", NAVY), ("Own Now driver acquisition - Lakshya", GREY_HDR),
-             ("Own Now driver acquisition - plan", NAVY), ("Difference", NAVY), ("EIP net add - plan", NAVY),
-             ("Total driver acquisition - plan", NAVY), ("On road, week end - plan", NAVY), ("Fleet - plan", NAVY),
-             ("Util - plan", NAVY)]
-    for j, (t, col) in enumerate(heads, start=1):
-        hdr(ws, r, j, t, col)
-    ws.row_dimensions[r].height = 40
-    first = r + 1
-    for w in range(N_WEEKS):
-        r += 1
-        pr = FIRST + w
-        cal = R_CAL0 + w
-        put(ws, r, 1, f"=Inputs!B{cal}", DATE, bold=True)
-        put(ws, r, 2, f"=Inputs!C{cal}", DATE)
-        if w < len(LK_LDTO_WK):
-            put(ws, r, 3, LK_LDTO_WK[w], NUM)
-            put(ws, r, 6, LK_OWN_WK[w], NUM)
-            put(ws, r, 5, f"=D{r}-C{r}", NUM)
-            put(ws, r, 8, f"=G{r}-F{r}", NUM)
-        else:
-            put(ws, r, 3, "not in Lakshya", font=F_NOTE)
-            put(ws, r, 6, "not in Lakshya", font=F_NOTE)
-            put(ws, r, 5, None)
-            put(ws, r, 8, None)
-        put(ws, r, 4, all_cities(f"AT{pr}"), NUM)
-        put(ws, r, 7, all_cities(f"AM{pr}"), NUM)
-        put(ws, r, 9, all_cities(f"P{pr}"), NUM)
-        put(ws, r, 10, all_cities(f"AU{pr}"), NUM, bg=YELLOW)
-        put(ws, r, 11, all_cities(f"Y{pr}"), NUM)
-        put(ws, r, 12, all_cities(f"E{pr}"), NUM)
-        put(ws, r, 13, f"=K{r}/L{r}", PCT)
-    r += 1
-    put(ws, r, 1, "Total", bold=True, bg=LIGHT)
-    put(ws, r, 2, None, bg=LIGHT)
-    for j in range(3, 11):
-        L = get_column_letter(j)
-        put(ws, r, j, f"=SUM({L}{first}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
-    for j in (11, 12, 13):
-        put(ws, r, j, None, bg=LIGHT)
-    ws.conditional_formatting.add(
-        f"M{first}:M{r - 1}", ColorScaleRule(start_type="min", start_color="FFF8696B", mid_type="percentile",
-                                             mid_value=50, mid_color="FFFFEB84", end_type="max", end_color="FF63BE7B"))
-    ws.freeze_panes = "B4"
-    ws.sheet_view.zoomScale = 90
-
-
 # ---------------------------------------------------------------- Read Me
 def build_readme(wb):
     ws = wb.create_sheet("Read Me", 0)
     ws.column_dimensions["A"].width = 24
-    for L in "BCDEFGHIJKL":
-        ws.column_dimensions[L].width = 13
+    for L_ in "BCDEFGHIJKLM":
+        ws.column_dimensions[L_].width = 13
     ws.sheet_view.showGridLines = False
-    r = 1
-    ws.cell(r, 1, "READ ME - how this plan gets from today to 27 December").font = F_TITLE
+    L = get_column_letter
+    n = len(CITIES)
+    ws.cell(1, 1, "READ ME - v2: LAKSHYA AS GIVEN" if V2 else "READ ME - from today's run rate to 27 December").font = F_TITLE
+    ws.cell(2, 1, "Lakshya 15,000 weekly supply plan. Every number below is a live formula from the city tabs and Inputs.").font = F_NOTE
+    ws.cell(3, 1, "Lakshya source:").font = F_BOLD
+    c = ws.cell(3, 2, link(LAKSHYA_URL, "Lakshya_15000_Model_v4.xlsx"))
+    c.font = Font(name="Calibri", size=10, color="FF1155CC", underline="single")
     if V2:
-        ws.cell(r, 1, "READ ME - v2: LAKSHYA AS GIVEN").font = F_TITLE
-        c = ws.cell(r + 3, 1, "v2: every Own Now and Leasing + DTO number on the city tabs is Lakshya v4's - weekly driver acquisition as given, churn and "
-                              "rollover by month spread evenly, starting from Lakshya's own 20 Sep book and fleet (Lakshya Weekly tab). EIP runs in a straight line to its target. "
-                              "The pace switch, Diwali dip and last-year churn shape described below are NOT used in v2; the 'Above LY pace' flags only compare Lakshya with last year.")
+        c = ws.cell(4, 1, "v2: every Own Now and Leasing + DTO number on the city tabs is Lakshya v4's - weekly driver acquisition as given, "
+                          "churn and rollover by month spread evenly, starting from Lakshya's own 27 Sep book and fleet (Lakshya Weekly tab), with "
+                          "Lakshya's 2,300 new cars. EIP runs in a straight line to its target. The run-rate, new-car and seasonality logic below "
+                          "is NOT used in v2.")
         c.font = Font(name="Calibri", size=10, bold=True, color="FFC00000")
         c.alignment = Alignment(wrap_text=True, vertical="top")
-        ws.merge_cells(start_row=r + 3, start_column=1, end_row=r + 3, end_column=12)
-        ws.row_dimensions[r + 3].height = 42
-    r += 1
-    ws.cell(r, 1, "Lakshya 15,000 weekly supply plan. Numbers in the tables below are live formulas from the city tabs.").font = F_NOTE
-    ws.cell(r + 1, 1, "Lakshya source:").font = F_BOLD
-    c = ws.cell(r + 1, 2, link(LAKSHYA_URL, "Lakshya_15000_Model_v4.xlsx"))
-    c.font = Font(name="Calibri", size=10, color="FF1155CC", underline="single")
+        ws.merge_cells("A4:M4")
+        ws.row_dimensions[4].height = 42
 
-    def para(row, title, lines):
-        ws.cell(row, 1, title).font = F_SECTION
+    def para(row, title_, lines):
+        ws.cell(row, 1, title_).font = F_SECTION
         for k, t in enumerate(lines):
             c = ws.cell(row + 1 + k, 1, t)
             c.font = F_BODY
             c.alignment = Alignment(wrap_text=True, vertical="top")
-            ws.merge_cells(start_row=row + 1 + k, start_column=1, end_row=row + 1 + k, end_column=12)
+            ws.merge_cells(start_row=row + 1 + k, start_column=1, end_row=row + 1 + k, end_column=13)
             ws.row_dimensions[row + 1 + k].height = 30
         return row + len(lines) + 2
 
-    r = para(5, "1.  HOW EACH WEEK IS PLANNED", [
-        "New cars go on road the week after they arrive (2,300 cars, Oct-Nov, Inputs A4) - supply we did not have last year. Everything else is organic growth from recruitment net of churn.",
-        "Organic growth: each week is asked for its share of the gap to Lakshya's next month-end (Own Now and L+DTO books on 27 Sep, 25 Oct, 29 Nov, 27 Dec - Inputs A3), after the new cars due in that month, less in festival weeks. "
-        "The two Diwali weeks follow the dip seen in 2024 and 2025 instead of growing (section 4).",
-        "Inputs A1 'Hold weekly growth to last year's pace?': No = every week takes what Lakshya's month-end needs, so the plan matches Lakshya at every month-end; weeks that need more than the city's best 4-week pace of 2024/25 "
-        "(Diwali_Dip Analysis tab, section 1) are flagged red in city tab column BP. Yes = growth is capped at that pace and the rest rolls into the next month, so month-ends can fall short.",
-        f'=IF({G_CAP}="No","CURRENT SETTING: MATCH LAKSHYA - "&({"+".join(stretch_count(f"{q(c)}!BP{FIRST}:BP{LAST}") for c in CITIES)})&" of {len(CITIES) * N_WEEKS} city-weeks need more organic growth than last year showed. Those are the weeks to watch.",'
-        f'"CURRENT SETTING: LAST YEAR\'S PACE - no week plans more organic growth than 2024/25 showed; "&({"+".join(stretch_count(f"{q(c)}!BP{FIRST}:BP{LAST}") for c in CITIES)})&" city-weeks are capped.")',
+    r = para(6, "1.  THE PRINCIPLE - a realistic path from today's run rate to the December target", [
+        "The plan starts from the actual on the latest day loaded (Inputs A1) and plans the current week onwards. Every week has an "
+        "operational basis: drivers are acquired at today's run rate (last 4 weeks, Inputs A3), a driver is added for every new car the "
+        "week after it reaches the fleet (Inputs A6), and drivers leave at today's attrition rate.",
+        "Seasonality is applied only where 2024 and 2025 both show it (Seasonality Check tab). Where the two years disagree - most of "
+        "Pre-Diwali - no dip or lift is assumed.",
+        "To reach Lakshya on 27 Dec the plan adds a steady hiring ramp on top of the run rate: the same extra number of drivers every "
+        "week (1x in week 1, 2x in week 2, ...), never a jump. Each city tab shows the step (column BL) and flags weeks where total "
+        "driver acquisition is above the city's proven capacity - its best 4 weeks since Sep 2025 (column BP). Inputs A1 picks the plan: "
+        "'Lakshya' (the full ramp), 'Capacity' (the same ramp, never above proven capacity - it may land short) or 'Run rate' (no extra hiring). "
+        "All three paths are shown on the Monthly Dashboard and the LY vs CY vs Plan tab whichever is picked.",
+        "The path is shown against AOP (the baseline, Inputs A5) and Lakshya (the target, Inputs A4) on the Monthly Dashboard and the "
+        "LY vs CY vs Plan tab.",
     ])
 
-    # ---- 2. the bridge
-    ws.cell(r, 1, "2.  THE BRIDGE - from 20 Sep to 27 Dec, by season").font = F_SECTION
+    # ---- 2. the bridge by city
+    ws.cell(r, 1, "2.  THE BRIDGE BY CITY - from now to 27 December").font = F_SECTION
     r += 1
-    heads = ["City", "On road 20 Sep", "Pre-Diwali organic (w/c 21 Sep-26 Oct)", "Diwali organic (w/c 2-9 Nov)",
-             "Post-Diwali organic (w/c 16 Nov-21 Dec)", "New cars put on road", "On road 27 Dec (plan)",
-             "Lakshya target", "Short of Lakshya", "Weeks needing more than LY pace"]
+    heads = ["City", "On road now", "Run rate 27 Dec (incl. new-car drivers)", "Drivers for new cars (13 wks)",
+             "Within proven capacity 27 Dec", "Plan 27 Dec", "AOP Dec", "Lakshya Dec", "Plan - Lakshya",
+             "Extra hiring step a week (to Lakshya)", "Run-rate hiring a week", "Peak week acquisition", "Proven capacity a week"]
     for j, t in enumerate(heads, start=1):
         hdr(ws, r, j, t)
-    ws.row_dimensions[r].height = 45
+    ws.row_dimensions[r].height = 54
     first = r + 1
-    rng = lambda s, col: f"{s}!${col}${FIRST}:${col}${LAST}"
-    for i, city in enumerate(CITIES):
-        r += 1
-        s = q(city)
-        put(ws, r, 1, city, bold=True)
-        put(ws, r, 2, f"={s}!G{FIRST}", NUM)
-        for j, season in enumerate(SEASONS):
-            put(ws, r, 3 + j, f'=SUMIF({rng(s, "AF")},"{season}",{rng(s, "BM")})-SUMIF({rng(s, "AF")},"{season}",{rng(s, "BJ")})', NUM)
-        put(ws, r, 6, f"=SUM({rng(s, 'BJ')})", NUM)
-        put(ws, r, 7, f"={s}!Y{LAST}", NUM, bold=True)
-        put(ws, r, 8, f"={ci('t_onroad', i)}", NUM)
-        put(ws, r, 9, f"=H{r}-G{r}", NUM)
-        put(ws, r, 10, "=" + stretch_count(rng(s, "BP")), "0")
-    r += 1
-    put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
-    for j in range(2, 11):
-        L = get_column_letter(j)
-        put(ws, r, j, f"=SUM({L}{first}:{L}{r - 1})", NUM, bold=True, bg=LIGHT)
-    red = Font(name="Calibri", size=10, bold=True, color="FFC00000")
-    ws.conditional_formatting.add(f"I{first}:I{r}", FormulaRule(formula=[f"I{first}>0.5"], font=red, fill=fill("FFFFC7CE")))
-    r += 1
-    ws.cell(r, 1, "Organic = growth from recruitment net of churn. On road 27 Dec = on road 20 Sep + the three organic columns + new cars. "
-                  "Short of Lakshya > 0 (only with the Inputs A1 switch on Yes) means last year's pace cannot carry the city all the way: that gap needs something last year did not have (more cars earlier, more EIP, lower churn). "
-                  "New cars: 2,300 over nine weeks is 250-290 a week going on road - confirm deliveries and onboarding; if a delivery slips, change Inputs A4 and the plan re-spreads.").font = F_NOTE
-    r += 3
-
-    # ---- 3. week by week, India
-    ws.cell(r, 1, "3.  WEEK BY WEEK - INDIA: planned growth vs what we have done before").font = F_SECTION
-    r += 1
-    heads = ["Week (Mon)", "Season", "Festival in the week", "Planned growth % (India)", "Organic growth %",
-             "Proven India pace (season)", "Same week last year", "On road week end (plan)", "Of which new cars"]
-    for j, t in enumerate(heads, start=1):
-        hdr(ws, r, j, t)
-    ws.row_dimensions[r].height = 40
-    wfirst = r + 1
-    for w in range(N_WEEKS):
-        r += 1
-        pr = FIRST + w
-        cal = R_CAL0 + w
-        allc = lambda col, row=pr: "+".join(f"{q(c)}!{col}{row}" for c in CITIES)
-        put(ws, r, 1, f"=Inputs!B{cal}", DATE, bold=True)
-        put(ws, r, 2, f"=Inputs!F{cal}")
-        put(ws, r, 3, f"=Inputs!N{cal}")
-        put(ws, r, 4, f"=({allc('BM')})/({allc('G')})", "0.0%", bold=True)
-        put(ws, r, 5, f"=(({allc('BM')})-({allc('BJ')}))/({allc('G')})", "0.0%")
-        put(ws, r, 6, f"=INDEX({DQ}!$B${R_PACE0 + len(CITIES)}:$D${R_PACE0 + len(CITIES)},MATCH(B{r},{DQ}!$B${R_PACE_H}:$D${R_PACE_H},0))", "0.0%")
-        put(ws, r, 7, (f'=IFERROR(SUMIFS(raw_performance!${rc("allotted_cars_eod")}:${rc("allotted_cars_eod")},raw_performance!$E:$E,"CNG",raw_performance!$C:$C,A{r}-364+6)'
-                       f'/SUMIFS(raw_performance!${rc("allotted_cars_eod")}:${rc("allotted_cars_eod")},raw_performance!$E:$E,"CNG",raw_performance!$C:$C,A{r}-364-1)-1,"")'), "0.0%")
-        put(ws, r, 8, f"={allc('Y')}", NUM)
-        put(ws, r, 9, f"={allc('BJ')}", NUM)
-    ws.conditional_formatting.add(f"E{wfirst}:E{r}", FormulaRule(formula=[f"E{wfirst}>F{wfirst}+0.0005"], font=red, fill=fill("FFFFC7CE")))
-    r += 1
-    ws.cell(r, 1, "Red = organic growth above India's proven pace for the season. With Inputs A1 on No these are weeks Lakshya's month-ends need; with Yes each city stays within its own pace. "
-                  "Last year's column is India cars on road, same week of 2025 (Diwali 2025 fell on 20 Oct, three weeks earlier than 2026).").font = F_NOTE
-    r += 3
-
-    # ---- Diwali check
-    ws.cell(r, 1, "4.  DIWALI CHECK - what happened in the two Diwali weeks of 2024 and 2025, and what the plan assumes for w/c 2 and 9 Nov").font = F_SECTION
-    r += 1
-    heads = ["City", "2024: two Diwali weeks", "2025: two Diwali weeks", "Average (used)", "Plan: organic change",
-             "Plan: total change (new cars held back)", "Plan: recovery week", "History: recovery week"]
-    for j, t in enumerate(heads, start=1):
-        hdr(ws, r, j, t)
-    ws.row_dimensions[r].height = 45
-    dfirst = r + 1
-    pre, dw2, rec = FIRST + 5, FIRST + 7, FIRST + 8  # weeks ending 1 Nov, 15 Nov, 22 Nov
     for i, city in enumerate(CITIES + ["INDIA"]):
         r += 1
-        d = R_DIP0 + i
+        s_ = R_SUM0 + i
         put(ws, r, 1, city, bold=True, bg=LIGHT if city == "INDIA" else None)
-        put(ws, r, 2, f"=(1+{DQ}!F{d})*(1+{DQ}!G{d})-1", "0.0%")
-        put(ws, r, 3, f"=(1+{DQ}!I{d})*(1+{DQ}!J{d})-1", "0.0%")
-        put(ws, r, 4, f"={DQ}!D{d}", "0.0%", bold=True)
-        if city in CITIES:
-            s_ = q(city)
-            put(ws, r, 5, f"=({s_}!BS{pre + 1}+{s_}!BS{dw2})/{s_}!Y{pre}", "0.0%")
-            put(ws, r, 6, f"={s_}!Y{dw2}/{s_}!Y{pre}-1", "0.0%", bold=True)
-            put(ws, r, 7, f"={s_}!Y{rec}/{s_}!Y{dw2}-1", "0.0%")
-        else:
-            allc = lambda col, row: "+".join(f"{q(c)}!{col}{row}" for c in CITIES)
-            put(ws, r, 5, f"=({allc('BS', pre + 1)}+{allc('BS', dw2)})/({allc('Y', pre)})", "0.0%", bg=LIGHT)
-            put(ws, r, 6, f"=({allc('Y', dw2)})/({allc('Y', pre)})-1", "0.0%", bold=True, bg=LIGHT)
-            put(ws, r, 7, f"=({allc('Y', rec)})/({allc('Y', dw2)})-1", "0.0%", bg=LIGHT)
-        put(ws, r, 8, f"={DQ}!E{d}", "0.0%", bg=LIGHT if city == "INDIA" else None)
+        vals = [(2, f"=Inputs!$B${s_}", NUM), (3, f"=Inputs!$F${s_}", NUM), (4, f"=Inputs!$R${s_}", NUM),
+                (5, f"=Inputs!$X${s_}", NUM), (6, f"=Inputs!$C${s_}", NUM), (7, f"=Inputs!$G${s_}", NUM),
+                (8, f"=Inputs!$D${s_}", NUM), (9, f"=ROUND(F{r}-H{r},0)", DIFF_FMT), (10, f"=Inputs!$S${s_}", "0.0"),
+                (11, f"=Inputs!${L(RR['u_rec'])}${R_RR0 + i}", NUM),
+                (12, f"=Inputs!$T${s_}" if city != "INDIA" else None, NUM), (13, f"=Inputs!$U${s_}", NUM)]
+        for j, v, fmt in vals:
+            put(ws, r, j, v, fmt, bold=(j in (6, 9)), bg=LIGHT if city == "INDIA" else None)
+    ws.conditional_formatting.add(f"L{first}:L{r - 1}", FormulaRule(formula=[f"L{first}>M{first}+0.5"], font=RED_FONT,
+                                                                     fill=fill("FFFFC7CE")))
     r += 1
-    ws.cell(r, 1, "The plan's two Diwali weeks now fall by each city's two-year average dip (Diwali_Dip Analysis tab) - India about -9%, as in 2024 (-9.8%) and 2025 (-8.5%). "
-                  "New cars that arrive in those weeks wait, then go on road from the recovery week at up to 1.5x the normal weekly rate (Inputs A4), so the recovery week is also lifted by new cars. "
-                  "The Summary View shows the same weeks against last year's week of the same date (Diwali 2025 fell three weeks earlier).").font = F_NOTE
+    ws.cell(r, 1, "Run rate = today's hiring and attrition with validated seasonality, plus a driver for every new car. Within capacity = + the "
+                  "extra ramp up to proven capacity. Plan = the option in Inputs A1. Peak week above proven capacity (red) = hiring the city has not shown in the last year.").font = F_NOTE
     r += 3
 
-    r = para(r, "5.  WHERE THE PLAN DROPS, WHERE IT GAINS, AND THE WEEKS IN BETWEEN", [
-        "PRE-DIWALI (w/c 21 Sep - 26 Oct): last year cars on road fell in these weeks (India -0.1% at best, weeks of -2.6% to -5.4%); in 2024 the best was +1.5% a week. The plan allows each city its better of the two years "
-        "and adds the October new cars the week after they land. Last year's attrition peaks here (LY attrition index up to 1.2-1.4), so more driver acquisition is needed just to hold the book.",
-        "DIWALI (w/c 2 and 9 Nov): cars on road fell in these weeks in both years - India -9.8% in 2024 and -8.5% in 2025 over the two weeks (drivers go home; recruitment stops). "
-        "The plan now falls by each city's two-year average (section 4 above; Diwali_Dip Analysis tab), all of it from the Leasing + DTO book, and holds new cars back until the recovery week. This is where the plan dips.",
-        "POST-DIWALI (w/c 16 Nov - 21 Dec): the season where we have shown real recovery - India +2.7% to +2.9% a week at best, Mumbai and Pune above 5%. Most of the remaining gap is closed here, "
-        "but no city goes above its own best 4-week pace.",
-        "WEEKS WITH NO FESTIVAL (the middle of each season): no seasonality is applied - the factor is 1, so the week is simply asked for an equal share of the gap still open, capped by the season's pace. "
-        "Only last year's attrition shape (city tab column BD) changes how much driver acquisition such a week needs.",
+    r = para(r, "3.  NEW CARS - linked to drivers", [
+        "Only cars already bought are planned: 582 at the stock yard (New Car Stock Report, 27 Sep), by RTO status. Ready for delivery "
+        "reach the fleet in weeks 1-2, registration done in weeks 2-3, under RTO in weeks 3-6, RTO not started in weeks 5-8 (Inputs A6; "
+        "change the windows there). Each car gets a driver (Own Now) the week after it lands - city tab columns AD, BJ and AI.",
+        "Lakshya planned 2,300 new cars (about 1,150 in Sep-Oct, 1,150 in Nov). The rest are shown as pending purchase in Inputs A6 and are "
+        "not in the plan until ordered: type an order into the future purchases table and the plan adds the cars and their drivers.",
     ])
-    r = para(r, "6.  HOW TO READ A CITY TAB", [
-        "Rows 2-5 are actual weeks from raw_performance. Plan weeks start at row 6. Columns A-AC follow the Weekly Supply Plan layout; the Lakshya build-up is AF-AW.",
-        "Brown block BH-BQ is the realism check: BH proven pace, BI organic capacity, BJ new cars going on road, BK most we can add, BL organic add needed, BM what we plan (new cars + the smaller of BL and BI), "
-        "BN/BO planned and organic growth %, BP 'Yes' / 'Capped at LY pace' / 'Diwali dip', BQ gap to the Lakshya number still open, BR:BS the Diwali dip, BT new cars still to go on road.",
-        "BM is split into EIP / Own Now / Leasing+DTO by each layer's share of the gap it still has to its Lakshya number (the Diwali dip is taken from Leasing+DTO, which then wins it back). Driver acquisition = that layer's net add + churn. Recruitment by channel = driver acquisition x the city's channel mix.",
-        "Last year (AY:BF): the same week last year (week start - 364 days) from raw_performance. LY net attrition % = (attrition + temp attrition - rejoins - temp rejoins) / (active partners at week start + new joins + resurrections), as in the Weekly Supply Plan; "
-        "LY attrition index = that week's % / the 14-week average. Churn (AK, AS) = last week's book x Lakshya monthly rate / 4.33 x that index. Festival factor (BF) = 1 + festival impact (Inputs B1).",
-        "Fleet (E) = previous week + Total buy (G) - Total sold (H); each month's cars are split evenly over its weeks (Inputs A4, A5). Util (AB) = cars on road / fleet, red above the Lakshya ceiling (AC). "
-        "Net Attrition (W) = net adds - driver acquisition. Check column AV must be 0. Month by month, by city: Monthly Dashboard tab.",
+    r = para(r, "4.  SEASONALITY AND ATTRITION - checked city by city", [
+        "Each season block (Pre-Diwali, Diwali weeks, Recovery, December) is compared with the 4 weeks before it in 2024 and 2025, aligned on "
+        "Diwali. It changes hiring or attrition only if both years moved the same way by at least the minimum in Inputs A1 "
+        "(Seasonality Check, sections 1-2). The 4-week moving averages behind it are in section 4.",
+        "Attrition this year is lower than the same weeks last year in most cities, but this year's rate has been flat for 12 weeks while "
+        "last year's rose through September (Seasonality Check, section 3). The plan keeps this year's rate (Inputs A3) and adds only the "
+        "seasonal changes both years showed.",
     ])
-    r = para(r, "7.  UPDATING EACH WEEK", [
-        "Paste a fresh SSOT query result (link on the Inputs tab, C2) into raw_performance. The Summary View 'actual' rows fill in for finished weeks. "
-        "To re-plan from a later week, move the opening date on Inputs to the latest Sunday and extend the calendar.",
-        "Change what the plan may assume on the Inputs tab: month-end targets (A3), new cars and sales by month (A4, A5), churn rates and targets (A2), festival impacts (B1); proven pace and Diwali dip on the Diwali_Dip Analysis tab.",
+    r = para(r, "5.  HOW TO READ A CITY TAB", [
+        "Rows 2-5 are actual weeks from raw_performance; plan weeks start at row 6 (the current week). Columns A-AC follow the Weekly Supply "
+        "Plan layout. Layers: AG EIP, AH-AO Own Now, AP-AT Leasing + DTO, AU total driver acquisition.",
+        "Operational basis BH-BT: BH run rate, BI proven capacity, BJ new cars going on road, BK run-rate hiring x season, BL extra hiring "
+        "step x week, BM planned on-road add, BP acquisition vs capacity, BR attrition rate this week, BS-BT the run-rate path. "
+        "BU-CB: Lakshya and AOP month-ends and the gaps. Last year for reference: AY-BD. Check column AV must be 0.",
     ])
-    ws.freeze_panes = "A4"
+    r = para(r, "6.  UPDATING EACH WEEK", [
+        "Paste a fresh SSOT query result (link on Inputs C2) into raw_performance. The run rate, opening numbers and actual weeks update. "
+        "To move the plan on a week, set the opening date (Inputs A1) to the latest Sunday.",
+        "Update the stock report numbers and delivery windows in Inputs A6 as cars move through RTO, and add orders as they are placed.",
+    ])
+    ws.freeze_panes = "A5"
     return ws
 
 
@@ -1797,18 +1493,30 @@ def _stock(s, col, mon):
     return f"INDEX({s}!${col}${FIRST}:${col}${LAST},MATCH({mon},{_bu(s)},0)+COUNTIF({_bu(s)},{mon})-1)"
 
 
+def _lk_month(city, key_list, mon):
+    """Lakshya v4 per city in one plan month: weekly driver acquisition (summed over the month's plan weeks)."""
+    return sum(LK_WEEKLY[city][k][w + 1] for k in key_list for w in range(N_WEEKS) if WEEK_MONTH[w] == mon)
+
+
+def _lk_churn(city, mon):
+    m = MONTHS.index(mon)
+    return LK_WEEKLY[city]["ld_churn"][m] + LK_WEEKLY[city]["own_churn"][m] + LK_WEEKLY[city]["own_roll"][m]
+
+
 def build_dashboard(wb):
-    """Month by month for India or a picked city, city-by-month tables and live insights.
-    Months are Lakshya's: each plan week counts to the month-end in Inputs A6 (city tab column BU)."""
+    """Month by month for India or a picked city: plan vs run rate, AOP and Lakshya, why they differ, and insights.
+    Months are Lakshya's: each plan week counts to the month-end in Inputs A8 (city tab column BU)."""
     ws = wb.create_sheet(DASH, 2)
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = NAVY
     ws.column_dimensions["A"].width = 18
-    for j in range(2, 23):
+    for j in range(2, 28):
         ws.column_dimensions[get_column_letter(j)].width = 11
     L = get_column_letter
     cities = [q(c) for c in CITIES]
-    F_WHAT = Font(name="Calibri", size=10, italic=True, color="FF404040")
+    n = len(CITIES)
+    SIGNED = DIFF_FMT
+    PP = "+0.0%;-0.0%;0.0%"
 
     def red_if(rng, cond):
         ws.conditional_formatting.add(rng, FormulaRule(formula=[cond], font=RED_FONT, fill=fill("FFFFC7CE")))
@@ -1816,23 +1524,22 @@ def build_dashboard(wb):
     # ---- layout
     R_MV_T = 5                     # 1. month by month
     R_MV_H = R_MV_T + 1
-    R_MV_S = R_MV_H + 1            # start row
-    R_MV0 = R_MV_S + 1             # Sep..Dec
-    R_MV_TOT = R_MV0 + 4
-    R_LV_T = R_MV_TOT + 3          # 2. Lakshya plan vs our plan
-    R_LV_G = R_LV_T + 1            # group header
-    R_LV_H = R_LV_G + 1            # Lakshya / Plan / Diff
-    R_LV_S = R_LV_H + 1            # start row
-    R_LV0 = R_LV_S + 1             # Sep..Dec
-    R_LV_TOT = R_LV0 + 4
-    R_PB_T = R_LV_TOT + 3          # 2b. driver acquisition bridge (India)
+    R_MV_S = R_MV_H + 1            # start row (27 Sep actual)
+    R_MV0 = R_MV_S + 1             # Oct..Dec
+    R_MV_TOT = R_MV0 + 3
+    R_LV_T = R_MV_TOT + 3          # 2. AOP and Lakshya vs plan
+    R_LV_G = R_LV_T + 1
+    R_LV_H = R_LV_G + 1
+    R_LV_S = R_LV_H + 1
+    R_LV0 = R_LV_S + 1
+    R_LV_TOT = R_LV0 + 3
+    R_PB_T = R_LV_TOT + 3          # 3. why driver acquisition differs from Lakshya
     R_PB_H = R_PB_T + 2
-    R_PB0 = R_PB_H + 1             # Sep..Dec
-    R_PB_TOT = R_PB0 + 4
-    R_IN_T = R_PB_TOT + 3          # 3. insights
-    N_INS = 10
+    R_PB0 = R_PB_H + 1
+    R_PB_TOT = R_PB0 + 3
+    R_IN_T = R_PB_TOT + 3          # 4. insights (India)
     PICK = "$B$3"
-    city_list = f"Inputs!$A${R_SUM0}:$A${R_SUM0 + len(CITIES) - 1}"   # city names in Inputs C1
+    city_list = f"Inputs!$A${R_SUM0}:$A${R_SUM0 + n - 1}"   # city names in Inputs C1
 
     def pick(exprs, india=None):
         india = india or "+".join(exprs)
@@ -1851,42 +1558,59 @@ def build_dashboard(wb):
     dv = DataValidation(type="list", formula1='"' + ",".join(["India"] + CITIES) + '"', allow_blank=False)
     ws.add_data_validation(dv)
     dv.add("B3")
+    if not V2:  # link to the v2 sheet (added by the user on the live sheet)
+        c = ws["D3"]
+        c.value = link(V2_URL, "V2 Exact Match with Lakshya_15000_Model_v4.xlsx")
+        c.font = Font(name="Calibri", size=10, color="FF1155CC", underline="single")
 
     # ---- 1. month by month (picked)
     mv = [  # (header, kind, source)
-        ("Weeks", "weeks", None), ("New cars bought", "flow", ["AD"]), ("Cars sold", "flow", ["AE"]),
-        ("New cars put on road", "flow", ["BJ"]), ("EIP net add", "flow", ["P"]),
-        ("Own Now driver acquisition", "flow", ["AM"]), ("Own Now churn + rollover", "flow", ["AK", "AL"]),
-        ("Own Now net add", "flow", ["AJ"]), ("L+DTO driver acquisition", "flow", ["AT"]), ("L+DTO churn", "flow", ["AS"]),
-        ("L+DTO net add", "flow", ["AR"]), ("Total driver acquisition", "flow", ["AU"]), ("Net add on road", "netadd", None),
+        ("Weeks", "weeks", None), ("New cars reaching the fleet", "flow", ["AD"]), ("Cars sold", "flow", ["AE"]),
+        ("New cars put on road", "flow", ["BJ"]), ("Hiring at run rate", "flow", ["BK"]),
+        ("Drivers for new cars", "flow", ["AI"]), ("Extra hiring to reach Lakshya", "flow", ["BL"]),
+        ("Total driver acquisition", "flow", ["AU"]), ("Drivers leaving (net attrition)", "flow", ["AQ"]),
+        ("Attrition % a month", "attr", None), ("EIP net add", "flow", ["AG"]), ("Net add on road", "netadd", None),
         ("Fleet (month end)", "stock", "E"), ("EIP (month end)", "stock", "R"), ("Own Now (month end)", "stock", "X"),
-        ("L+DTO (month end)", "stock", "W"), ("On road (month end)", "stock", "Y"),
-        ("Lakshya on road (month end)", "lakshya", None), ("Plan - Lakshya", "diff", None), ("Util (month end)", "util", None),
+        ("L+DTO (month end)", "stock", "W"), ("On road - plan", "stock", "Y"), ("On road - run rate", "stock", "BS"),
+        ("On road - within capacity", "stock", "CG"),
+        ("On road - AOP", "aop", None), ("On road - Lakshya", "lakshya", None), ("Plan - AOP", "d_aop", None),
+        ("Plan - Lakshya", "d_lk", None), ("Util (month end)", "util", None),
     ]
     col = {h: L(2 + k) for k, (h, _, _) in enumerate(mv)}
-    ONR, FLT, LKC, DIF = col["On road (month end)"], col["Fleet (month end)"], col["Lakshya on road (month end)"], col["Plan - Lakshya"]
+    ONR, FLT, OWN, LD = col["On road - plan"], col["Fleet (month end)"], col["Own Now (month end)"], col["L+DTO (month end)"]
+    AOPC, LKC = col["On road - AOP"], col["On road - Lakshya"]
     put(ws, R_MV_T, 1, f'="1.  MONTH BY MONTH  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
     hdr(ws, R_MV_H, 1, "Month")
     for h, c_ in col.items():
         hdr(ws, R_MV_H, column_index_from_string(c_), h)
-    ws.row_dimensions[R_MV_H].height = 42
-    # start row
+    ws.row_dimensions[R_MV_H].height = 44
+    start = {  # the first plan week's opening: the actual (Lakshya's own book in v2)
+        "E": lambda s_: f"{s_}!$E${FIRST}-{s_}!$F${FIRST}", "R": lambda s_: f"{s_}!$R${OPEN_ROW}",
+        "X": lambda s_: f"{s_}!$AH${FIRST}", "W": lambda s_: f"{s_}!$AP${FIRST}", "Y": lambda s_: f"{s_}!$G${FIRST}",
+        "BS": lambda s_: f"{s_}!$G${FIRST}", "CG": lambda s_: f"{s_}!$G${FIRST}",
+    }
     r = R_MV_S
-    put(ws, r, 1, f'="Start ("&TEXT({G_OPEN_DATE},"d mmm")&")"' if not V2 else "Start (Lakshya 20 Sep)", bold=True, bg=ACTUAL)
+    put(ws, r, 1, f'="Start ("&TEXT({G_LAST},"d mmm")&")"' if not V2 else "Start (Lakshya 27 Sep)", bold=True, bg=ACTUAL)
     for h, kind, src in mv:
         j = column_index_from_string(col[h])
         if kind == "stock":
-            start = {  # the first plan week's opening: the actual in v1, Lakshya's own book in v2
-                "E": lambda s_: f"{s_}!$E${FIRST}-{s_}!$F${FIRST}", "R": lambda s_: f"{s_}!$R${OPEN_ROW}",
-                "X": lambda s_: f"{s_}!$AH${FIRST}", "W": lambda s_: f"{s_}!$AP${FIRST}", "Y": lambda s_: f"{s_}!$G${FIRST}",
-            }[src]
-            put(ws, r, j, pick([start(s_) for s_ in cities]), NUM, bg=ACTUAL)
+            v, fmt = pick([start[src](s_) for s_ in cities]), NUM
+        elif kind == "aop":
+            v, fmt = pick([f"Inputs!$B${R_AOP0 + i}" for i in range(n)], f"Inputs!$B${R_AOP0 + n}"), NUM
+        elif kind == "lakshya":
+            v, fmt = pick([f"Inputs!$N${R_MS0 + i}" for i in range(n)], f"Inputs!$N${R_MS0 + n}"), NUM
+        elif kind == "d_aop":
+            v, fmt = f"=ROUND({ONR}{r}-{AOPC}{r},0)", SIGNED
+        elif kind == "d_lk":
+            v, fmt = f"=ROUND({ONR}{r}-{LKC}{r},0)", SIGNED
         elif kind == "util":
-            put(ws, r, j, f"={ONR}{r}/{FLT}{r}", PCT, bg=ACTUAL)
+            v, fmt = f"={ONR}{r}/{FLT}{r}", PCT
         else:
-            put(ws, r, j, None, bg=ACTUAL)
-    for m, mon in enumerate(MONTHS):
+            v, fmt = None, None
+        put(ws, r, j, v, fmt, bg=ACTUAL)
+    for m, mon in enumerate(PLAN_MONTHS):
         r = R_MV0 + m
+        mi = MONTHS.index(mon)
         put(ws, r, 1, mon, bold=True)
         mref = f"$A{r}"
         for h, kind, src in mv:
@@ -1895,177 +1619,129 @@ def build_dashboard(wb):
                 v, fmt = f"=COUNTIF({_bu(cities[0])},{mref})", "0"
             elif kind == "flow":
                 v, fmt = pick(["+".join(_flow(s, x, mref) for x in src) for s in cities]), NUM
+            elif kind == "attr":
+                v, fmt = (f"={col['Drivers leaving (net attrition)']}{r}/{col['Weeks']}{r}*{G_WPM}"
+                          f"/AVERAGE({OWN}{r - 1}+{LD}{r - 1},{OWN}{r}+{LD}{r})"), PCT
             elif kind == "stock":
                 v, fmt = pick([_stock(s, src, mref) for s in cities]), NUM
             elif kind == "netadd":
-                v, fmt = f"={ONR}{r}-{ONR}{r - 1}", NUM
+                v, fmt = f"={ONR}{r}-{ONR}{r - 1}", SIGNED
+            elif kind == "aop":
+                v, fmt = pick([f"Inputs!${L(2 + mi)}${R_AOP0 + i}" for i in range(n)], f"Inputs!${L(2 + mi)}${R_AOP0 + n}"), NUM
             elif kind == "lakshya":
-                v, fmt = pick([f"Inputs!${L(14 + m)}${R_MS0 + i}" for i in range(len(CITIES))]), NUM
-            elif kind == "diff":
-                v, fmt = f"={ONR}{r}-{LKC}{r}", NUM
+                v, fmt = pick([f"Inputs!${L(14 + mi)}${R_MS0 + i}" for i in range(n)], f"Inputs!${L(14 + mi)}${R_MS0 + n}"), NUM
+            elif kind == "d_aop":
+                v, fmt = f"=ROUND({ONR}{r}-{AOPC}{r},0)", SIGNED
+            elif kind == "d_lk":
+                v, fmt = f"=ROUND({ONR}{r}-{LKC}{r},0)", SIGNED
             else:
                 v, fmt = f"={ONR}{r}/{FLT}{r}", PCT
-            put(ws, r, j, v, fmt, bold=(kind in ("netadd", "diff") or h == "On road (month end)"))
+            put(ws, r, j, v, fmt, bold=(kind in ("netadd", "d_lk", "d_aop") or h == "On road - plan"))
     r = R_MV_TOT
     put(ws, r, 1, "Total / 27 Dec", bold=True, bg=LIGHT)
     for h, kind, src in mv:
         c_ = col[h]
-        if kind in ("stock", "lakshya", "diff", "util"):
-            v = f"={c_}{R_MV0 + 3}"
+        if kind in ("stock", "aop", "lakshya", "d_aop", "d_lk", "util"):
+            v = f"={c_}{R_MV0 + 2}"
+        elif kind == "attr":
+            v = (f"={col['Drivers leaving (net attrition)']}{r}/{N_WEEKS}*{G_WPM}"
+                 f"/AVERAGE({OWN}{R_MV_S}+{LD}{R_MV_S},{OWN}{R_MV0 + 2}+{LD}{R_MV0 + 2})")
         else:
-            v = f"=SUM({c_}{R_MV0}:{c_}{R_MV0 + 3})"
-        put(ws, r, column_index_from_string(c_), v, PCT if kind == "util" else NUM, bold=True, bg=LIGHT)
-    red_if(f"{DIF}{R_MV0}:{DIF}{R_MV_TOT}", f"{DIF}{R_MV0}<-0.5")
-    ws.cell(R_MV_TOT + 1, 1, "Net add on road = EIP + Own Now + L+DTO net adds. Driver acquisition = net add + churn "
-                             "(Own Now and L+DTO). Red = below Lakshya's month-end.").font = F_NOTE
+            v = f"=SUM({c_}{R_MV0}:{c_}{R_MV0 + 2})"
+        fmt = PCT if kind in ("util", "attr") else (SIGNED if kind in ("netadd", "d_aop", "d_lk") else NUM)
+        put(ws, r, column_index_from_string(c_), v, fmt, bold=True, bg=LIGHT)
+    for k_ in ("Plan - AOP", "Plan - Lakshya"):
+        red_if(f"{col[k_]}{R_MV_S}:{col[k_]}{R_MV_TOT}", f"{col[k_]}{R_MV_S}<-0.5")
+    ws.cell(R_MV_TOT + 1, 1, "Driver acquisition = hiring at the current run rate (x validated season) + a driver for every new car + the "
+                             "extra hiring step (Inputs A1). Run rate = the same without the extra step. Red = below AOP or Lakshya.").font = F_NOTE
 
-    # ---- 2. Lakshya plan vs our plan (picked)
-    ncity = len(CITIES)
-    lk_pl_mon = {mon: sum(LK_LDTO_WK[w] + LK_OWN_WK[w] for w in range(N_WEEKS) if WEEK_MONTH[w] == mon) for mon in MONTHS}
-    groups = [  # (group title, Lakshya source per month m and city i, plan column in section 1, Lakshya start per city)
-        ("OWN NOW (month end)", lambda m, i: f"Inputs!${L(6 + m)}${R_MS0 + i}", [col["Own Now (month end)"]], LK_OWN_OPEN),
-        ("LEASING + DTO (month end)", lambda m, i: f"Inputs!${L(10 + m)}${R_MS0 + i}", [col["L+DTO (month end)"]], LK_LDTO_OPEN),
-        ("EIP (month end)", lambda m, i: f"Inputs!${L(2 + m)}${R_MS0 + i}", [col["EIP (month end)"]], None),
-        ("ON ROAD (month end)", lambda m, i: f"Inputs!${L(14 + m)}${R_MS0 + i}", [col["On road (month end)"]], None),
-        ("DRIVER ACQUISITION in the month (Own Now + L+DTO)", None, [col["Own Now driver acquisition"], col["L+DTO driver acquisition"]], None),
-    ]
-    put(ws, R_LV_T, 1, f'="2.  LAKSHYA PLAN vs OUR PLAN  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
+    # ---- 2. AOP and Lakshya vs plan (picked)
+    put(ws, R_LV_T, 1, f'="2.  AOP AND LAKSHYA vs OUR PLAN  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
+    groups = [("ON ROAD (month end)", ["AOP", "Lakshya", "Plan", "Plan - AOP", "Plan - Lakshya"]),
+              ("OWN NOW + L+DTO BOOK (month end)", ["Lakshya", "Plan", "Plan - Lakshya"]),
+              ("DRIVER ACQUISITION in the month", ["AOP", "Lakshya", "Plan", "Plan - Lakshya"]),
+              ("ATTRITION % A MONTH", ["Lakshya", "Plan", "Plan - Lakshya"])]
     hdr(ws, R_LV_G, 1, "")
     hdr(ws, R_LV_H, 1, "Month")
-    lv = []  # (Lakshya col, Plan col, Diff col) per group
-    for g, (gt, _, _, _) in enumerate(groups):
-        c0 = 2 + 3 * g
+    gc, c0 = {}, 2
+    for gt, heads in groups:
         hdr(ws, R_LV_G, c0, gt, GREY_HDR)
-        ws.merge_cells(start_row=R_LV_G, start_column=c0, end_row=R_LV_G, end_column=c0 + 2)
-        for k, t in enumerate(("Lakshya", "Plan", "Plan - Lakshya")):
+        ws.merge_cells(start_row=R_LV_G, start_column=c0, end_row=R_LV_G, end_column=c0 + len(heads) - 1)
+        for k, t in enumerate(heads):
             hdr(ws, R_LV_H, c0 + k, t)
-        lv.append((L(c0), L(c0 + 1), L(c0 + 2)))
-    # attrition group: Lakshya's flat monthly rates vs the plan's (same rates shaped by last year's weekly attrition)
-    ATT0 = 2 + 3 * len(groups)
-    AL_, AP_, AD_, AX_ = (L(ATT0 + k) for k in range(4))
-    hdr(ws, R_LV_G, ATT0, "ATTRITION % A MONTH (Own Now + L+DTO book)", GREY_HDR)
-    ws.merge_cells(start_row=R_LV_G, start_column=ATT0, end_row=R_LV_G, end_column=ATT0 + 3)
-    for k, t in enumerate(("Lakshya", "Plan" if V2 else "Plan (last year's shape)", "Plan - Lakshya", "Extra drivers to replace churn")):
-        hdr(ws, R_LV_H, ATT0 + k, t)
-    for j in range(23, 27):
-        ws.column_dimensions[L(j)].width = 11
-    WHY = L(ATT0 + 4)
-    hdr(ws, R_LV_G, column_index_from_string(WHY), "")
-    hdr(ws, R_LV_H, column_index_from_string(WHY), "Why they differ")
-    ws.merge_cells(f"{WHY}{R_LV_G}:{L(column_index_from_string(WHY) + 5)}{R_LV_G}")
-    ws.merge_cells(f"{WHY}{R_LV_H}:{L(column_index_from_string(WHY) + 5)}{R_LV_H}")
+            gc[(gt, t)] = L(c0 + k)
+        c0 += len(heads)
+    WHY = c0
+    hdr(ws, R_LV_G, WHY, "")
+    hdr(ws, R_LV_H, WHY, "Why the plan differs from Lakshya")
+    ws.merge_cells(start_row=R_LV_G, start_column=WHY, end_row=R_LV_G, end_column=WHY + 5)
+    ws.merge_cells(start_row=R_LV_H, start_column=WHY, end_row=R_LV_H, end_column=WHY + 5)
     ws.row_dimensions[R_LV_G].height = 30
-    ws.row_dimensions[R_LV_H].height = 42
-    DIFF = "+#,##0;-#,##0;0"
-    OWN_ME, LD_ME = col["Own Now (month end)"], col["L+DTO (month end)"]
-    CH_OWN, CH_LD = col["Own Now churn + rollover"], col["L+DTO churn"]
-
-    def flat_churn(i, mon):
-        """City i's Own Now + L+DTO churn in a month at Lakshya's flat monthly rates (no last-year shape)."""
-        s_ = cities[i]
-        days = f"{s_}!$AC${FIRST}:$AC${LAST}"
-        own = f"SUMPRODUCT(({_bu(s_)}={mon})*{s_}!$AH${FIRST}:$AH${LAST}*{days})/7"
-        ldto = f"SUMPRODUCT(({_bu(s_)}={mon})*{s_}!$AP${FIRST}:$AP${LAST}*{days})/7"
-        return (f"({ci('r_own', i)}+{ci('r_roll', i)})/{G_WPM}*{own}+{ci('r_ldto', i)}/{G_WPM}*{ldto}")
-    rows = [("start", R_LV_S)] + [(m, R_LV0 + m) for m in range(4)] + [("total", R_LV_TOT)]
-    for key, r in rows:
+    ws.row_dimensions[R_LV_H].height = 30
+    G1, G2, G3, G4 = (g for g, _ in groups)
+    lk_book = lambda mi: pick([f"Inputs!${L(6 + mi)}${R_MS0 + i}+Inputs!${L(10 + mi)}${R_MS0 + i}" for i in range(n)],
+                             f"Inputs!${L(6 + mi)}${R_MS0 + n}+Inputs!${L(10 + mi)}${R_MS0 + n}")
+    for key, r in [("start", R_LV_S)] + [(m, R_LV0 + m) for m in range(3)] + [("total", R_LV_TOT)]:
         bg = ACTUAL if key == "start" else (LIGHT if key == "total" else None)
-        if key == "start":
-            put(ws, r, 1, "Start", bold=True, bg=bg)
-        elif key == "total":
-            put(ws, r, 1, "Total / 27 Dec", bold=True, bg=bg)
-        else:
-            put(ws, r, 1, MONTHS[key], bold=True)
-        mv_row = {"start": R_MV_S, "total": R_MV_TOT}.get(key, R_MV0 + key if isinstance(key, int) else None)
-        for g, (gt, lk_src, plan_cols, lk_open) in enumerate(groups):
-            cl, cp, cd = lv[g]
-            if lk_src is None:  # driver acquisition: Lakshya monthly exists for India only; city = 14-week total
-                if key == "start":
-                    lk, pl = None, None
-                elif key == "total":
-                    lk = pick([str(LK_LDTO_PL[c] + LK_OWN_PL[c]) for c in CITIES], str(sum(lk_pl_mon.values())))
-                    pl = f"=SUM({cp}{R_LV0}:{cp}{R_LV0 + 3})"
-                else:
-                    lk = f'=IF({PICK}="India",{lk_pl_mon[MONTHS[key]]},"")'
-                    pl = "=" + "+".join(f"{c_}{mv_row}" for c_ in plan_cols)
-            elif key == "start":
-                lk = pick([str(lk_open[c]) for c in CITIES]) if lk_open else None
-                pl = f"={plan_cols[0]}{R_MV_S}"
-            else:
-                m = 3 if key == "total" else key
-                lk = pick([lk_src(m, i) for i in range(ncity)], lk_src(m, ncity))
-                pl = f"={plan_cols[0]}{mv_row}"
-            put(ws, r, column_index_from_string(cl), lk, NUM, bg=bg)
-            put(ws, r, column_index_from_string(cp), pl, NUM, bg=bg)
-            dv_ = None if lk is None else f'=IF(OR({cl}{r}="",{cp}{r}=""),"",ROUND({cp}{r}-{cl}{r},0))'
-            put(ws, r, column_index_from_string(cd), dv_, DIFF, bold=True, bg=bg)
-        onr_d = f"{lv[3][2]}{r}"
-        acq_d = f"{lv[4][2]}{r}"
-        # attrition % a month = churn / weeks x 52/12 / average Own Now + L+DTO book
-        if key == "start":
-            for k in range(4):
-                put(ws, r, ATT0 + k, None, bg=bg)
-        else:
+        mvr = {"start": R_MV_S, "total": R_MV_TOT}.get(key, R_MV0 + key if isinstance(key, int) else None)
+        mon = None if key in ("start", "total") else PLAN_MONTHS[key]
+        mi = 0 if key == "start" else (3 if key == "total" else MONTHS.index(mon))
+        put(ws, r, 1, {"start": "Start (27 Sep)", "total": "Total / 27 Dec"}.get(key, mon), bold=True, bg=bg)
+        cells = {
+            (G1, "AOP"): f"={AOPC}{mvr}", (G1, "Lakshya"): f"={LKC}{mvr}", (G1, "Plan"): f"={ONR}{mvr}",
+            (G1, "Plan - AOP"): f"=ROUND({gc[(G1, 'Plan')]}{r}-{gc[(G1, 'AOP')]}{r},0)",
+            (G1, "Plan - Lakshya"): f"=ROUND({gc[(G1, 'Plan')]}{r}-{gc[(G1, 'Lakshya')]}{r},0)",
+            (G2, "Lakshya"): lk_book(mi), (G2, "Plan"): f"={OWN}{mvr}+{LD}{mvr}",
+            (G2, "Plan - Lakshya"): f"=ROUND({gc[(G2, 'Plan')]}{r}-{gc[(G2, 'Lakshya')]}{r},0)",
+        }
+        if key != "start":
             if key == "total":
-                weeks, prev = str(N_WEEKS), R_MV_S
-                extra = f"=SUM({AX_}{R_LV0}:{AX_}{R_LV0 + 3})"
+                cells[(G3, "AOP")] = f"=SUM({gc[(G3, 'AOP')]}{R_LV0}:{gc[(G3, 'AOP')]}{R_LV0 + 2})"
+                cells[(G3, "Lakshya")] = f"=SUM({gc[(G3, 'Lakshya')]}{R_LV0}:{gc[(G3, 'Lakshya')]}{R_LV0 + 2})"
+                wk_, prev = N_WEEKS, R_LV_S
             else:
-                weeks, prev = f'COUNTIF({_bu(cities[0])},"{MONTHS[key]}")', mv_row - 1
-                extra = (f"={CH_OWN}{mv_row}+{CH_LD}{mv_row}-("
-                         + pick([flat_churn(i, f'"{MONTHS[key]}"') for i in range(ncity)])[1:] + ")")
-            book = f"AVERAGE({OWN_ME}{prev}+{LD_ME}{prev},{OWN_ME}{mv_row}+{LD_ME}{mv_row})"
-            churn = f"({CH_OWN}{mv_row}+{CH_LD}{mv_row})"
-            pbr = R_PB_TOT if key == "total" else R_PB0 + key   # same month in 2b (India)
-            put(ws, r, ATT0, f'=IF({PICK}="India",J{pbr},({churn}-{AX_}{r})/{weeks}*{G_WPM}/{book})', PCT, bg=bg)
-            put(ws, r, ATT0 + 1, f"={churn}/{weeks}*{G_WPM}/{book}", PCT, bg=bg)
-            put(ws, r, ATT0 + 2, f"={AP_}{r}-{AL_}{r}", "+0.0%;-0.0%;0.0%", bold=True, bg=bg)
-            put(ws, r, ATT0 + 3, f'=IF({PICK}="India",I{pbr}-H{pbr},{extra[1:]})', DIFF, bold=True, bg=bg)
-        att = (f'"last year\'s attrition "&TEXT({AP_}{r},"0%")&" a month vs Lakshya\'s "&TEXT({AL_}{r},"0%")&" = "'
-               f'&TEXT(ABS({AX_}{r}),"#,##0")&IF({AX_}{r}>=0," more"," fewer")&" drivers to replace churn"')
-        acq = (f'IF(ISNUMBER({acq_d}),TEXT({acq_d},"+#,##0;-#,##0;0")&" drivers vs Lakshya: ",'
-               f'"No Lakshya monthly driver figure by city; ")')
-        if key not in ("start",):
-            pbr = R_PB_TOT if key == "total" else R_PB0 + key
-            # India: driver gap = catch-up (net add) + churn + Diwali re-acquisition, exactly as in 2b
-            india_why = (f'TEXT(O{pbr},"+#,##0;-#,##0;0")&" drivers vs Lakshya = "'
-                         f'&IF(ABS(G{pbr}-F{pbr})>=0.5,TEXT(G{pbr}-F{pbr},"#,##0;-#,##0")&" catch-up from the 20 Sep actual"&IF(I{pbr}-H{pbr}<0," - "," + "),IF(I{pbr}-H{pbr}<0,"-",""))'
-                         f'&TEXT(ABS(I{pbr}-H{pbr}),"#,##0")&" for churn (last year\'s attrition "&TEXT(K{pbr},"0%")&" a month vs Lakshya\'s "&TEXT(J{pbr},"0%")&")"'
-                         f'&IF(ABS(L{pbr})>=0.5," + "&TEXT(L{pbr},"#,##0")&" re-acquired after the Diwali dip","")&"."')
-        if key == "start" and V2:
-            why = (f'="v2 starts from Lakshya\'s own 20 Sep book, not the actual (Lakshya Weekly tab: the actual is "'
-                   f'&TEXT(-{LW}!$K${R_LW_ST0 + ncity},"#,##0")&" below it for India)."')
-        elif key == "start":
-            why = ('="Lakshya starts from Own Now ~6 Sep and L+DTO 31 Aug; the plan from the "&TEXT('
-                   + G_OPEN_DATE + ',"d mmm")&" actual."')
-        elif key == "total":
-            why = (f'=IF(ABS({onr_d})<0.5,"Same 27 Dec landing. ","Lands "&TEXT({onr_d},"#,##0")&" short (growth held to last year\'s pace). ")'
-                   f'&"Over {N_WEEKS} weeks: "&IF({PICK}="India",{india_why},{acq}&{att}&".")')
+                cells[(G3, "AOP")] = pick([f"Inputs!${L(10 + mi)}${R_AOP0 + i}" for i in range(n)], f"Inputs!${L(10 + mi)}${R_AOP0 + n}")
+                cells[(G3, "Lakshya")] = pick([str(_lk_month(c_, ("ld_wk", "own_wk"), mon)) for c_ in CITIES])
+                wk_, prev = WEEK_MONTH.count(mon), r - 1
+            cells[(G3, "Plan")] = f"={col['Total driver acquisition']}{mvr}"
+            cells[(G3, "Plan - Lakshya")] = f"=ROUND({gc[(G3, 'Plan')]}{r}-{gc[(G3, 'Lakshya')]}{r},0)"
+            # Lakshya churn = its monthly churn + rollover (Lakshya Weekly figures), as % of its average book
+            if key == "total":
+                lk_ch = pick([str(sum(_lk_churn(c_, m_) for m_ in PLAN_MONTHS)) for c_ in CITIES])[1:]
+            else:
+                lk_ch = pick([str(_lk_churn(c_, mon)) for c_ in CITIES])[1:]
+            bk = gc[(G2, "Lakshya")]
+            cells[(G4, "Lakshya")] = f"=({lk_ch})/{wk_}*{G_WPM}/AVERAGE({bk}{prev},{bk}{r})"
+            cells[(G4, "Plan")] = f"={col['Attrition % a month']}{mvr}"
+            cells[(G4, "Plan - Lakshya")] = f"={gc[(G4, 'Plan')]}{r}-{gc[(G4, 'Lakshya')]}{r}"
+        for (g, t), c_ in gc.items():
+            v = cells.get((g, t))
+            fmt = PCT if g == G4 and t != "Plan - Lakshya" else (PP if g == G4 else (SIGNED if t.startswith("Plan -") else NUM))
+            put(ws, r, column_index_from_string(c_), v, fmt, bold=t.startswith("Plan -"), bg=bg)
+        d_on, d_bk = f"{gc[(G1, 'Plan - Lakshya')]}{r}", f"{gc[(G2, 'Plan - Lakshya')]}{r}"
+        if key == "start":
+            why = (f'="Actual on "&TEXT({G_LAST},"d mmm")&": "&TEXT({d_on},"+#,##0;-#,##0;0")&" vs Lakshya\'s 27 Sep and "'
+                   f'&TEXT({gc[(G1, "Plan - AOP")]}{r},"+#,##0;-#,##0;0")&" vs AOP September - the plan starts from here."')
         else:
-            reason = {0: "one week from the 20 Sep actual to catch up",
-                      1: "growth held to last year's pace", 2: "Diwali dip + growth held to last year's pace",
-                      3: "growth held to last year's pace"}[key]
-            tail = {0: '&" + catching up from the 20 Sep actual."', 2: '&" + drivers re-acquired after the Diwali dip."'}.get(key, '&"."')
-            why = (f'=IF(ABS({onr_d})<0.5,"",TEXT({onr_d},"#,##0")&" on road ({reason}). ")'
-                   f'&IF({PICK}="India",{india_why},{acq}&{att}{tail})')
-        c = put(ws, r, column_index_from_string(WHY), why, bg=bg)
+            acq = gc[(G3, "Plan")]
+            why = (f'=IF(ABS({d_on})<0.5,"On Lakshya.",TEXT({d_on},"+#,##0;-#,##0;0")&" vs Lakshya.")&" Plan hires "'
+                   f'&TEXT({acq}{r},"#,##0")&" vs Lakshya "&TEXT({gc[(G3, "Lakshya")]}{r},"#,##0")&"; attrition "'
+                   f'&TEXT({gc[(G4, "Plan")]}{r},"0%")&" a month vs Lakshya "&TEXT({gc[(G4, "Lakshya")]}{r},"0%")&"."')
+        c = put(ws, r, WHY, why, bg=bg)
         c.alignment = Alignment(wrap_text=True, vertical="top")
-        ws.merge_cells(f"{WHY}{r}:{L(column_index_from_string(WHY) + 5)}{r}")
+        ws.merge_cells(start_row=r, start_column=WHY, end_row=r, end_column=WHY + 5)
         ws.row_dimensions[r].height = 30
-    for _, _, cd in lv:
-        red_if(f"{cd}{R_LV0}:{cd}{R_LV_TOT}", f"AND(ISNUMBER({cd}{R_LV0}),{cd}{R_LV0}<-0.5)")
-    ws.cell(R_LV_TOT + 1, 1, "Lakshya = Lakshya v4 month-end books (Inputs A3; December = the targets). Lakshya has no monthly EIP, "
-                             "so EIP is a straight line to its December target. Lakshya driver acquisition by month exists for India only; "
-                             "for a city the total is Lakshya's 14-week figure. Attrition % a month = churn / weeks x 52/12 / average Own Now + L+DTO book: "
-                             "Plan = Lakshya's monthly rates shaped by last year's weekly attrition. Lakshya: for India, the churn implied by its own driver numbers (as in 2b); "
-                             "for a city, its flat monthly rates (Inputs A2), as Lakshya has no monthly driver numbers by city. Extra drivers = plan churn - Lakshya churn.").font = F_NOTE
+    for (g, t), c_ in gc.items():
+        if t.startswith("Plan -") and g != G4:
+            red_if(f"{c_}{R_LV_S}:{c_}{R_LV_TOT}", f"AND(ISNUMBER({c_}{R_LV_S}),{c_}{R_LV_S}<-0.5)")
+    ws.cell(R_LV_TOT + 1, 1, "AOP = AOP FY27 (Inputs A5); Lakshya = Lakshya v4 month-ends (A4) and its weekly driver acquisition by city "
+                             "(Lakshya Weekly figures). Attrition % a month = drivers leaving / weeks x 52/12 / average Own Now + L+DTO book.").font = F_NOTE
 
-    # ---- 2b. driver acquisition bridge, India: driver acquisition = net add of the Own Now + L+DTO book + churn
-    # A month | B:C book at start | D:E book at month end | F:G net add | H:I churn | J:K churn % a month |
-    # L Diwali re-acquisition | M:N driver acquisition | O plan - Lakshya | P % | Q:V why
-    put(ws, R_PB_T, 1, "2b.  WHY DRIVER ACQUISITION DIFFERS  -  INDIA  (driver acquisition = book at month end - book at start + churn)",
+    # ---- 3. why driver acquisition differs from Lakshya (picked): acquisition = book change + drivers leaving
+    put(ws, R_PB_T, 1, f'="3.  WHY DRIVER ACQUISITION DIFFERS FROM LAKSHYA  -  "&UPPER({PICK})&"  (acquisition = book at month end - book at start + drivers leaving)"',
         font=F_SECTION).border = Border()
     pb_groups = [("BOOK AT START (Own Now + L+DTO)", 2), ("BOOK AT MONTH END", 4), ("NET ADD", 6),
-                 ("CHURN (drivers who leave)", 8), ("CHURN % A MONTH (of the book)", 10), ("DRIVER ACQUISITION", 13)]
+                 ("DRIVERS LEAVING", 8), ("DRIVER ACQUISITION", 10)]
     hdr(ws, R_PB_T + 1, 1, "")
     hdr(ws, R_PB_H, 1, "Month")
     for gt, c0 in pb_groups:
@@ -2073,143 +1749,269 @@ def build_dashboard(wb):
         ws.merge_cells(start_row=R_PB_T + 1, start_column=c0, end_row=R_PB_T + 1, end_column=c0 + 1)
         hdr(ws, R_PB_H, c0, "Lakshya")
         hdr(ws, R_PB_H, c0 + 1, "Plan")
-    hdr(ws, R_PB_T + 1, 12, "DIWALI", GREY_HDR)
-    hdr(ws, R_PB_H, 12, "Plan: re-acquired after the dip")
-    hdr(ws, R_PB_T + 1, 15, "PLAN - LAKSHYA", GREY_HDR)
-    ws.merge_cells(start_row=R_PB_T + 1, start_column=15, end_row=R_PB_T + 1, end_column=16)
-    hdr(ws, R_PB_H, 15, "Driver Acquisition")
-    hdr(ws, R_PB_H, 16, "%")
-    hdr(ws, R_PB_T + 1, 17, "", GREY_HDR)
-    hdr(ws, R_PB_H, 17, "Why")
-    ws.merge_cells(start_row=R_PB_T + 1, start_column=17, end_row=R_PB_T + 1, end_column=22)
-    ws.merge_cells(start_row=R_PB_H, start_column=17, end_row=R_PB_H, end_column=22)
+    hdr(ws, R_PB_T + 1, 12, "", GREY_HDR)
+    hdr(ws, R_PB_H, 12, "Plan - Lakshya")
+    hdr(ws, R_PB_T + 1, 13, "", GREY_HDR)
+    hdr(ws, R_PB_H, 13, "Why")
+    ws.merge_cells(start_row=R_PB_T + 1, start_column=13, end_row=R_PB_T + 1, end_column=22)
+    ws.merge_cells(start_row=R_PB_H, start_column=13, end_row=R_PB_H, end_column=22)
     ws.row_dimensions[R_PB_T + 1].height = 30
     ws.row_dimensions[R_PB_H].height = 30
-    ni = len(CITIES)  # INDIA row of Inputs A3
-    SIGNED = "+#,##0;-#,##0;0"
-    fmts = {6: DIFF, 7: DIFF, 10: PCT, 11: PCT, 12: DIFF, 15: DIFF, 16: "+0%;-0%;0%"}
-
-    def churn_pct(churn, start, end, weeks):
-        """Churn a month as % of the average book: (churn / weeks) x 52/12 / average book."""
-        return f"={churn}/{weeks}*{G_WPM}/AVERAGE({start},{end})"
-
-    for m, mon in enumerate(MONTHS):
+    lvr = lambda rr_: rr_ - R_PB0 + R_LV0
+    for m, mon in enumerate(PLAN_MONTHS):
         r = R_PB0 + m
         put(ws, r, 1, mon, bold=True)
-        weeks = f"COUNTIF({_bu(cities[0])},$A{r})"
-        lk_end = f"Inputs!${L(6 + m)}${R_MS0 + ni}+Inputs!${L(10 + m)}${R_MS0 + ni}"
-        if m == 0:
-            # Lakshya's book on the plan's opening date: its path from ~6 Sep (Own Now, 3 weeks) and 31 Aug (L+DTO, 4 weeks)
-            own0, ldto0 = sum(LK_OWN_OPEN.values()), sum(LK_LDTO_OPEN.values())
-            lk_start = f"={own0}+(Inputs!$F${R_MS0 + ni}-{own0})*2/3+{ldto0}+(Inputs!$J${R_MS0 + ni}-{ldto0})*3/4"
-            if V2:  # Lakshya's exact book on the opening date (Lakshya Weekly tab)
-                lk_start = f"={LW}!$D${R_LW_ST0 + ni}+{LW}!$G${R_LW_ST0 + ni}"
-            pl_start = "=" + "+".join(f"{s}!$AH${FIRST}+{s}!$AP${FIRST}" for s in cities)
-        else:
-            lk_start, pl_start = f"=D{r - 1}", f"=E{r - 1}"
-        mref = f"$A{r}"
-        vals = [
-            (2, lk_start), (3, pl_start), (4, f"={lk_end}"),
-            (5, "=" + "+".join(f"{_stock(s, 'X', mref)}+{_stock(s, 'W', mref)}" for s in cities)),
-            (6, f"=D{r}-B{r}"), (7, f"=E{r}-C{r}"),
-            (8, f"=M{r}-F{r}"),
-            (9, "=" + "+".join("+".join(_flow(s, x, mref) for x in ("AK", "AL", "AS")) for s in cities)),
-            (10, churn_pct(f"H{r}", f"B{r}", f"D{r}", weeks)), (11, churn_pct(f"I{r}", f"C{r}", f"E{r}", weeks)),
-            (12, f"=ROUND(N{r}-G{r}-I{r},0)"), (13, lk_pl_mon[mon]),
-            (14, "=" + "+".join(_flow(s, "AU", mref) for s in cities)),
-            (15, f"=N{r}-M{r}"), (16, f"=N{r}/M{r}-1"),
-        ]
+        vals = [(2, f"={gc[(G2, 'Lakshya')]}{lvr(r) - 1}"), (3, f"={gc[(G2, 'Plan')]}{lvr(r) - 1}"),
+                (4, f"={gc[(G2, 'Lakshya')]}{lvr(r)}"), (5, f"={gc[(G2, 'Plan')]}{lvr(r)}"),
+                (6, f"=D{r}-B{r}"), (7, f"=E{r}-C{r}"),
+                (8, f"=J{r}-F{r}"), (9, f"=K{r}-G{r}"),
+                (10, f"={gc[(G3, 'Lakshya')]}{lvr(r)}"), (11, f"={gc[(G3, 'Plan')]}{lvr(r)}"), (12, f"=K{r}-J{r}")]
         for j, v in vals:
-            put(ws, r, j, v, fmts.get(j, NUM), bold=(j in (15, 16)))
-        why = (f'=TEXT(O{r},"{SIGNED}")&" = net add "&TEXT(G{r}-F{r},"{SIGNED}")'
-               f'&" (plan book "&TEXT(C{r},"#,##0")&" to "&TEXT(E{r},"#,##0")&", Lakshya "&TEXT(B{r},"#,##0")&" to "&TEXT(D{r},"#,##0")&")"'
-               f'&" + churn "&TEXT(I{r}-H{r},"{SIGNED}")&" ("&TEXT(K{r},"0%")&" a month vs Lakshya "&TEXT(J{r},"0%")'
-               f'&IF(I{r}<H{r},": last year\'s attrition is low this month)",": last year\'s attrition is high this month)")'
-               f'&IF(ABS(L{r})>=0.5," + Diwali re-acquisition "&TEXT(L{r},"+#,##0"),"")')
-        c = put(ws, r, 17, why)
+            put(ws, r, j, v, SIGNED if j in (6, 7, 12) else NUM, bold=(j == 12))
+        why = (f'=TEXT(L{r},"+#,##0;-#,##0;0")&" = book growth "&TEXT(G{r}-F{r},"+#,##0;-#,##0;0")&" (plan "&TEXT(C{r},"#,##0")'
+               f'&" to "&TEXT(E{r},"#,##0")&", Lakshya "&TEXT(B{r},"#,##0")&" to "&TEXT(D{r},"#,##0")&") + drivers leaving "'
+               f'&TEXT(I{r}-H{r},"+#,##0;-#,##0;0")&" (attrition "&TEXT({gc[(G4, "Plan")]}{lvr(r)},"0%")&" a month vs Lakshya "'
+               f'&TEXT({gc[(G4, "Lakshya")]}{lvr(r)},"0%")&")."')
+        c = put(ws, r, 13, why)
         c.alignment = Alignment(wrap_text=True, vertical="top")
-        ws.merge_cells(start_row=r, start_column=17, end_row=r, end_column=22)
+        ws.merge_cells(start_row=r, start_column=13, end_row=r, end_column=22)
         ws.row_dimensions[r].height = 30
     r = R_PB_TOT
     put(ws, r, 1, "Total", bold=True, bg=LIGHT)
-    for j in range(2, 17):
+    for j in range(2, 13):
         c_ = L(j)
-        if j in (2, 3):
-            v = f"={c_}{R_PB0}"
-        elif j in (4, 5):
-            v = f"={c_}{R_PB0 + 3}"
-        elif j in (10, 11):  # over the 14 weeks
-            ch, st, en = (("H", "B", "D") if j == 10 else ("I", "C", "E"))
-            v = churn_pct(f"{ch}{r}", f"{st}{r}", f"{en}{r}", N_WEEKS)
-        elif j == 16:
-            v = f"=N{r}/M{r}-1"
-        else:
-            v = f"=SUM({c_}{R_PB0}:{c_}{R_PB0 + 3})"
-        put(ws, r, j, v, fmts.get(j, NUM), bold=True, bg=LIGHT)
-    c = put(ws, r, 17, (f'=TEXT(O{r},"{SIGNED}")&" = September catch-up from the 20 Sep actual "&TEXT(G{r}-F{r},"{SIGNED}")'
-                        f'&" + churn shaped by last year "&TEXT(I{r}-H{r},"{SIGNED}")&" + Diwali re-acquisition "&TEXT(L{r},"{SIGNED}")'),
-            bold=True, bg=LIGHT)
+        v = f"={c_}{R_PB0}" if j in (2, 3) else (f"={c_}{R_PB0 + 2}" if j in (4, 5) else f"=SUM({c_}{R_PB0}:{c_}{R_PB0 + 2})")
+        put(ws, r, j, v, SIGNED if j in (6, 7, 12) else NUM, bold=True, bg=LIGHT)
+    c = put(ws, r, 13, (f'=TEXT(L{r},"+#,##0;-#,##0;0")&" = book growth "&TEXT(G{r}-F{r},"+#,##0;-#,##0;0")'
+                        f'&" (the plan starts "&TEXT(C{r}-B{r},"+#,##0;-#,##0;0")&" vs Lakshya\'s 27 Sep book) + drivers leaving "'
+                        f'&TEXT(I{r}-H{r},"+#,##0;-#,##0;0")&"."'), bold=True, bg=LIGHT)
     c.alignment = Alignment(wrap_text=True, vertical="top")
-    ws.merge_cells(start_row=r, start_column=17, end_row=r, end_column=22)
+    ws.merge_cells(start_row=r, start_column=13, end_row=r, end_column=22)
     ws.row_dimensions[r].height = 30
-    red_if(f"O{R_PB0}:O{R_PB_TOT}", f"O{R_PB0}<-0.5")
-    if V2:
-        ws.cell(R_PB_TOT + 2, 1, "v2: the plan's churn is Lakshya's monthly churn spread evenly over the weeks, and it starts from Lakshya's own 20 Sep book, "
-                                 "so every column matches.").font = F_NOTE
-    ws.cell(R_PB_TOT + 1, 1, "Churn % a month = churn / weeks x 52/12 / average book (Own Now + L+DTO). Lakshya churn = its driver acquisition - its net add "
-                             "(a flat rate every week); plan churn = the same monthly rates shaped by last year's weekly attrition (city tabs AK, AL, AS). "
-                             "Lakshya's Sep start = its path on the opening date. Diwali: the two dip weeks plan no driver acquisition; drivers for the cars lost are acquired again after.").font = F_NOTE
+    red_if(f"L{R_PB0}:L{R_PB_TOT}", f"L{R_PB0}<-0.5")
+    ws.cell(R_PB_TOT + 1, 1, "Lakshya's drivers leaving = its driver acquisition - its book growth. The plan's = the current attrition rate "
+                             "(Inputs A3) x the validated seasonal change, on the plan's own book.").font = F_NOTE
 
-
-    # ---- 3. insights (live, all India): read from section 2b, the Inputs C1 summary and the city tabs
-    put(ws, R_IN_T, 1, "3.  INSIGHTS  -  India and cities (live; update with the plan)", font=F_SECTION).border = Border()
-    ri = R_SUM0 + len(CITIES)                      # INDIA row of Inputs C1
-    c1 = lambda col, r=ri: f"Inputs!${col}${r}"    # Inputs C1: B start, C 27 Dec, D target, I fleet, J Lakshya fleet,
-    c1r = lambda col: f"Inputs!${col}${R_SUM0}:${col}${ri - 1}"  # M util, N max, O headroom, S driver acquisition
-    SIGNED = "+#,##0;-#,##0;0"
-    wk = [f'COUNTIF({_bu(cities[0])},"{mon}")' for mon in MONTHS]
-    pb = lambda col, m: f"{col}{R_PB0 + m}"      # section 2b, month m
-    pbt = lambda col: f"{col}{R_PB_TOT}"         # section 2b, total
-    newc = "(" + "+".join(f"SUM({s}!$BJ${FIRST}:$BJ${LAST})" for s in cities) + ")"
-    dip = "+".join(f"SUM({s}!$BS${FIRST}:$BS${LAST})" for s in cities)
-    capped = "+".join(stretch_count(f"{s}!$BP${FIRST}:$BP${LAST}") for s in cities)
-    top_org = "MAX(" + ",".join(f"{s}!$BO${FIRST}:$BO${LAST}" for s in cities) + ")"
-    growth = f"({c1r('C')}-{c1r('B')})"
-    above = "&".join(f'IF({c1("O", R_SUM0 + i)}<0,"{CITIES[i]} "&TEXT({c1("M", R_SUM0 + i)},"0.0%")&" vs max "&TEXT({c1("N", R_SUM0 + i)},"0.0%")&", ","")'
-                     for i in range(len(CITIES)))
-    per_week = lambda col, fmt: ", ".join(f'{MONTHS[m]} "&TEXT({pb(col, m)}/{wk[m]},"{fmt}")&"' for m in range(4))
-    me_gap = ", ".join(f'{MONTHS[m]} "&TEXT({pb("E", m)}-{pb("D", m)},"{SIGNED}")&"' for m in range(4))
-    me_short = "+".join(f"(ABS({pb('E', m)}-{pb('D', m)})>=0.5)" for m in range(4))
+    # ---- 4. insights (India, live)
+    put(ws, R_IN_T, 1, "4.  INSIGHTS  -  India (live; update with the plan)", font=F_SECTION).border = Border()
+    ri = R_SUM0 + n                                    # INDIA row of Inputs C1
+    c1 = lambda c_: f"Inputs!${c_}${ri}"
+    c1r = lambda c_: f"Inputs!${c_}${R_SUM0}:${c_}${ri - 1}"
+    rri = lambda k: f"Inputs!${L(RR[k])}${R_RR0 + n}"
+    allc = lambda expr: "(" + "+".join(expr(s) for s in cities) + ")"
+    dip_blk = SEASONS.index("Diwali")
+    step_cities = "&".join(f'IF({q(c_)}!{STEP_CELL}>0,"{c_} "&TEXT({q(c_)}!{STEP_CELL},"0")&", ","")' for c_ in CITIES)
+    above = "&".join(f'IF(Inputs!$P${R_SUM0 + i}<0,"{c_} "&TEXT(Inputs!$N${R_SUM0 + i},"0.0%")&" vs max "&TEXT(Inputs!$O${R_SUM0 + i},"0.0%")&", ","")'
+                     for i, c_ in enumerate(CITIES))
+    over_cap = "&".join(f'IF(Inputs!$V${R_SUM0 + i}>0,"{c_} ("&Inputs!$V${R_SUM0 + i}&" wks), ","")' for i, c_ in enumerate(CITIES))
+    seas_yes = f'COUNTIF({SQ}!$C${R_CK0}:$N${R_CK0 + 2 * n - 1},"Yes")'
     ins = [
-        f'="India: "&TEXT({c1("B")},"#,##0")&" cars on road at the start, "&TEXT({c1("C")},"#,##0")&" on 27 Dec ("&TEXT({c1("C")}-{c1("B")},"+#,##0")&", "&TEXT({c1("C")}/{c1("B")}-1,"+0%")&"). '
-        f'Lakshya: "&TEXT({c1("D")},"#,##0")&IF(ABS({c1("C")}-{c1("D")})<0.5," - the plan lands on it."," - gap "&TEXT({c1("C")}-{c1("D")},"#,##0")&".")',
-        f'="Where the growth comes from: "&TEXT({newc},"#,##0")&" new cars put on road ("&TEXT({newc}/({c1("C")}-{c1("B")}),"0%")&") and "&TEXT({c1("C")}-{c1("B")}-{newc},"#,##0")'
-        f'&" organic growth from recruitment net of churn ("&TEXT(1-{newc}/({c1("C")}-{c1("B")}),"0%")&")."',
-        (f'="Own Now + L+DTO book growth per week: {per_week("G", SIGNED)}. Lakshya\'s Diwali trough is in its weekly driver acquisition (w/e 8 and 15 Nov)."' if V2 else
-         f'="Own Now + L+DTO book growth per week: {per_week("G", SIGNED)}. The two Diwali weeks (w/c 2 and 9 Nov) take "&TEXT(ABS({dip}),"#,##0")&" cars off the road; new cars that arrive then go on road from w/c 16 Nov."'),
-        f'="Driver acquisition: "&TEXT({pbt("N")},"#,##0")&" in {N_WEEKS} weeks ("&TEXT({pbt("N")}/{N_WEEKS},"#,##0")&" a week). Per week by month: {per_week("N", "#,##0")}."',
-        f'="Churn: "&TEXT({pbt("I")},"#,##0")&" drivers leave ("&TEXT({pbt("K")},"0%")&" of the book a month), so "&TEXT({pbt("I")}/{pbt("N")},"0%")&" of driver acquisition only replaces churn and "&TEXT(1-{pbt("I")}/{pbt("N")},"0%")&" adds to the road."',
-        ("ARRAY", f'="Most growth: "&INDEX({c1r("A")},MATCH(MAX({growth}),{growth},0))&" ("&TEXT(MAX({growth}),"+#,##0")&"). Least: "&INDEX({c1r("A")},MATCH(MIN({growth}),{growth},0))&" ("&TEXT(MIN({growth}),"{SIGNED}")&"). '
-                  f'Most recruitment: "&INDEX({c1r("A")},MATCH(MAX({c1r("S")}),{c1r("S")},0))&" ("&TEXT(MAX({c1r("S")}),"#,##0")&" driver acquisitions, "&TEXT(MAX({c1r("S")})/{N_WEEKS},"#,##0")&" a week)."'),
-        f'="Own Now + L+DTO book vs Lakshya at each month-end: {me_gap}"&IF(({me_short})=0," - on Lakshya every month."," - section 2 shows why.")',
-        f'=IF(({above})="","No city ends above its max utilisation.","Above max utilisation on 27 Dec: "&LEFT({above},LEN({above})-2)&" - these need more fleet or fewer cars sold.")',
-        f'="Lakshya vs our plan: "&IF(ABS({c1("C")}-{c1("D")})<0.5,"both land on "&TEXT({c1("D")},"#,##0"),"the plan lands on "&TEXT({c1("C")},"#,##0")&" vs Lakshya\'s "&TEXT({c1("D")},"#,##0"))&" on 27 Dec. '
-        f'It needs "&TEXT({pbt("N")},"#,##0")&" driver acquisitions vs Lakshya\'s "&TEXT({pbt("M")},"#,##0")&" ("&TEXT({pbt("O")},"{SIGNED}")&"); fleet on 27 Dec "&TEXT(ROUND({c1("I")}-{c1("J")},0),"{SIGNED}")&" vs Lakshya."',
-        f'=IF({G_CAP}="No","Stretch vs last year: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks need more organic growth than the city\'s best 4-week pace of 2024/25 (red in city tab column BP) - the price of matching Lakshya at every month-end. Biggest single city-week: "&TEXT({top_org},"0.0%")&" organic growth.",'
-        f'"Realism: "&({capped})&" of {len(CITIES) * N_WEEKS} city-weeks are held to last year\'s pace, so no week plans more organic growth than 2024/25 showed (Diwali_Dip Analysis tab).")',
+        # where we start
+        (f'="Where we start: "&TEXT({c1("B")},"#,##0")&" cars on road ("&TEXT({G_LAST},"d mmm")&"): "'
+         f'&TEXT(ABS({c1("B")}-Inputs!$B${R_AOP0 + n}),"#,##0")&IF({c1("B")}<Inputs!$B${R_AOP0 + n}," below"," above")&" AOP September and "'
+         f'&TEXT(ABS({c1("B")}-Inputs!$N${R_MS0 + n}),"#,##0")&IF({c1("B")}<Inputs!$N${R_MS0 + n}," below"," above")&" Lakshya\'s 27 Sep book."'),
+        # current run rate
+        (f'="Current run rate (last 4 weeks): "&TEXT({rri("rec")},"#,##0")&" drivers acquired a week ("&TEXT({rri("rec_yoy")},"+0%;-0%")'
+         f'&" vs the same weeks last year) and "&TEXT({rri("na_rate")},"0.0%")&" of drivers leaving a week ("&TEXT({rri("na_yoy")},"+0%;-0%")'
+         f'&" vs last year). If that continues, with a driver for every new car, 27 Dec lands at "&TEXT({c1("F")},"#,##0")&"."'),
+        # new cars
+        (f'="New cars: "&TEXT(Inputs!$F${R_STK0 + n},"#,##0")&" bought and at the stock yard reach the fleet between "'
+         f'&TEXT(Inputs!$D${R_WIN0 + len(DELIVERY_WINDOWS) - 1},"d mmm")&" and "&TEXT(Inputs!$E${R_WIN0},"d mmm")&" - "'
+         f'&TEXT({c1("R")},"#,##0")&" extra drivers needed for them. Still to buy vs Lakshya: "&TEXT(Inputs!$K${R_STK0 + n},"#,##0")'
+         f'&" (vs its Sep-Oct plan: "&TEXT(Inputs!$J${R_STK0 + n},"#,##0")&")."'),
+        # seasonality
+        (f'="Seasonality: "&{seas_yes}&" of 56 city x season checks show the same change in 2024 and 2025. India, Diwali weeks: hiring "'
+         f'&TEXT({SQ}!${L(2 + dip_blk)}${R_SU0 + n},"+0%;-0%;0%")&", attrition "&TEXT({SQ}!${L(6 + dip_blk)}${R_SU0 + n},"+0%;-0%;0%")'
+         f'&". Pre-Diwali shows no clear pattern, so no dip is assumed there (Seasonality Check tab)."'),
+        # three paths
+        (f'="27 Dec: run rate "&TEXT({c1("F")},"#,##0")&", within proven hiring capacity "&TEXT({c1("X")},"#,##0")&", Lakshya ramp "'
+         f'&TEXT({c1("D")},"#,##0")&" (AOP "&TEXT({c1("G")},"#,##0")&"). The plan uses: "&{G_CAP}&" (Inputs A1) and lands at "'
+         f'&TEXT({c1("C")},"#,##0")&"."'),
+        # what Lakshya takes
+        (f'="To reach Lakshya: hiring rises by "&TEXT({c1("S")},"#,##0")&" drivers a week, every week, on top of the run rate (by city: "'
+         f'&IF(({step_cities})="","none",LEFT({step_cities},LEN({step_cities})-2))&"); with the ramp, driver acquisition in the last week is "'
+         f'&TEXT({allc(lambda s: f"{s}!BK{LAST}+{s}!BJ{LAST}+{s}!{STEP_CELL}*{N_WEEKS}*(1+{s}!BE{LAST})")},"#,##0")'
+         f'&" a week vs "&TEXT({rri("rec")},"#,##0")&" today and "&TEXT({rri("cap")},"#,##0")&" at best in the last year."'),
+        # capacity
+        (f'="Above proven hiring capacity (best 4 weeks since Sep 2025): "&IF(({over_cap})="","no city.",LEFT({over_cap},LEN({over_cap})-2)'
+         f'&" - these weeks need hiring the city has not delivered in the last year.")'),
+        # AOP
+        (f'="Vs AOP: plan "&TEXT({c1("H")},"+#,##0;-#,##0;0")&" on 27 Dec (plan "&TEXT({c1("C")},"#,##0")&", AOP "&TEXT({c1("G")},"#,##0")'
+         f'&"); AOP recruitment Oct-Dec "&TEXT(SUM(Inputs!$K${R_AOP0 + n}:$M${R_AOP0 + n}),"#,##0")&" vs plan "&TEXT({c1("Q")},"#,##0")&"."'),
+        # utilisation
+        (f'=IF({c1("Y")}<0.5,"Cars: the fleet carries the plan within every city\'s max utilisation.","Cars: at max utilisation the fleet is "'
+         f'&TEXT({c1("Y")},"#,##0")&" cars short of the plan on 27 Dec ("&IF(({above})="","",LEFT({above},LEN({above})-2))&") - the plan needs '
+         f'more of Lakshya\'s pending "&TEXT(Inputs!$K${R_STK0 + n},"#,##0")&" cars, or fewer cars sold.")'),
     ]
     for k, f in enumerate(ins):
         r = R_IN_T + 1 + k
-        if isinstance(f, tuple):  # needs array evaluation (MAX over a difference of two ranges)
-            c = put(ws, r, 1, None)
-            c.value = ArrayFormula(f"A{r}", f[1])
-        else:
-            c = put(ws, r, 1, f)
+        c = put(ws, r, 1, f)
         c.border = Border()
         c.alignment = Alignment(wrap_text=True, vertical="top")
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=22)
-        ws.row_dimensions[r].height = 18
+        ws.row_dimensions[r].height = 30
     ws.freeze_panes = "B4"
+    return ws
+
+
+# ---------------------------------------------------------------- LY vs CY vs Plan (consolidated comparison)
+BRIDGE_TAB = "LY vs CY vs Plan"
+
+
+def build_bridge(wb):
+    """Last year, this year, current run rate, plan, AOP and Lakshya side by side, week on week (India or a picked city)."""
+    ws = wb.create_sheet(BRIDGE_TAB, 3)
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = TEAL
+    ws.column_dimensions["A"].width = 16
+    for j in range(2, 24):
+        ws.column_dimensions[get_column_letter(j)].width = 11
+    L = get_column_letter
+    n = len(CITIES)
+    cities = [q(c) for c in CITIES]
+    PICK = "$B$3"
+    city_list = f"Inputs!$A${R_SUM0}:$A${R_SUM0 + n - 1}"
+
+    def pick(exprs, india=None):
+        india = india or "+".join(exprs)
+        return f'=IF({PICK}="India",{india},CHOOSE(MATCH({PICK},{city_list},0),{",".join(exprs)}))'
+
+    def raw(field, city, crit_col, crit):
+        c = rc(field)
+        return (f'SUMIFS(raw_performance!${c}:${c},raw_performance!$D:$D,"{city}",raw_performance!$E:$E,"CNG",'
+                f'raw_performance!${crit_col}:${crit_col},{crit})')
+
+    ws["A1"] = "LY vs CY vs PLAN  -  last year, this year, the run rate, the plan, AOP and Lakshya"
+    ws["A1"].font = F_TITLE
+    ws["A2"] = ("Is the planned growth supported by what we did last year and what we are doing now? Last year = the same week "
+                "364 days earlier (raw_performance).")
+    ws["A2"].font = F_NOTE
+    ws["A3"] = "Show (pick):"
+    ws["A3"].font = F_BOLD
+    c = ws["B3"]
+    c.value = "India"
+    c.font = Font(name="Calibri", size=11, bold=True, color=BLUE_TXT)
+    c.fill = fill(INPUT)
+    c.border = BOX
+    dv = DataValidation(type="list", formula1='"' + ",".join(["India"] + CITIES) + '"', allow_blank=False)
+    ws.add_data_validation(dv)
+    dv.add("B3")
+
+    # ---- 2. week by week (built first so the bridge can sum it)
+    R_W_T = 20
+    R_W_H = R_W_T + 2
+    R_W0 = R_W_H + 1
+    rows = list(range(2, LAST + 1))                   # city-tab rows: 4 actual weeks + the plan weeks
+    me_rows = {OPEN_ROW: 0, FIRST + 3: 1, FIRST + 8: 2, FIRST + 12: 3}   # month-end weeks: 27 Sep, 25 Oct, 29 Nov, 27 Dec
+    put(ws, R_W_T, 1, f'="2.  WEEK BY WEEK  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
+    groups = [("", 1, 2), ("CARS ON ROAD (week end)", 3, 12), ("DRIVER ACQUISITION a week", 13, 15),
+              ("NET ATTRITION % a week", 16, 17)]
+    for t, a_, b_ in groups:
+        hdr(ws, R_W_T + 1, a_, t, GREY_HDR)
+        if b_ > a_:
+            ws.merge_cells(start_row=R_W_T + 1, start_column=a_, end_row=R_W_T + 1, end_column=b_)
+    heads = ["Week (w/c)", "Actual / Plan", "Last year", "LY WoW", "This year / Plan", "WoW", "Run rate path",
+             "Within capacity", "AOP (month end)", "Lakshya (month end)", "vs last year", "vs Lakshya (month end)",
+             "Last year", "This year / Plan", "vs last year", "Last year", "This year / Plan"]
+    for j, t in enumerate(heads, start=1):
+        hdr(ws, R_W_H, j, t)
+    ws.row_dimensions[R_W_H].height = 42
+    for k, cr in enumerate(rows):
+        r = R_W0 + k
+        actual = cr < FIRST
+        bg = ACTUAL if actual else None
+        wk = f"{cities[0]}!$D${cr}"
+        put(ws, r, 1, f"={wk}", DATE, bold=True, bg=bg)
+        put(ws, r, 2, "Actual" if actual else "Plan", None, bg=bg)
+        put(ws, r, 3, pick([raw("allotted_cars_eod", c_, "C", f"{wk}+6-364") for c_ in CITIES]), NUM, bg=HIST, font=F_HIST)
+        put(ws, r, 4, f"=C{r}-" + (pick([raw("allotted_cars_eod", c_, "C", f"{wk}-1-364") for c_ in CITIES])[1:] if k == 0 else f"C{r - 1}"),
+            DIFF_FMT, bg=HIST, font=F_HIST)
+        put(ws, r, 5, pick([f"{s}!$Y${cr}" for s in cities]), NUM, bold=True, bg=bg)
+        put(ws, r, 6, f"=E{r}-" + (pick([f"{s}!$G${cr}" for s in cities])[1:] if k == 0 else f"E{r - 1}"), DIFF_FMT, bold=True, bg=bg)
+        put(ws, r, 7, None if actual else pick([f"{s}!$BS${cr}" for s in cities]), NUM, bg=bg)
+        put(ws, r, 8, None if actual else pick([f"{s}!$CG${cr}" for s in cities]), NUM, bg=bg)
+        if cr in me_rows:
+            m = me_rows[cr]
+            put(ws, r, 9, pick([f"Inputs!${L(2 + m)}${R_AOP0 + i}" for i in range(n)], f"Inputs!${L(2 + m)}${R_AOP0 + n}"), NUM, bg=bg)
+            put(ws, r, 10, pick([f"Inputs!${L(14 + m)}${R_MS0 + i}" for i in range(n)], f"Inputs!${L(14 + m)}${R_MS0 + n}"), NUM, bg=bg)
+            put(ws, r, 12, f"=E{r}-J{r}", DIFF_FMT, bold=True, bg=bg)
+        else:
+            for j in (9, 10, 12):
+                put(ws, r, j, None, bg=bg)
+        put(ws, r, 11, f"=IFERROR(E{r}/C{r}-1,0)", "+0%;-0%;0%", bg=bg)
+        rec_ly = pick([f"{raw('newjoin_cnt', c_, 'B', f'{wk}-364')}+{raw('resurrection_cnt', c_, 'B', f'{wk}-364')}" for c_ in CITIES])
+        put(ws, r, 13, rec_ly, NUM, bg=HIST, font=F_HIST)
+        put(ws, r, 14, pick([f"{s}!$AU${cr}" for s in cities]), NUM, bold=True, bg=bg)
+        put(ws, r, 15, f"=IFERROR(N{r}/M{r}-1,0)", "+0%;-0%;0%", bg=bg)
+        na_ly = [f"({raw('attrition_cnt', c_, 'B', f'{wk}-364')}+{raw('temp_attrition_cnt', c_, 'B', f'{wk}-364')}"
+                 f"-{raw('rejoin_cnt', c_, 'B', f'{wk}-364')}-{raw('temp_rejoin_cnt', c_, 'B', f'{wk}-364')})" for c_ in CITIES]
+        dr_ly = [raw("uniq_partners_dt_beginning", c_, "C", f"{wk}-364") for c_ in CITIES]
+        put(ws, r, 16, f'=IFERROR({pick([f"{a}/{b}" for a, b in zip(na_ly, dr_ly)], "(" + "+".join(na_ly) + ")/(" + "+".join(dr_ly) + ")")[1:]},0)',
+            PCT, bg=HIST, font=F_HIST)
+        put(ws, r, 17, f'=IFERROR({pick([f"-{s}!$U${cr}" for s in cities])[1:]}/{pick([f"{s}!$H${cr}" for s in cities])[1:]},0)',
+            PCT, bold=True, bg=bg)
+    last_w = R_W0 + len(rows) - 1
+    for c_ in ("K", "L", "O"):
+        ws.conditional_formatting.add(f"{c_}{R_W0}:{c_}{last_w}", FormulaRule(formula=[f"{c_}{R_W0}<-0.005"], font=RED_FONT))
+    ws.cell(last_w + 1, 1, "WoW = change on the week before. This year's attrition % = drivers leaving / drivers at the start of the week "
+                           "(actual weeks: from raw_performance; plan weeks: the plan's rate).").font = F_NOTE
+    fp, lp = R_W0 + N_ACTUAL, last_w                    # plan rows on this tab
+    now = R_W0 + N_ACTUAL - 1                           # last actual week
+
+    # ---- 1. the bridge
+    put(ws, 5, 1, f'="1.  THE BRIDGE  -  "&UPPER({PICK})&": last year -> now -> run rate -> within capacity -> plan -> AOP -> Lakshya"',
+        font=F_SECTION).border = Border()
+    heads = ["", "Last year, same weeks", "This year: now", "Run rate (if nothing changes)", "Within proven capacity", "Plan",
+             "AOP", "Lakshya", "Plan vs last year", "Plan vs AOP", "Plan vs Lakshya"]
+    for j, t in enumerate(heads, start=1):
+        hdr(ws, 6, j, t)
+    ws.row_dimensions[6].height = 42
+    lk_acq = pick([str(sum(LK_WEEKLY[c_]["ld_wk"][1:]) + sum(LK_WEEKLY[c_]["own_wk"][1:])) for c_ in CITIES])[1:]
+    per_wk = lambda expr: "=(" + expr + f")/{N_WEEKS}"
+    lines = [
+        ("Cars on road, 27 Dec (now: latest actual)", f"=C{lp}", f"=E{now}", f"=G{lp}", f"=H{lp}", f"=E{lp}",
+         pick([f"Inputs!$E${R_AOP0 + i}" for i in range(n)], f"Inputs!$E${R_AOP0 + n}"),
+         pick([f"Inputs!$Q${R_MS0 + i}" for i in range(n)], f"Inputs!$Q${R_MS0 + n}"), NUM),
+        ("Growth to 27 Dec (cars on road)", f"=C{lp}-C{now}", f"=E{now}-E{R_W0}+F{R_W0}", f"=D7-C7", f"=E7-C7",
+         f"=F7-C7", f"=G7-C7", f"=H7-C7", DIFF_FMT),
+        ("Driver acquisition a week", f"=AVERAGE(M{fp}:M{lp})", pick([rr("u_rec", i) for i in range(n)]),
+         per_wk(pick([f"{s}!$BK${R_TOT}+{s}!$BJ${R_TOT}" for s in cities])[1:]),
+         per_wk(pick([f"{s}!$BK${R_TOT}+{s}!$BJ${R_TOT}+{s}!$CE${R_TOT}" for s in cities])[1:]),
+         f"=AVERAGE(N{fp}:N{lp})",
+         per_wk(pick([f"SUM(Inputs!$K${R_AOP0 + i}:$M${R_AOP0 + i})" for i in range(n)])[1:]),
+         per_wk(lk_acq), NUM),
+        ("Net attrition % a week", f"=AVERAGE(P{fp}:P{lp})", pick([rr("u_rate", i) for i in range(n)],
+         f"Inputs!${L(RR['u_rate'])}${R_RR0 + n}"), None, None, f"=AVERAGE(Q{fp}:Q{lp})", None, None, PCT),
+    ]
+    for k, (label, ly, cy, rr_, cap, plan, aop, lk, fmt) in enumerate(lines):
+        r = 7 + k
+        put(ws, r, 1, label, bold=True)
+        for j, v in ((2, ly), (3, cy), (4, rr_), (5, cap), (6, plan), (7, aop), (8, lk)):
+            put(ws, r, j, v, fmt, bold=(j == 6), bg=HIST if j == 2 else (ACTUAL if j == 3 else None),
+                font=F_HIST if j == 2 else F_BODY)
+        if fmt == PCT:
+            put(ws, r, 9, f"=F{r}-B{r}", "+0.0%;-0.0%;0.0%")
+            put(ws, r, 10, None)
+            put(ws, r, 11, None)
+        elif k == 1:
+            for j in (9, 10, 11):
+                put(ws, r, j, None)
+        else:
+            put(ws, r, 9, f"=IFERROR(F{r}/B{r}-1,0)", "+0%;-0%;0%", bold=True)
+            put(ws, r, 10, f"=F{r}-G{r}", DIFF_FMT, bold=True)
+            put(ws, r, 11, f"=F{r}-H{r}", DIFF_FMT, bold=True)
+    ws.row_dimensions[7].height = 30
+    notes = [
+        "Last year, same weeks: cars on road on the same Sunday of 2025; driver acquisition and attrition averaged over the plan's weeks a year earlier.",
+        "Run rate: today's hiring (last 4 weeks) and attrition with validated seasonality, plus a driver for every new car - no extra hiring.",
+        "Within proven capacity: the steady extra ramp, but never above the city's best 4 weeks since Sep 2025. Plan: the option chosen in Inputs A1.",
+    ]
+    for k, t in enumerate(notes):
+        ws.cell(11 + k, 1, t).font = F_NOTE
+    for c_ in ("J", "K"):
+        ws.conditional_formatting.add(f"{c_}7:{c_}9", FormulaRule(formula=[f"{c_}7<-0.5"], font=RED_FONT))
+    ws.freeze_panes = "B4"
+    ws.sheet_view.zoomScale = 90
     return ws
 
 
@@ -2499,17 +2301,20 @@ def main(out, raw_path):
     RAW_HDR[:] = raw["hdr"]
     wb = Workbook()
     build_inputs(wb)
-    build_dip(wb)
+    build_season(wb)
     if V2:
         build_lk_weekly(wb)
     for i, city in enumerate(CITIES):
         build_city(wb, i, city)
-    build_compare(wb)
     build_summary(wb)
     build_dashboard(wb)
+    build_bridge(wb)
     build_combined(wb)
     build_readme(wb)
     build_raw(wb, raw)
+    order = ["Read Me", "Summary View", DASH, BRIDGE_TAB, "Inputs", SEAS_TAB, LW_TAB] + CITIES + ["Combined All", "raw_performance"]
+    wb._sheets.sort(key=lambda ws: order.index(ws.title))
+    wb.active = 0
     wb.save(out)
 
 
