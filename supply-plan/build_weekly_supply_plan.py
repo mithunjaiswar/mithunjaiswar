@@ -939,6 +939,30 @@ def build_inputs(wb):
             put(ws, r, 2 + m, v, NUM, font=F_INPUT, bg=INPUT)
         put(ws, r, 5, f"=SUM(B{r}:D{r})", NUM, bold=True)
     india_row(ws, R_FUT0 + n, range(2, 6))
+    # FLAG: a car ordered now lands in plan week B{R_WIN0} ("RTO process not started") at the earliest
+    hdr(ws, R_FUT_H, 6, "FLAG - when these cars must be ordered to land as in Lakshya")
+    ws.merge_cells(start_row=R_FUT_H, start_column=6, end_row=R_FUT_H, end_column=14)
+    earliest = f'TEXT(INDEX($B${R_CAL0}:$B${R_CAL0 + N_WEEKS - 1},$B${R_WIN0}),"d mmm")'
+    for i in range(n + 1):
+        r = R_FUT0 + i
+        parts = []
+        for m, mon in enumerate(PLAN_MONTHS):
+            f_wk = WEEK_MONTH.index(mon) + 1
+            l_wk = len(WEEK_MONTH) - WEEK_MONTH[::-1].index(mon)
+            by_first = f"({G_OPEN_DATE}+1+({f_wk}-$B${R_WIN0})*7)"
+            by_last = f"({G_OPEN_DATE}+1+({l_wk}-$B${R_WIN0})*7)"
+            x = f"{L(2 + m)}{r}"
+            parts.append(
+                f'IF({x}<0.5,"",IF({by_last}<{G_OPEN_DATE}+1,TEXT({x},"#,##0")&" {mon} cars not bought yet: a car ordered now lands w/c "'
+                f'&{earliest}&" at the earliest, so {mon} only works if they are already ordered. ",'
+                f'"Order {mon}\'s "&TEXT({x},"#,##0")&" between "&TEXT(MAX({G_OPEN_DATE}+1,{by_first}),"d mmm")&" and "'
+                f'&TEXT({by_last},"d mmm")&". "))')
+        allz = "AND(" + ",".join(f"{L(2 + m)}{r}<0.5" for m in range(3)) + ")"
+        put(ws, r, 6, f'=IF({allz},"OK - all bought",' + "&".join(parts) + ")",
+            font=Font(name="Calibri", size=10, bold=True, color="FFC00000"))
+        ws.merge_cells(start_row=r, start_column=6, end_row=r, end_column=14)
+    note(ws, R_FUT0 + n + 1, "FLAG: cars in this table are not bought yet. A car ordered now takes the 'RTO process not started' "
+                             "window above to reach the road, so Lakshya's months only hold if orders go in by the dates shown.")
     # weekly deliveries
     ws.cell(R_ADD_H - 1, 1, "Cars reaching the fleet each plan week (drivers are hired for them the following week)").font = F_BOLD
     hdr(ws, R_ADD_H, 1, "City")
@@ -1824,6 +1848,9 @@ def build_dashboard(wb):
         (f'="New cars: "&TEXT(Inputs!$F${R_STK0 + n},"#,##0")&" bought and at the stock yard reach the fleet between "'
          f'&TEXT(Inputs!$D${R_WIN0 + len(DELIVERY_WINDOWS) - 1},"d mmm")&" and "&TEXT(Inputs!$E${R_WIN0},"d mmm")'
          f'&"; the other "&TEXT(Inputs!$E${R_FUT0 + n},"#,##0")&" of Lakshya\'s cars are still to buy and planned in Oct-Nov as in Lakshya. "'
+         f'&"FLAG: a car ordered now lands w/c "&TEXT(INDEX(Inputs!$B${R_CAL0}:$B${R_CAL0 + N_WEEKS - 1},Inputs!$B${R_WIN0}),"d mmm")'
+         f'&" at the earliest, so the "&TEXT(Inputs!$B${R_FUT0 + n},"#,##0")&" October cars only land if already ordered, and November\'s "'
+         f'&TEXT(Inputs!$C${R_FUT0 + n},"#,##0")&" must be ordered from this week (dates by city: Inputs A6). "'
          f'&TEXT({c1("R")},"#,##0")&" drivers are needed for new cars in all."'),
         # seasonality
         (f'="Seasonality: "&{seas_yes}&" of 56 city x season checks show the same change in 2024 and 2025. India, Diwali weeks: hiring "'
@@ -2261,6 +2288,20 @@ def build_summary(wb):
             c = ws.cell(r + 1 + i, 1, lab if (raw_f or i == 0) else lab + " - n/a")
             c.font = F_BOLD if i == 0 else F_BODY
             c.border = BOX
+        if title == "Recruitment":   # FLAG row (the block's blank row): drivers for Lakshya cars not bought yet
+            c = ws.cell(r + 4, 1, "FLAG: of which for cars not bought yet")
+            c.font = Font(name="Calibri", size=10, bold=True, color="FFC00000")
+            fut_row = (f'MATCH(IF($B$1="India","INDIA",$B$1),Inputs!$A${R_FUT0}:$A${R_FUT0 + len(CITIES)},0)')
+            wim = {m: WEEK_MONTH.count(m) for m in PLAN_MONTHS}
+            for k in range(SV_WEEKS):
+                pw = k - N_ACTUAL + 1          # plan week (1 = current week); drivers follow cars landing a week earlier
+                if pw < 2:
+                    continue
+                m = PLAN_MONTHS.index(WEEK_MONTH[pw - 2])
+                c = ws.cell(r + 4, 2 + k, f"=IFERROR(INDEX(Inputs!${get_column_letter(2 + m)}${R_FUT0}:${get_column_letter(2 + m)}${R_FUT0 + len(CITIES)},"
+                                          f"{fut_row})/{wim[WEEK_MONTH[pw - 2]]},0)")
+                c.number_format = '#,##0;-#,##0;""'
+                c.font = Font(name="Calibri", size=10, bold=True, color="FFC00000")
         if title in ("Util", "Recruitment", "Net Attrition %"):
             for i in range(2):
                 ws.conditional_formatting.add(

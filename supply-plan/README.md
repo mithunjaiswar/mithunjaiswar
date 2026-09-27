@@ -21,7 +21,9 @@ A realistic path from the current run rate to the December target, with an opera
 2. **Hiring** at the current run rate: driver acquisition (new joins + resurrections) over the last 4 weeks (Inputs A3).
 3. **New cars**: all of Lakshya's 2,300. The 582 bought and at the stock yard are phased by RTO status over 8 weeks
    (ready: weeks 1–2, registration done: 2–3, under RTO: 3–6, RTO not started: 5–8); the cars still to buy land in
-   Lakshya's months (Oct–Nov, Inputs A6). Each car gets a driver the week after it lands.
+   Lakshya's months (Oct–Nov, Inputs A6). Each car gets a driver the week after it lands. These are **flagged**: a car
+   ordered now reaches the road 5 weeks later at the earliest, so Inputs A6 shows the order-by dates by city and
+   Summary View shows (in red, under Recruitment) the drivers each week that depend on cars not bought yet.
 4. **Attrition** at the current rate (net attrition / drivers at week start, last 4 weeks). This year runs below last
    year, but has been flat for 12 weeks while last year rose; the plan keeps this year's level.
 5. **Seasonality** only where 2024 and 2025 agree: each season block (Pre-Diwali, Diwali weeks, Recovery, December)
