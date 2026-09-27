@@ -396,9 +396,9 @@ def build_city(wb, idx, city):
         return (f"SUMIFS(raw_performance!${rc(col)}:${rc(col)},raw_performance!$D:$D,$A{r},"
                 f"raw_performance!$E:$E,$B{r},raw_performance!$C:$C,{d})").replace("+-", "-")
 
-    def week(col, r):          # sum over the Mon-Sun week
+    def week(col, r):          # sum over the Mon-Sun week; a week not fully loaded is scaled up to 7 days
         return (f"SUMIFS(raw_performance!${rc(col)}:${rc(col)},raw_performance!$D:$D,$A{r},"
-                f"raw_performance!$E:$E,$B{r},raw_performance!$B:$B,$D{r})")
+                f"raw_performance!$E:$E,$B{r},raw_performance!$B:$B,$D{r})*7/MIN(7,{G_LAST}-$D{r}+1)")
 
     for k in range(N_ACTUAL):
         r = 2 + k
@@ -410,15 +410,17 @@ def build_city(wb, idx, city):
             "F": f"=E{r}-" + day("fleet_total_cars_cnt", r, -1),
             "G": "=" + day("allotted_cars_eod", r, -1),
             "H": "=" + day("allotted_cars_eod", r, -1) + "-" + day("eip_vehicles_cnt", r, -1),
-            "I": f"=Y{r}-G{r}", "J": f"=K{r}+P{r}", "K": f"=SUM(L{r}:O{r})",
+            "I": f"=K{r}+P{r}+U{r}", "J": f"=K{r}+P{r}", "K": f"=SUM(L{r}:O{r})",
             "L": "=" + week("ni_fse_cnt", r) + "+" + week("resurrection_fse_cnt", r),
             "M": "=" + week("ni_vendor_cnt", r) + "+" + week("resurrection_vendor_cnt", r),
             "N": "=" + week("ni_driver_referral_cnt", r) + "+" + week("resurrection_driver_referral_cnt", r),
             "O": "=" + week("ni_perf_mktg_cnt", r) + "+" + week("resurrection_perf_mktg_cnt", r),
             "P": "=" + week("Net EIP Add-ons", r),
-            "Q": "ACTUAL - raw_performance",
+            "Q": f'=IF({G_LAST}-$D{r}+1<7,"ACTUAL - "&({G_LAST}-$D{r}+1)&" of 7 days loaded, flows scaled to a week","ACTUAL - raw_performance")',
             "R": "=" + day("eip_vehicles_cnt", r, 6),
-            "U": f"=I{r}-J{r}", "V": f"=IF(H{r}=0,0,-U{r}/H{r})",
+            "U": "=-(" + week("attrition_cnt", r) + "+" + week("temp_attrition_cnt", r) + "-" + week("rejoin_cnt", r)
+                 + "-" + week("temp_rejoin_cnt", r) + ")",
+            "V": f"=IF(H{r}=0,0,-U{r}/H{r})",
             "W": f"=Y{r}-R{r}-X{r}",
             "X": "=" + day("own_now_cars_eod", r, 6),
             "Y": "=" + day("allotted_cars_eod", r, 6),
