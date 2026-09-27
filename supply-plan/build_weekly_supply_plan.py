@@ -252,7 +252,7 @@ MS_WEEKS = (0, 4, 9, 13)  # plan weeks elapsed at each Lakshya month-end (27 Sep
 G_OPEN_DATE = f"Inputs!$B${R_GLOBAL + 1}"
 G_PLAN_END = f"Inputs!$B${R_GLOBAL + 3}"
 G_WPM = f"Inputs!$B${R_GLOBAL + 4}"
-G_LAST = f"Inputs!$B${R_GLOBAL + 6}"    # latest actual date loaded, up to the opening date
+G_LAST = f"Inputs!$B${R_GLOBAL + 6}"    # actuals used up to (input: 26 Sep)
 G_CAP = f"Inputs!$B${R_GLOBAL + 7}"     # December target: "Lakshya" (steady hiring ramp) or "Run rate"
 G_SEAS = f"Inputs!$B${R_GLOBAL + 8}"    # a seasonal change is used only if both years show at least this
 
@@ -711,9 +711,9 @@ def build_inputs(wb):
         ("Plan ends (Sunday)", dt.date(2026, 12, 27), DATE, True, "Same end as Lakshya v4: w/e Sun 27 Dec."),
         ("Weeks per month", "=52/12", "0.00", False, "Turns monthly churn rates into weekly ones."),
         ("India CNG on-road goal, Dec", 15000, NUM, True, "Reference. Lakshya's city targets add up to 15,082."),
-        ("Latest actual date loaded", f"=SUMPRODUCT(MAX((raw_performance!$C$2:$C$20000<=B{R_GLOBAL + 1})*raw_performance!$C$2:$C$20000))",
-         DATE, False, "Opening numbers and the run rate use this day: the opening Sunday once it is loaded in raw_performance, "
-                      "else the last day before it."),
+        ("Actuals used up to", dt.date(2026, 9, 26), DATE, True,
+         "The plan is based on actuals up to this day (Sat 26 Sep): opening numbers, the run rate and the last actual week "
+         "(w/c 21 Sep, 6 of 7 days, scaled to a week). Move it on only when newer days are loaded in raw_performance."),
         ("December target", "Lakshya", None, True,
          "Lakshya = a steady hiring ramp on top of the run rate (the same extra every week) so 27 Dec lands on Lakshya; weeks above "
          "proven capacity show red. Capacity = the same ramp, never above proven capacity. Run rate = no extra hiring."),
@@ -835,7 +835,7 @@ def build_inputs(wb):
     put(ws, r, 8, f"=IFERROR(F{r}/G{r}-1,0)", "+0%;-0%;0%", bold=True, bg=LIGHT)
     put(ws, r, 12, None, bg=LIGHT)
     put(ws, r, 14, f"=SUMPRODUCT(N{r0}:N{r1},E{r0}:E{r1}/F{r0}:F{r1})/{drivers}", PCT, bold=True, bg=LIGHT)
-    note(ws, r + 1, "Window: the 4 weeks to the latest actual date (A1), scaled to a week. Attrition this year is lower than last year "
+    note(ws, r + 1, "Window: the 4 weeks to 'Actuals used up to' (A1, 26 Sep), scaled to a week. Attrition this year is lower than last year "
                     "(Seasonality Check tab, section 3): the plan keeps this year's rate and adds only the seasonal changes seen in both "
                     "2024 and 2025. EIP is held flat by default: its 4-week and 8-week trends disagree.")
 
@@ -1472,8 +1472,9 @@ def build_readme(wb):
         "BU-CB: Lakshya and AOP month-ends and the gaps. Last year for reference: AY-BD. Check column AV must be 0.",
     ])
     r = para(r, "6.  UPDATING EACH WEEK", [
-        "Paste a fresh SSOT query result (link on Inputs C2) into raw_performance. The run rate, opening numbers and actual weeks update. "
-        "To move the plan on a week, set the opening date (Inputs A1) to the latest Sunday.",
+        "Paste a fresh SSOT query result (link on Inputs C2) into raw_performance, then set 'Actuals used up to' (Inputs A1) to the "
+        "last full day loaded (now Sat 26 Sep). The run rate, opening numbers and actual weeks update. "
+        "To move the plan on a week, also set the opening date (Inputs A1) to the latest Sunday.",
         "Update the stock report numbers and delivery windows in Inputs A6 as cars move through RTO, and add orders as they are placed.",
     ])
     ws.freeze_panes = "A5"
@@ -1691,7 +1692,7 @@ def build_dashboard(wb):
         mvr = {"start": R_MV_S, "total": R_MV_TOT}.get(key, R_MV0 + key if isinstance(key, int) else None)
         mon = None if key in ("start", "total") else PLAN_MONTHS[key]
         mi = 0 if key == "start" else (3 if key == "total" else MONTHS.index(mon))
-        put(ws, r, 1, {"start": "Start (27 Sep)", "total": "Total / 27 Dec"}.get(key, mon), bold=True, bg=bg)
+        put(ws, r, 1, {"start": f'="Start ("&TEXT({G_LAST},"d mmm")&")"', "total": "Total / 27 Dec"}.get(key, mon), bold=True, bg=bg)
         cells = {
             (G1, "AOP"): f"={AOPC}{mvr}", (G1, "Lakshya"): f"={LKC}{mvr}", (G1, "Plan"): f"={ONR}{mvr}",
             (G1, "Plan - AOP"): f"=ROUND({gc[(G1, 'Plan')]}{r}-{gc[(G1, 'AOP')]}{r},0)",
