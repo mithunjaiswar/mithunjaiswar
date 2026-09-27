@@ -506,7 +506,7 @@ def build_city(wb, idx, city):
             "BK": f"=BH{r}*(1+BE{r})*AC{r}/7",
             # the plan's extra hiring: the steady ramp to Lakshya, the same ramp kept within proven capacity, or none
             "BL": f'=IF({G_CAP}="Lakshya",{STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,IF({G_CAP}="Capacity",CE{r},0))',
-            "CE": f"=MIN({STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,MAX(0,BI{r}*AC{r}/7-BK{r}-BJ{r}))",
+            "CE": f"=MIN({STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,MAX(0,BI{r}*AC{r}/7-BK{r}-BJ{r}))",  # a negative step (run rate above Lakshya) passes through
             "CF": (f"=AH{r}+AP{r}+BK{r}+BJ{r}+CE{r}-(AH{r}+AP{r})*BR{r}*AC{r}/7" if w == 0
                    else f"=CF{p}+BK{r}+BJ{r}+CE{r}-CF{p}*BR{r}*AC{r}/7"),
             "CG": f"=R{r}+CF{r}",
@@ -571,9 +571,9 @@ def build_city(wb, idx, city):
     cput(ws, r, "BH", "Extra hiring step (drivers a week, added once more each week)", bold=True)
     ws.merge_cells(f"BH{r}:BK{r}")
     rng = lambda c: f"${c}${FIRST}:${c}${LAST}"
-    cput(ws, r, "BL", (f'=MAX(0,({ci("t_onroad", idx)}-BS{LAST})/SUMPRODUCT((ROW({rng("BE")})-{FIRST - 1})'
-                       f'*(1+{rng("BE")})*{rng("AC")}/7*{rng("CC")}))'), "0.0", bold=True, bg=INPUT)
-    cput(ws, r, "BM", "Step = (Lakshya 27 Dec - run-rate path in BS) spread as a steady ramp. Inputs A1 decides how much of it the plan "
+    cput(ws, r, "BL", (f'=({ci("t_onroad", idx)}-BS{LAST})/SUMPRODUCT((ROW({rng("BE")})-{FIRST - 1})'
+                       f'*(1+{rng("BE")})*{rng("AC")}/7*{rng("CC")})'), "0.0", bold=True, bg=INPUT)
+    cput(ws, r, "BM", "Step = (Lakshya 27 Dec - run-rate path in BS) spread as a steady ramp (negative = hire a little below the run rate). Inputs A1 decides how much of it the plan "
                       "uses: all (Lakshya), only within proven capacity (Capacity, column CE), or none (Run rate).", font=F_NOTE)
 
     # ---- conditional formats
@@ -896,7 +896,7 @@ def build_inputs(wb):
         hdr(ws, R_STK_H - 1, c1, t, GREY_HDR)
         ws.merge_cells(start_row=R_STK_H - 1, start_column=c1, end_row=R_STK_H - 1, end_column=c2)
     heads = ["City"] + [s for s, _, _ in DELIVERY_WINDOWS] + ["Total bought", "Sep-Oct", "Nov", "Total",
-                                                               "vs Sep-Oct plan", "vs full plan"]
+                                                               "Sep-Oct plan", "not planned yet"]
     for j, t in enumerate(heads, start=1):
         hdr(ws, R_STK_H, j, t)
     ws.row_dimensions[R_STK_H].height = 42
@@ -912,8 +912,8 @@ def build_inputs(wb):
         put(ws, r, 10, f"=MAX(0,G{r}-F{r})", NUM, bold=True)
         put(ws, r, 11, f"=MAX(0,I{r}-F{r}-SUM(B{R_FUT0 + i}:D{R_FUT0 + i}))", NUM, bold=True)
     india_row(ws, R_STK0 + n, range(2, 12))
-    note(ws, R_STK0 + n + 1, "Pending = Lakshya's cars not yet bought: shown, not planned. When an order is placed, type it in the "
-                             "future purchases table below and the plan adds it.")
+    note(ws, R_STK0 + n + 1, "Lakshya is the December plan, so all of its 2,300 cars are planned: the bought ones by RTO status, the rest "
+                             "in the table below (Lakshya's months). 'Not planned yet' should stay 0.")
     # delivery windows
     ws.cell(R_WIN_H - 1, 1, "When each status reaches the fleet (plan weeks; cars spread evenly across the window)").font = F_BOLD
     for j, t in enumerate(["RTO status", "First week", "Last week", "First week starts", "Last week starts", "Cars (India)"], start=1):
@@ -927,14 +927,16 @@ def build_inputs(wb):
         put(ws, r, 5, f"=INDEX($B${R_CAL0}:$B${R_CAL0 + N_WEEKS - 1},C{r})", DATE)
         put(ws, r, 6, f"={L(2 + s)}{R_STK0 + n}", NUM)
     # future purchases
-    ws.cell(R_FUT_H - 1, 1, "Future purchases - cars ordered after 27 Sep (leave 0 until an order is placed)").font = F_BOLD
+    ws.cell(R_FUT_H - 1, 1, "Still to buy for Lakshya - planned to land in Lakshya's months (change to the order dates once placed)").font = F_BOLD
     for j, t in enumerate(["City"] + PLAN_MONTHS + ["Total"], start=1):
         hdr(ws, R_FUT_H, j, t)
     for i, city in enumerate(CITIES):
         r = R_FUT0 + i
         put(ws, r, 1, city, bold=True)
         for m in range(3):
-            inp(ws, r, 2 + m, 0, NUM)
+            stk = R_STK0 + i   # Oct = Lakshya's Sep-Oct cars not yet bought; Nov = Lakshya's Nov cars, less any bought beyond Oct
+            v = {0: f"=MAX(0,G{stk}-F{stk})", 1: f"=MAX(0,H{stk}-MAX(0,F{stk}-G{stk}))", 2: 0}[m]
+            put(ws, r, 2 + m, v, NUM, font=F_INPUT, bg=INPUT)
         put(ws, r, 5, f"=SUM(B{r}:D{r})", NUM, bold=True)
     india_row(ws, R_FUT0 + n, range(2, 6))
     # weekly deliveries
@@ -1018,7 +1020,7 @@ def build_inputs(wb):
         s = q(city)
         vals = [
             (city, None), (f"={s}!G{FIRST}", NUM), (f"={s}!Y{LAST}", NUM), (f"={ci('t_onroad', i)}", NUM),
-            (f"=C{r}-D{r}", DIFF_FMT), (f"={s}!BS{LAST}", NUM), (f"=Inputs!$E${R_AOP0 + i}", NUM), (f"=C{r}-G{r}", DIFF_FMT),
+            (f"=ROUND(C{r}-D{r},0)", DIFF_FMT), (f"={s}!BS{LAST}", NUM), (f"=Inputs!$E${R_AOP0 + i}", NUM), (f"=ROUND(C{r}-G{r},0)", DIFF_FMT),
             (f"={s}!R{LAST}", NUM), (f"={s}!X{LAST}", NUM), (f"={s}!W{LAST}", NUM),
             (f"={s}!E{LAST}", NUM), (f"={ci('lk_fleet', i)}", NUM), (f"=C{r}/L{r}", PCT),
             (f"={ci('ceiling', i)}", PCT), (f"=O{r}-N{r}", PCT),
@@ -1447,11 +1449,12 @@ def build_readme(wb):
     r += 3
 
     r = para(r, "3.  NEW CARS - linked to drivers", [
-        "Only cars already bought are planned: 582 at the stock yard (New Car Stock Report, 27 Sep), by RTO status. Ready for delivery "
+        "The 582 cars already bought (New Car Stock Report, 27 Sep) are planned by RTO status. Ready for delivery "
         "reach the fleet in weeks 1-2, registration done in weeks 2-3, under RTO in weeks 3-6, RTO not started in weeks 5-8 (Inputs A6; "
         "change the windows there). Each car gets a driver (Own Now) the week after it lands - city tab columns AD, BJ and AI.",
-        "Lakshya planned 2,300 new cars (about 1,150 in Sep-Oct, 1,150 in Nov). The rest are shown as pending purchase in Inputs A6 and are "
-        "not in the plan until ordered: type an order into the future purchases table and the plan adds the cars and their drivers.",
+        "Lakshya is the December plan, so all of its 2,300 new cars are in the plan: the cars still to buy land in Lakshya's months "
+        "(Sep-Oct cars in October, Nov cars in November; Inputs A6) and get drivers the week after. Change the months to the real "
+        "order dates once orders are placed.",
     ])
     r = para(r, "4.  SEASONALITY AND ATTRITION - checked city by city", [
         "Each season block (Pre-Diwali, Diwali weeks, Recovery, December) is compared with the 4 weeks before it in 2024 and 2025, aligned on "
@@ -1802,7 +1805,7 @@ def build_dashboard(wb):
     rri = lambda k: f"Inputs!${L(RR[k])}${R_RR0 + n}"
     allc = lambda expr: "(" + "+".join(expr(s) for s in cities) + ")"
     dip_blk = SEASONS.index("Diwali")
-    step_cities = "&".join(f'IF({q(c_)}!{STEP_CELL}>0,"{c_} "&TEXT({q(c_)}!{STEP_CELL},"0")&", ","")' for c_ in CITIES)
+    step_cities = "&".join(f'IF(ABS({q(c_)}!{STEP_CELL})>=0.5,"{c_} "&TEXT({q(c_)}!{STEP_CELL},"0;-0")&", ","")' for c_ in CITIES)
     above = "&".join(f'IF(Inputs!$P${R_SUM0 + i}<0,"{c_} "&TEXT(Inputs!$N${R_SUM0 + i},"0.0%")&" vs max "&TEXT(Inputs!$O${R_SUM0 + i},"0.0%")&", ","")'
                      for i, c_ in enumerate(CITIES))
     over_cap = "&".join(f'IF(Inputs!$V${R_SUM0 + i}>0,"{c_} ("&Inputs!$V${R_SUM0 + i}&" wks), ","")' for i, c_ in enumerate(CITIES))
@@ -1818,9 +1821,9 @@ def build_dashboard(wb):
          f'&" vs last year). If that continues, with a driver for every new car, 27 Dec lands at "&TEXT({c1("F")},"#,##0")&"."'),
         # new cars
         (f'="New cars: "&TEXT(Inputs!$F${R_STK0 + n},"#,##0")&" bought and at the stock yard reach the fleet between "'
-         f'&TEXT(Inputs!$D${R_WIN0 + len(DELIVERY_WINDOWS) - 1},"d mmm")&" and "&TEXT(Inputs!$E${R_WIN0},"d mmm")&" - "'
-         f'&TEXT({c1("R")},"#,##0")&" extra drivers needed for them. Still to buy vs Lakshya: "&TEXT(Inputs!$K${R_STK0 + n},"#,##0")'
-         f'&" (vs its Sep-Oct plan: "&TEXT(Inputs!$J${R_STK0 + n},"#,##0")&")."'),
+         f'&TEXT(Inputs!$D${R_WIN0 + len(DELIVERY_WINDOWS) - 1},"d mmm")&" and "&TEXT(Inputs!$E${R_WIN0},"d mmm")'
+         f'&"; the other "&TEXT(Inputs!$E${R_FUT0 + n},"#,##0")&" of Lakshya\'s cars are still to buy and planned in Oct-Nov as in Lakshya. "'
+         f'&TEXT({c1("R")},"#,##0")&" drivers are needed for new cars in all."'),
         # seasonality
         (f'="Seasonality: "&{seas_yes}&" of 56 city x season checks show the same change in 2024 and 2025. India, Diwali weeks: hiring "'
          f'&TEXT({SQ}!${L(2 + dip_blk)}${R_SU0 + n},"+0%;-0%;0%")&", attrition "&TEXT({SQ}!${L(6 + dip_blk)}${R_SU0 + n},"+0%;-0%;0%")'
@@ -1843,7 +1846,7 @@ def build_dashboard(wb):
         # utilisation
         (f'=IF({c1("Y")}<0.5,"Cars: the fleet carries the plan within every city\'s max utilisation.","Cars: at max utilisation the fleet is "'
          f'&TEXT({c1("Y")},"#,##0")&" cars short of the plan on 27 Dec ("&IF(({above})="","",LEFT({above},LEN({above})-2))&") - the plan needs '
-         f'more of Lakshya\'s pending "&TEXT(Inputs!$K${R_STK0 + n},"#,##0")&" cars, or fewer cars sold.")'),
+         f'more cars or fewer cars sold.")'),
     ]
     for k, f in enumerate(ins):
         r = R_IN_T + 1 + k
