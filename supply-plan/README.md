@@ -23,8 +23,7 @@ A realistic path from the current run rate to the December target, with an opera
    (ready: weeks 1–2, registration done: 2–3, under RTO: 3–6, RTO not started: 5–8); the cars still to buy land in
    Lakshya's months (Oct–Nov, Inputs A6). Each car gets a driver the week after it lands, taken out of that week's
    hiring (not added on top, so hiring doesn't jump). These are **flagged**: a car
-   ordered now reaches the road 5 weeks later at the earliest, so Inputs A6 shows the order-by dates by city and
-   Summary View shows (in red, under Recruitment) the drivers each week that depend on cars not bought yet.
+   ordered now reaches the road 5 weeks later at the earliest, so Inputs A6 shows the order-by dates by city.
 4. **Attrition** starts at the current rate (net attrition / drivers at week start, last 8 weeks) and steps down a
    little every week to Lakshya's rate by 27 Dec (Inputs A3, column R). **EIP** grows on a straight line to Lakshya's December EIP.
    This year's attrition runs below last year's.
@@ -37,6 +36,8 @@ A realistic path from the current run rate to the December target, with an opera
    Sep 2025). Inputs A1 picks the plan: `Lakshya` (the default: the ramp that makes every city's util on 27 Dec equal
    Lakshya's util — Lakshya on road / Lakshya fleet × our fleet), `Capacity` (same ramp, never above the city's best
    week, lands lower) or `Run rate`.
+   **Hiring cap by week** (Inputs A8, columns O-P): w/c 16 and 23 Nov are capped at 200 drivers a city; the hires cut
+   move to w/c 28 Sep - 12 Oct, split evenly and grossed up for attrition so 27 Dec (and util) is unchanged.
    All three paths are always shown, next to AOP and Lakshya.
 
 ## Tabs

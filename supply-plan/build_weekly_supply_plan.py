@@ -97,6 +97,9 @@ WEEK_FESTIVAL = ["", "", "Durga Puja", "Durga Puja", "", "Diwali", "Diwali", "",
 # Kolkata, Durga Puja week vs the 4 weeks before: (hiring change, attrition-rate change) in 2024 (w/c 7 Oct) and 2025 (w/c 29 Sep)
 DURGA_PUJA = {"Kolkata": ((-0.593, 0.463), (-0.563, -0.102))}
 PUJA_WEEK_SHARE = 0.5
+# Hiring cap by plan week (each city), and the weeks that take the hires cut: w/c 16 and 23 Nov at 200, moved to w/c 28 Sep - 12 Oct
+HIRE_CAP = {8: 200, 9: 200}
+MOVE_TO_WEEKS = (1, 2, 3)
 EVENTS_ALL = {
     1: "Gandhi Jayanti (Fri 2 Oct)",
     4: "Dussehra (Tue 20 Oct)",
@@ -327,10 +330,12 @@ COLS = [  # (letter, header, width)
     ("CE", "Extra hiring within proven capacity", 9), ("CF", "Within-capacity path: drivers", 9),
     ("CG", "Within-capacity path: cars on road", 10),
     ("CH", "Cars short: on road above fleet x max utilisation", 10),
+    ("CI", "Hiring cap this week (Inputs A8)", 9), ("CJ", "Hires cut to stay within the cap", 9),
+    ("CK", "Hires moved into this week (from capped weeks)", 10),
 ]
 LY_BLOCK = ("AY", "AZ", "BA", "BB", "BC", "BD", "BE", "BF")
 PACE_BLOCK = ("BH", "BI", "BJ", "BK", "BL", "BM", "BN", "BO", "BP", "BQ", "BR", "BS", "BT")
-MS_BLOCK = ("BU", "BV", "BW", "BX", "BY", "BZ", "CA", "CB", "CC", "CD", "CE", "CF", "CG", "CH")
+MS_BLOCK = ("BU", "BV", "BW", "BX", "BY", "BZ", "CA", "CB", "CC", "CD", "CE", "CF", "CG", "CH", "CI", "CJ", "CK")
 TEAL = "FF1F6F5F"
 N_ACTUAL = 4                   # actual weeks shown above the plan (rows 2-5)
 FIRST = 2 + N_ACTUAL           # first plan week row
@@ -513,7 +518,13 @@ def build_city(wb, idx, city):
             "BJ": "=0" if w == 0 else f"=AD{p}",
             "BK": f"=BH{r}*(1+BE{r})*AC{r}/7",
             # the plan's extra hiring: the steady ramp to Lakshya, the same ramp kept within proven capacity, or none
-            "BL": f'=IF({G_CAP}="Lakshya",{STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,IF({G_CAP}="Capacity",CE{r},0))',
+            "BL": f'=IF({G_CAP}="Lakshya",{STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7-CJ{r}+CK{r},IF({G_CAP}="Capacity",CE{r},0))',
+            # hiring cap (Inputs A8): hires above the cap are cut and moved to the 'Yes' weeks, grossed up for attrition (CC)
+            # so the 27 Dec book is unchanged
+            "CI": f'=IF(Inputs!$O${cal}="","",Inputs!$O${cal})',
+            "CJ": f'=IF(CI{r}="",0,MAX(0,BK{r}+{STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7-CI{r}))',
+            "CK": (f'=IF(Inputs!$P${cal}="Yes",SUMPRODUCT($CJ${FIRST}:$CJ${LAST},$CC${FIRST}:$CC${LAST})'
+                   f'/SUMPRODUCT((Inputs!$P${R_CAL0}:$P${R_CAL0 + N_WEEKS - 1}="Yes")*$CC${FIRST}:$CC${LAST}),0)'),
             "CE": f"=MIN({STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,BI{r}*(1+BE{r})*AC{r}/7-BK{r})",  # total acquisition never above proven capacity (x festival dip)
             "CF": (f"=AH{r}+AP{r}+BK{r}+CE{r}-(AH{r}+AP{r})*BR{r}*AC{r}/7" if w == 0
                    else f"=CF{p}+BK{r}+CE{r}-CF{p}*BR{r}*AC{r}/7"),
@@ -569,7 +580,7 @@ def build_city(wb, idx, city):
     put(ws, r, 1, "Total w/c 28 Sep - 27 Dec", bold=True)
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=4)
     for letter in ["F", "I", "J", "K", "L", "M", "N", "O", "P", "U", "AD", "AE", "AG", "AI", "AJ", "AK",
-                   "AL", "AM", "AN", "AO", "AQ", "AR", "AS", "AT", "AU", "BJ", "BK", "BL", "BM", "CE"]:
+                   "AL", "AM", "AN", "AO", "AQ", "AR", "AS", "AT", "AU", "BJ", "BK", "BL", "BM", "CE", "CJ", "CK"]:
         cput(ws, r, letter, f"=SUM({letter}{FIRST}:{letter}{LAST})", NUM, bold=True, bg=LIGHT)
     cput(ws, r, "BP", f'=COUNTIF(BP{FIRST}:BP{LAST},"Above capacity")&" weeks above capacity"', bold=True, bg=LIGHT)
     cput(ws, r, "Q", "Closing stock on 27 Dec is the last week row", font=F_NOTE)
@@ -1019,7 +1030,8 @@ def build_inputs(wb):
           "One row per plan week (Mon-Sun). The festival column picks the only seasonal dips in the plan (Seasonality Check, section 1); "
           "the last column is the Lakshya month-end the week counts to.")
     cal_heads = ["Week #", "Week start (Mon)", "Week end", "Month", "Days in plan", "Festival"] + [
-        f"Events - {c}" for c in CITIES] + ["Lakshya month-end it counts to"]
+        f"Events - {c}" for c in CITIES] + ["Lakshya month-end it counts to", "Hiring cap a week, each city (blank = none)",
+                                          "Takes the hires cut by the cap"]
     for j, t in enumerate(cal_heads, start=1):
         hdr(ws, R_CAL_H, j, t)
     ws.row_dimensions[R_CAL_H].height = 42
@@ -1035,11 +1047,14 @@ def build_inputs(wb):
             parts_ = [x for x in (EVENTS_ALL.get(w + 1), EVENTS_CITY.get((city, w + 1))) if x]
             inp(ws, r, 7 + k, "; ".join(parts_) if parts_ else "")
         inp(ws, r, 14, WEEK_MONTH[w])
+        inp(ws, r, 15, HIRE_CAP.get(w + 1, ""), NUM)
+        inp(ws, r, 16, "Yes" if w + 1 in MOVE_TO_WEEKS else "")
     r = R_CAL0 + N_WEEKS
     put(ws, r, 1, "Total", bold=True, bg=LIGHT)
     put(ws, r, 5, f"=SUM(E{R_CAL0}:E{r - 1})", "0", bold=True, bg=LIGHT)
     note(ws, r + 1, "Festivals: Diwali (Sun 8 Nov) w/c 2 and 9 Nov, every city; Durga Puja (17-20 Oct) w/c 12 and 19 Oct, Kolkata only. "
-                    "No other week has a seasonal change. A week counts in the month its Monday falls in.")
+                    "No other week has a seasonal change. A week counts in the month its Monday falls in. Hiring cap: in a capped week no city hires "
+                    "more than the cap; the hires cut move to the 'Yes' weeks, split evenly, sized so 27 Dec is unchanged.")
 
     # ================================================================ PART C
     banner(ws, R_SUM_H - 4, "PART C  -  OUTPUT AND SOURCES  (nothing to type)", GREY_HDR)
@@ -2605,20 +2620,6 @@ def build_summary(wb):
             c = ws.cell(r + 1 + i, 1, lab if (raw_f or i == 0) else lab + " - n/a")
             c.font = F_BOLD if i == 0 else F_BODY
             c.border = BOX
-        if title == "Recruitment":   # FLAG row (the block's blank row): drivers for Lakshya cars not bought yet
-            c = ws.cell(r + 4, 1, "FLAG: of which for cars not bought yet")
-            c.font = Font(name="Calibri", size=10, bold=True, color="FFC00000")
-            fut_row = (f'MATCH(IF($B$1="India","INDIA",$B$1),Inputs!$A${R_FUT0}:$A${R_FUT0 + len(CITIES)},0)')
-            wim = {m: WEEK_MONTH.count(m) for m in PLAN_MONTHS}
-            for k in range(SV_WEEKS):
-                pw = k - N_ACTUAL + 1          # plan week (1 = current week); drivers follow cars landing a week earlier
-                if pw < 2:
-                    continue
-                m = PLAN_MONTHS.index(WEEK_MONTH[pw - 2])
-                c = ws.cell(r + 4, 2 + k, f"=IFERROR(INDEX(Inputs!${get_column_letter(2 + m)}${R_FUT0}:${get_column_letter(2 + m)}${R_FUT0 + len(CITIES)},"
-                                          f"{fut_row})/{wim[WEEK_MONTH[pw - 2]]},0)")
-                c.number_format = '#,##0;-#,##0;""'
-                c.font = Font(name="Calibri", size=10, bold=True, color="FFC00000")
         if title in ("Util", "Recruitment", "Net Attrition %"):
             for i in range(2):
                 ws.conditional_formatting.add(
