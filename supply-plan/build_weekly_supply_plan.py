@@ -26,6 +26,7 @@ from openpyxl.utils import column_index_from_string, get_column_letter
 sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
 from car_flows import CAR_FLOWS
 from lakshya_cmp import LK_CMP
+from ly_pattern import LY_IDX
 from plan_history import ALIGNED, ATTR_TREND, CAPACITY, SEASON_CHANGE, SEASON_OFFSETS  # noqa: E402
 
 # ---------------------------------------------------------------- data
@@ -258,6 +259,8 @@ R_SRC_H = R_SUM0 + 8 + 4      # C2 header
 
 MONTHS = ["Sep", "Oct", "Nov", "Dec"]          # Lakshya month-ends (Sep = 27 Sep, now the opening actual)
 PLAN_MONTHS = ["Oct", "Nov", "Dec"]            # months with plan weeks
+# Month a week counts in for month averages and month matching (by its Monday; w/c 28 Sep goes to Oct as the plan starts there)
+MATCH_MONTH = ["Oct"] * 5 + ["Nov"] * 5 + ["Dec"] * 3
 WEEK_MONTH = ["Oct"] * 4 + ["Nov"] * 5 + ["Dec"] * 4   # Lakshya month each plan week rolls up to
 MS_WEEKS = (0, 4, 9, 13)  # plan weeks elapsed at each Lakshya month-end (27 Sep, 25 Oct, 29 Nov, 27 Dec)
 
@@ -276,7 +279,8 @@ CI = {k: i + 1 for i, k in enumerate([
 # Current run-rate columns (A3)
 RR = {k: i + 1 for i, k in enumerate([
     "city", "rec", "rec_ly", "rec_yoy", "na", "na_rate", "na_rate_ly", "na_yoy", "eip_wk", "own_wk",
-    "cap", "cap_from", "u_rec", "u_rate", "u_eip", "u_own", "lk_oct", "lk_nov", "lk_dec", "p_oct", "p_nov", "p_dec"])}
+    "cap", "cap_from", "u_rec", "u_rate", "u_eip", "u_own", "lk_oct", "lk_nov", "lk_dec", "p_oct", "p_nov", "p_dec",
+    "lkr_oct", "lkr_nov", "lkr_dec", "pr_oct", "pr_nov", "pr_dec"])}
 
 
 def ci(key, city_idx):
@@ -333,10 +337,12 @@ COLS = [  # (letter, header, width)
     ("CH", "Cars short: on road above fleet x max utilisation", 10),
     ("CI", "Hiring cap this week (Inputs A8)", 9), ("CJ", "Hires cut to stay within the cap", 9),
     ("CK", "Hires moved into this week (from capped weeks)", 10),
+    ("CL", "Last year's pattern: hiring index (Diwali-aligned)", 9), ("CM", "Last year's pattern: attrition index", 9),
+    ("CN", "Month for month averages (Inputs A8)", 7),
 ]
 LY_BLOCK = ("AY", "AZ", "BA", "BB", "BC", "BD", "BE", "BF")
 PACE_BLOCK = ("BH", "BI", "BJ", "BK", "BL", "BM", "BN", "BO", "BP", "BQ", "BR", "BS", "BT")
-MS_BLOCK = ("BU", "BV", "BW", "BX", "BY", "BZ", "CA", "CB", "CC", "CD", "CE", "CF", "CG", "CH", "CI", "CJ", "CK")
+MS_BLOCK = ("BU", "BV", "BW", "BX", "BY", "BZ", "CA", "CB", "CC", "CD", "CE", "CF", "CG", "CH", "CI", "CJ", "CK", "CL", "CM", "CN")
 TEAL = "FF1F6F5F"
 N_ACTUAL = 4                   # actual weeks shown above the plan (rows 2-5)
 FIRST = 2 + N_ACTUAL           # first plan week row
@@ -517,7 +523,13 @@ def build_city(wb, idx, city):
             "BH": f"={rr('u_rec', idx)}",
             "BI": f"={rr('cap', idx)}",
             "BJ": "=0" if w == 0 else f"=AD{p}",
-            "BK": f"=BH{r}*(1+BE{r})*AC{r}/7",
+            # base hiring: Lakshya plan = the month's base recruitment (Inputs A3 Z-AB, = Lakshya's month average) shaped by the
+            # festival change within the month; actuals view = the 8-week rate x last year's pattern for the week (CL)
+            "BK": (f"=BH{r}*CL{r}*AC{r}/7" if MODE == "actual" else
+                   f'=IF(CN{r}="Oct",{rr("pr_oct", idx)},IF(CN{r}="Nov",{rr("pr_nov", idx)},{rr("pr_dec", idx)}))'
+                   f'*(1+BE{r})/(1+AVERAGEIF($CN${FIRST}:$CN${LAST},CN{r},$BE${FIRST}:$BE${LAST}))*AC{r}/7'),
+            "CN": f"=Inputs!$Q${cal}",
+            "CL": LY_IDX[city]["rec"][w], "CM": LY_IDX[city]["att"][w],
             # the plan's extra hiring: the steady ramp to Lakshya, the same ramp kept within proven capacity, or none
             "BL": f'=IF({G_CAP}="Lakshya",{STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7-CJ{r}+CK{r},IF({G_CAP}="Capacity",CE{r},0))',
             # hiring cap (Inputs A8): hires above the cap are cut and moved to the 'Yes' weeks, grossed up for attrition (CC)
@@ -537,8 +549,9 @@ def build_city(wb, idx, city):
             "BP": f'=IF(AU{r}>BI{r}*AC{r}/7+0.5,"Above capacity","Within capacity")',
             "BQ": f"={ci('t_onroad', idx)}-Y{r}",
             # attrition: the month's rate (Inputs A3, = Lakshya's month average), shaped by the festival change within the month
-            "BR": (f'=IF(BU{r}="Oct",{rr("p_oct", idx)},IF(BU{r}="Nov",{rr("p_nov", idx)},{rr("p_dec", idx)}))'
-                   f'*(1+BF{r})/(1+AVERAGEIF($BU${FIRST}:$BU${LAST},BU{r},$BF${FIRST}:$BF${LAST}))'),
+            "BR": (f"={rr('u_rate', idx)}*CM{r}" if MODE == "actual" else
+                   f'=IF(CN{r}="Oct",{rr("p_oct", idx)},IF(CN{r}="Nov",{rr("p_nov", idx)},{rr("p_dec", idx)}))'
+                   f'*(1+BF{r})/(1+AVERAGEIF($CN${FIRST}:$CN${LAST},CN{r},$BF${FIRST}:$BF${LAST}))'),
             # run-rate path: same EIP, hiring at the 8-week run rate (festival dips only), no extra ramp
             "BT": (f"=AH{r}+AP{r}+BK{r}-(AH{r}+AP{r})*BR{r}*AC{r}/7" if w == 0
                    else f"=BT{p}+BK{r}-BT{p}*BR{r}*AC{r}/7"),
@@ -736,7 +749,7 @@ def build_inputs(wb):
         ("Actuals used up to", dt.date(2026, 9, 26), DATE, True,
          "The plan is based on actuals up to this day (Sat 26 Sep): opening numbers, the run rate and the last actual week "
          "(w/c 21 Sep, 6 of 7 days, scaled to a week). Move it on only when newer days are loaded in raw_performance."),
-        ("December target", "Lakshya", None, True,
+        ("December target", "Run rate" if MODE == "actual" else "Lakshya", None, True,
          "Lakshya (used) = a steady hiring ramp so every city's util on 27 Dec equals Lakshya's util (Lakshya on road / Lakshya fleet, "
          "times our fleet); weeks above the city's best (proven capacity) show red. Capacity = the same ramp, never above proven "
          "capacity (lands lower). Run rate = no extra hiring."),
@@ -810,7 +823,8 @@ def build_inputs(wb):
           "columns on the right; change them only with a reason.")
     groups = [(2, 4, "DRIVER ACQUISITION a week (new joins + resurrections)"), (5, 8, "NET ATTRITION (attrition + temp - rejoins)"),
               (9, 10, "BOOK CHANGE a week"), (11, 12, "PROVEN HIRING CAPACITY"), (13, 16, "USED IN THE PLAN"), (17, 19, "LAKSHYA ATTRITION a week (month avg)"),
-              (20, 22, "PLAN ATTRITION a week (month avg, used)")]
+              (20, 22, "PLAN ATTRITION a week (month avg, used)"), (23, 25, "LAKSHYA RECRUITMENT a week (month avg)"),
+              (26, 28, "PLAN BASE RECRUITMENT a week (month avg, used)")]
     for c1, c2, t in groups:
         hdr(ws, R_RR_H - 1, c1, t, GREY_HDR)
         ws.merge_cells(start_row=R_RR_H - 1, start_column=c1, end_row=R_RR_H - 1, end_column=c2)
@@ -818,7 +832,7 @@ def build_inputs(wb):
              "Drivers leaving a week", "Rate a week (this year)", "Rate a week (last year)", "This year vs last",
              "EIP", "Own Now", "Best 4 weeks since Sep 2025 (a week)", "Best 4 weeks began",
              "Driver acquisition a week", "Net attrition rate a week (start)", "EIP net add a week (to Lakshya Dec)", "Own Now net add a week (existing cars)",
-             "Oct", "Nov", "Dec", "Oct", "Nov", "Dec"]
+             "Oct", "Nov", "Dec", "Oct", "Nov", "Dec", "Oct", "Nov", "Dec", "Oct", "Nov", "Dec"]
     for j, t in enumerate(heads, start=1):
         hdr(ws, R_RR_H, j, t)
     ws.row_dimensions[R_RR_H].height = 44
@@ -845,12 +859,15 @@ def build_inputs(wb):
         put(ws, r, 12, dt.date.fromisoformat(since), "dd-mmm-yy", font=F_HIST, bg=HIST)
         put(ws, r, 13, f"=B{r}", NUM, font=F_INPUT, bg=INPUT)
         put(ws, r, 14, f"=F{r}", PCT, font=F_INPUT, bg=INPUT)
-        put(ws, r, 15, f"=(Inputs!$E${R_MS0 + i}-Inputs!$B${R_MS0 + i})/{N_WEEKS}", "+#,##0.0;-#,##0.0;0", font=F_INPUT, bg=INPUT)
+        put(ws, r, 15, f"=I{r}" if MODE == "actual" else f"=(Inputs!$E${R_MS0 + i}-Inputs!$B${R_MS0 + i})/{N_WEEKS}",
+            "+#,##0.0;-#,##0.0;0", font=F_INPUT, bg=INPUT)
         lkc = LK_CMP[city]
         for m, mon in enumerate(PLAN_MONTHS):   # Lakshya's weekly attrition, averaged over its month's weeks
-            wks = [w + 1 for w in range(N_WEEKS) if WEEK_MONTH[w] == mon]
+            wks = [w + 1 for w in range(N_WEEKS) if MATCH_MONTH[w] == mon]
             hist(ws, r, 17 + m, round(sum(lkc["leave"][w] / lkc["book"][w] for w in wks) / len(wks), 5), PCT)
             put(ws, r, 20 + m, f"={L(17 + m)}{r}", PCT, font=F_INPUT, bg=INPUT)
+            hist(ws, r, 23 + m, round(sum(lkc["rec"][w] for w in wks) / len(wks), 1), NUM)
+            put(ws, r, 26 + m, f"={L(23 + m)}{r}", NUM, font=F_INPUT, bg=INPUT)
         put(ws, r, 16, f"=J{r}", "+#,##0.0;-#,##0.0;0", font=F_INPUT, bg=INPUT)
     r = R_RR0 + n
     put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
@@ -865,12 +882,18 @@ def build_inputs(wb):
     put(ws, r, 8, f"=IFERROR(F{r}/G{r}-1,0)", "+0%;-0%;0%", bold=True, bg=LIGHT)
     put(ws, r, 12, None, bg=LIGHT)
     put(ws, r, 14, f"=SUMPRODUCT(N{r0}:N{r1},E{r0}:E{r1}/F{r0}:F{r1})/{drivers}", PCT, bold=True, bg=LIGHT)
+    for j in range(23, 29):
+        put(ws, r, j, f"=SUM({L(j)}{r0}:{L(j)}{r1})", NUM, bold=True, bg=LIGHT)
     for j in range(17, 23):
         put(ws, r, j, f"=SUMPRODUCT({L(j)}{r0}:{L(j)}{r1},E{r0}:E{r1}/F{r0}:F{r1})/{drivers}", PCT, bold=True, bg=LIGHT)
-    note(ws, r + 1, "Window: the 8 weeks to 'Actuals used up to' (A1: w/c 3 Aug - Sat 26 Sep), scaled to a week. Hiring starts at the 8-week rate. "
-                    "Net attrition follows Lakshya month by month: each month's weeks average to the plan rate in T-V (default = Lakshya's month "
-                    "average, Q-S), keeping the festival shape within the month. N (the last 8 weeks) is the reference. "
-                    "EIP grows on a straight line to Lakshya's December EIP (A4). Festival dips on top (Seasonality Check, section 1).")
+    note(ws, r + 1, "Window: the 8 weeks to 'Actuals used up to' (A1: w/c 3 Aug - Sat 26 Sep), scaled to a week. "
+                    + ("ACTUALS-BASED VIEW: hiring = the 8-week rate (M) and attrition = the 8-week rate (N), each times last year's pattern for "
+                       "the week (Diwali-aligned, city tab CL-CM); EIP follows its 8-week trend (O). Columns Q-AB are for reference. "
+                       if MODE == "actual" else
+                       "Base recruitment and net attrition follow Lakshya month by month: each month's weeks average to Z-AB and T-V "
+                       "(default = Lakshya's month averages, W-Y and Q-S), keeping the festival shape within the month; a steady catch-up "
+                       "on top brings 27 Dec util to Lakshya's (Inputs A1). M and N (the last 8 weeks) are for reference. "
+                       "EIP grows on a straight line to Lakshya's December EIP (A4). Festival dips on top (Seasonality Check, section 1)."))
 
     # ---- A4. Lakshya month-end targets
     title(ws, R_MS_H - 3, "A4", "LAKSHYA MONTH-END TARGETS",
@@ -1038,7 +1061,7 @@ def build_inputs(wb):
           "the last column is the Lakshya month-end the week counts to.")
     cal_heads = ["Week #", "Week start (Mon)", "Week end", "Month", "Days in plan", "Festival"] + [
         f"Events - {c}" for c in CITIES] + ["Lakshya month-end it counts to", "Hiring cap a week, each city (blank = none)",
-                                          "Takes the hires cut by the cap"]
+                                          "Takes the hires cut by the cap", "Month for month averages (week's Monday)"]
     for j, t in enumerate(cal_heads, start=1):
         hdr(ws, R_CAL_H, j, t)
     ws.row_dimensions[R_CAL_H].height = 42
@@ -1054,8 +1077,9 @@ def build_inputs(wb):
             parts_ = [x for x in (EVENTS_ALL.get(w + 1), EVENTS_CITY.get((city, w + 1))) if x]
             inp(ws, r, 7 + k, "; ".join(parts_) if parts_ else "")
         inp(ws, r, 14, WEEK_MONTH[w])
-        inp(ws, r, 15, HIRE_CAP.get(w + 1, ""), NUM)
-        inp(ws, r, 16, "Yes" if w + 1 in MOVE_TO_WEEKS else "")
+        inp(ws, r, 15, "" if MODE == "actual" else HIRE_CAP.get(w + 1, ""), NUM)
+        inp(ws, r, 16, "" if MODE == "actual" or w + 1 not in MOVE_TO_WEEKS else "Yes")
+        inp(ws, r, 17, MATCH_MONTH[w])
     r = R_CAL0 + N_WEEKS
     put(ws, r, 1, "Total", bold=True, bg=LIGHT)
     put(ws, r, 5, f"=SUM(E{R_CAL0}:E{r - 1})", "0", bold=True, bg=LIGHT)
@@ -1068,7 +1092,7 @@ def build_inputs(wb):
     title(ws, R_SUM_H - 2, "C1", "PLAN SUMMARY BY CITY",
           "Where the plan lands on 27 Dec, read from the city tabs, next to the run rate, AOP and Lakshya. Check should be 0.")
     sum_cols = ["City", "On road at start", "On road 27 Dec (plan)", "Lakshya target", "Plan - Lakshya",
-                "Run rate 27 Dec", "AOP Dec", "Plan - AOP", "EIP 27 Dec", "Own Now 27 Dec", "L+DTO 27 Dec",
+                "Base 27 Dec (no catch-up)", "AOP Dec", "Plan - AOP", "EIP 27 Dec", "Own Now 27 Dec", "L+DTO 27 Dec",
                 "Fleet 27 Dec", "Lakshya fleet Dec", "Util 27 Dec", "Max utilisation", "Headroom",
                 "Driver acquisition (13 weeks)", "of which for new cars", "Extra hiring step a week",
                 "Peak week acquisition", "Proven capacity a week", "Weeks above capacity", "Check (0 = OK)",
@@ -1342,6 +1366,7 @@ LK_WEEKS_IN_MONTH = {"ld": (4, 4, 5, 4), "own": (3, 4, 5, 4)}  # Lakshya months:
 # rollover by Lakshya month spread evenly over its weeks, starting from Lakshya's own book on the opening date.
 # EIP (not weekly in Lakshya) runs in a straight line from the actual to its December target.
 V2 = False
+MODE = "main"   # "main" = the Lakshya-based plan, "actual" = the actuals-based view (--actual)
 LW_TAB = "Lakshya Weekly"
 LW = f"'{LW_TAB}'"
 R_LW_LD0 = 5                    # L+DTO driver acquisition, city rows (header row above)
@@ -1458,7 +1483,8 @@ def build_readme(wb):
     ws.sheet_view.showGridLines = False
     L = get_column_letter
     n = len(CITIES)
-    ws.cell(1, 1, "READ ME - v2: LAKSHYA AS GIVEN" if V2 else "READ ME - from today's run rate to 27 December").font = F_TITLE
+    ws.cell(1, 1, "READ ME - v2: LAKSHYA AS GIVEN" if V2 else ("READ ME - ACTUALS-BASED VIEW: last 8 weeks x last year's pattern"
+                  if MODE == "actual" else "READ ME - LAKSHYA-BASED PLAN: Lakshya month by month, from today's actual")).font = F_TITLE
     ws.cell(2, 1, "Lakshya 15,000 weekly supply plan. Every number below is a live formula from the city tabs and Inputs.").font = F_NOTE
     ws.cell(3, 1, "Lakshya source:").font = F_BOLD
     c = ws.cell(3, 2, link(LAKSHYA_URL, "Lakshya_15000_Model_v4.xlsx"))
@@ -1468,6 +1494,15 @@ def build_readme(wb):
                           "churn and rollover by month spread evenly, starting from Lakshya's own 27 Sep book and fleet (Lakshya Weekly tab), with "
                           "Lakshya's 2,300 new cars. EIP runs in a straight line to its target. The run-rate, new-car and seasonality logic below "
                           "is NOT used in v2.")
+        c.font = Font(name="Calibri", size=10, bold=True, color="FFC00000")
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.merge_cells("A4:M4")
+        ws.row_dimensions[4].height = 42
+    elif MODE == "actual":
+        c = ws.cell(4, 1, "ACTUALS-BASED VIEW: hiring and attrition = the last 8 weeks' average (w/c 3 Aug - 26 Sep) x last year's week-by-week "
+                          "pattern, Diwali-aligned (w/c 9 Nov 2026 = w/c 20 Oct 2025; city tab columns CL-CM). No catch-up ramp, no hiring cap; "
+                          "EIP follows its 8-week trend. Cars (bought + Lakshya's still to buy) and cars sold are the same as the Lakshya-based "
+                          "plan, so util compares like for like. The Lakshya month-matching described below is NOT used here.")
         c.font = Font(name="Calibri", size=10, bold=True, color="FFC00000")
         c.alignment = Alignment(wrap_text=True, vertical="top")
         ws.merge_cells("A4:M4")
@@ -1503,7 +1538,7 @@ def build_readme(wb):
     # ---- 2. the bridge by city
     ws.cell(r, 1, "2.  THE BRIDGE BY CITY - from now to 27 December").font = F_SECTION
     r += 1
-    heads = ["City", "On road now", "Run rate 27 Dec", "Drivers placed in new cars (13 wks)",
+    heads = ["City", "On road now", "Base 27 Dec (no catch-up)", "Drivers placed in new cars (13 wks)",
              "Within proven capacity 27 Dec", "Plan 27 Dec", "AOP Dec", "Lakshya Dec", "Plan - Lakshya",
              "Extra hiring step a week (to Lakshya)", "Run-rate hiring a week", "Peak week acquisition", "Proven capacity a week"]
     for j, t in enumerate(heads, start=1):
@@ -1524,7 +1559,7 @@ def build_readme(wb):
     ws.conditional_formatting.add(f"L{first}:L{r - 1}", FormulaRule(formula=[f"L{first}>M{first}+0.5"], font=RED_FONT,
                                                                      fill=fill("FFFFC7CE")))
     r += 1
-    ws.cell(r, 1, "Run rate = the last 8 weeks' hiring, attrition at Lakshya's month averages, EIP on Lakshya's line. Within capacity = + the "
+    ws.cell(r, 1, "Base = base hiring and attrition (Inputs A3), no catch-up. Within capacity = + the "
                   "extra ramp, total driver acquisition never above proven capacity. Plan = the option in Inputs A1. Peak week above proven capacity (red) = hiring the city has not shown in the last year.").font = F_NOTE
     r += 3
 
@@ -1655,12 +1690,12 @@ def build_dashboard(wb):
     # ---- 1. month by month (picked)
     mv = [  # (header, kind, source)
         ("Weeks", "weeks", None), ("New cars reaching the fleet", "flow", ["AD"]), ("Cars sold", "flow", ["AE"]),
-        ("New cars put on road", "flow", ["BJ"]), ("Hiring at run rate", "flow", ["BK"]),
+        ("New cars put on road", "flow", ["BJ"]), ("Base hiring", "flow", ["BK"]),
         ("Drivers for new cars", "flow", ["AI"]), ("Extra hiring to reach Lakshya", "flow", ["BL"]),
         ("Total driver acquisition", "flow", ["AU"]), ("Drivers leaving (net attrition)", "flow", ["AQ"]),
         ("Attrition % a month", "attr", None), ("EIP net add", "flow", ["AG"]), ("Net add on road", "netadd", None),
         ("Fleet (month end)", "stock", "E"), ("EIP (month end)", "stock", "R"), ("Own Now (month end)", "stock", "X"),
-        ("L+DTO (month end)", "stock", "W"), ("On road - plan", "stock", "Y"), ("On road - run rate", "stock", "BS"),
+        ("L+DTO (month end)", "stock", "W"), ("On road - plan", "stock", "Y"), ("On road - base (no catch-up)", "stock", "BS"),
         ("On road - within capacity", "stock", "CG"),
         ("On road - AOP", "aop", None), ("On road - Lakshya", "lakshya", None), ("Plan - AOP", "d_aop", None),
         ("Plan - Lakshya", "d_lk", None), ("Util (month end)", "util", None),
@@ -1741,8 +1776,8 @@ def build_dashboard(wb):
         put(ws, r, column_index_from_string(c_), v, fmt, bold=True, bg=LIGHT)
     for k_ in ("Plan - AOP", "Plan - Lakshya"):
         red_if(f"{col[k_]}{R_MV_S}:{col[k_]}{R_MV_TOT}", f"{col[k_]}{R_MV_S}<-0.5")
-    ws.cell(R_MV_TOT + 1, 1, "Driver acquisition = hiring at the current run rate (x validated season) + a driver for every new car + the "
-                             "extra hiring step (Inputs A1). Run rate = the same without the extra step. Red = below AOP or Lakshya.").font = F_NOTE
+    ws.cell(R_MV_TOT + 1, 1, "Driver acquisition = base hiring (Inputs A3) + the steady catch-up step (Inputs A1). Base = the same without the "
+                             "catch-up. Red = below AOP or Lakshya.").font = F_NOTE
 
     # ---- 2. AOP and Lakshya vs plan (picked)
     put(ws, R_LV_T, 1, f'="2.  AOP AND LAKSHYA vs OUR PLAN  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
@@ -1900,7 +1935,7 @@ def build_dashboard(wb):
         # current run rate
         (f'="Current run rate (last 8 weeks): "&TEXT({rri("rec")},"#,##0")&" drivers acquired a week ("&TEXT({rri("rec_yoy")},"+0%;-0%")'
          f'&" vs the same weeks last year) and "&TEXT({rri("na_rate")},"0.0%")&" of drivers leaving a week ("&TEXT({rri("na_yoy")},"+0%;-0%")'
-         f'&" vs last year). Hiring held at that rate, attrition at Lakshya\'s month averages and EIP on Lakshya\'s line: 27 Dec lands at "&TEXT({c1("F")},"#,##0")&"."'),
+         f'&" vs last year). Base plan (Inputs A3 base hiring and attrition, no catch-up): 27 Dec lands at "&TEXT({c1("F")},"#,##0")&"."'),
         # new cars
         (f'="New cars: "&TEXT(Inputs!$F${R_STK0 + n},"#,##0")&" bought and at the stock yard reach the fleet between "'
          f'&TEXT(Inputs!$D${R_WIN0 + len(DELIVERY_WINDOWS) - 1},"d mmm")&" and "&TEXT(Inputs!$E${R_WIN0},"d mmm")'
@@ -1915,11 +1950,11 @@ def build_dashboard(wb):
          f'&". Durga Puja (w/c 12 and 19 Oct, Kolkata only): hiring "&TEXT({SQ}!$C${R_SU0 + CITIES.index("Kolkata")},"+0%;-0%;0%")'
          f'&" a week. Every other week runs at the flat 8-week rate (Seasonality Check, section 1)."'),
         # three paths
-        (f'="27 Dec: run rate "&TEXT({c1("F")},"#,##0")&", within proven hiring capacity "&TEXT({c1("X")},"#,##0")&", Lakshya "'
+        (f'="27 Dec: base "&TEXT({c1("F")},"#,##0")&", within proven hiring capacity "&TEXT({c1("X")},"#,##0")&", Lakshya "'
          f'&TEXT({c1("D")},"#,##0")&" (AOP "&TEXT({c1("G")},"#,##0")&"). The plan uses: "&{G_CAP}&" (Inputs A1) and lands at "'
          f'&TEXT({c1("C")},"#,##0")&"."'),
         # what Lakshya takes
-        (f'="To reach Lakshya: hiring rises by "&TEXT({c1("S")},"#,##0")&" drivers a week, every week, on top of the run rate (by city: "'
+        (f'="To reach Lakshya: hiring rises by "&TEXT({c1("S")},"#,##0")&" drivers a week, every week, on top of the base hiring (by city: "'
          f'&IF(({step_cities})="","none",LEFT({step_cities},LEN({step_cities})-2))&"); with the ramp, driver acquisition in the last week is "'
          f'&TEXT({allc(lambda s: f"{s}!BK{LAST}+{s}!{STEP_CELL}*{N_WEEKS}*(1+{s}!BE{LAST})")},"#,##0")'
          f'&" a week vs "&TEXT({rri("rec")},"#,##0")&" today and "&TEXT({rri("cap")},"#,##0")&" at best in the last year."'),
@@ -2256,7 +2291,8 @@ def build_cmp(wb):
     lk_att = {c: [v["leave"][w] / v["book"][w] for w in range(NW)] for c, v in lk.items()}
     lk_ut = {c: [v["onroad"][w] / v["fleet"][w] for w in range(NW)] for c, v in lk.items()}
 
-    ws["A1"] = "LAKSHYA vs PLAN vs LAST YEAR vs LAST 8 WEEKS  -  attrition, driver recruitment, util, cars added, cars sold"
+    ws["A1"] = (("ACTUALS-BASED VIEW  -  " if MODE == "actual" else "") +
+                "LAKSHYA vs PLAN vs LAST YEAR vs LAST 8 WEEKS  -  attrition, driver recruitment, util, cars added, cars sold")
     ws["A1"].font = F_TITLE
     ws["A2"] = ("Attrition % = drivers leaving in the week (attrition + temp - rejoins) / drivers at the start of the week, the same way "
                 "for all four. Recruitment = new joins + resurrections a week. Util = cars on road / total cars at week end. Cars added / sold = "
@@ -2429,7 +2465,7 @@ def build_cmp(wb):
                                                               font=RED_FONT))
                 # month averages (Lakshya's months), merged over each month's weeks
                 for mon in PLAN_MONTHS:
-                    rows_m = [first + w - 1 for w in range(1, NW) if WEEK_MONTH[w - 1] == mon]
+                    rows_m = [first + w - 1 for w in range(1, NW) if MATCH_MONTH[w - 1] == mon]
                     a_, b_ = rows_m[0], rows_m[-1]
                     for g, (key, c0, fmt, k8) in enumerate(KEYS):
                         for off, src in ((4, c0), (5, c0 + 1)):
@@ -2464,8 +2500,8 @@ def build_cmp(wb):
                 "v4 week by week as the v2 sheet runs it (before 28 Sep: recruitment and Sep attrition only). Last year = the same week "
                 "364 days earlier. Red = plan more than 10% away from Lakshya. Cars: plan = bought cars by RTO status + Lakshya's cars "
                 "still to buy (Inputs A6), sold (A7); actual and last year = reporting DB. Month avg = the average of the month's weeks, by "
-                "Lakshya's months (Oct = w/c 28 Sep - 19 Oct, Nov = 26 Oct - 23 Nov, Dec = 30 Nov - 21 Dec); plan attrition is set to "
-                "match Lakshya's month average (red = the plan's month is more than 2% away from Lakshya's).")
+                "the week's Monday (Oct = w/c 28 Sep - 26 Oct, Nov = 2 - 30 Nov, Dec = 7 - 21 Dec; Inputs A8, column Q); plan attrition and base "
+                "recruitment are set to match Lakshya's month average (red = the plan's month is more than 2% away from Lakshya's).")
 
     # ---- 2. by city, week by week: a block per city, India last
     R2_T = R1_T + 3 + BLOCK + 4
@@ -2756,4 +2792,5 @@ def main(out, raw_path):
 
 if __name__ == "__main__":
     V2 = "--v2" in sys.argv[3:]
+    MODE = "actual" if "--actual" in sys.argv[3:] else "main"
     main(sys.argv[1], sys.argv[2])
