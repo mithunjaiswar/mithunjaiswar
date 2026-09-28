@@ -2272,7 +2272,7 @@ def build_cmp(wb):
     ws["E3"].font = F_NOTE
 
     # ---- 3 first (the other sections read its averages): the last 8 weeks, actual, by city
-    R8_T = 7 + NW + 6 + len(CITIES) + 1 + 6          # below sections 1 and 2
+    R8_T = (5 + 3 + NW + 4) + 3 + (len(CITIES) + 1) * (N_WEEKS + 3) + 4   # below sections 1 and 2
     blocks = [("att", "ATTRITION % a week", ATT), ("rec", "DRIVER RECRUITMENT a week", NUM), ("ut", "UTIL % (week end)", UT),
               ("add", "CARS ADDED a week", NUM), ("sold", "CARS SOLD a week", NUM)]
     avg8 = {}
@@ -2390,58 +2390,70 @@ def build_cmp(wb):
                     "Last year = the same week 364 days earlier. Red = plan more than 10% away from Lakshya. Cars: plan = cars bought landing by "
                     "RTO status + Lakshya's cars still to buy (Inputs A6), and cars sold (A7); history = reporting DB.")
 
-    # ---- 2. by city
-    R2_T = r + 4
-    put(ws, R2_T, 1, "2.  BY CITY  -  attrition, recruitment, cars added and sold: average a week over the 13 plan weeks; util: w/c 21 Dec (27 Dec)",
+    # ---- 2. by city, week by week: a block per city (header, the 13 plan weeks, average), India last
+    R2_T = R1_T + 3 + NW + 4
+    put(ws, R2_T, 1, "2.  BY CITY, WEEK BY WEEK  -  each city's 13 plan weeks (28 Sep - 21 Dec) and their average",
         font=F_SECTION).border = Border()
     hdr(ws, R2_T + 1, 1, "", GREY_HDR)
-    hdr(ws, R2_T + 2, 1, "City")
+    hdr(ws, R2_T + 2, 1, "City / week (w/c)")
     for t, c0 in groups:
         hdr(ws, R2_T + 1, c0, t, GREY_HDR)
         ws.merge_cells(start_row=R2_T + 1, start_column=c0, end_row=R2_T + 1, end_column=c0 + 3)
         for k, h in enumerate(heads):
-            hdr(ws, R2_T + 2, c0 + k, h.replace(" (same week)", " (same weeks)"))
+            hdr(ws, R2_T + 2, c0 + k, h)
     ws.row_dimensions[R2_T + 2].height = 30
-    ly0, ly1 = f"({G_OPEN_DATE}+1-364)", f"({G_PLAN_END}-364)"
-    rng = lambda s_, c_: f"{s_}!{c_}{FIRST}:{c_}{LAST}"
-    for i, c_ in enumerate(cols8):
-        r = R2_T + 3 + i
+    r = R2_T + 3
+    for c_ in cols8:
         india = c_ == "INDIA"
-        bg = LIGHT if india else None
-        put(ws, r, 1, c_, bold=True, bg=bg)
-        v = lk[c_]
-        put(ws, r, 2, sum(v["leave"][1:]) / sum(v["book"][1:]), ATT, bg=bg)
-        put(ws, r, 6, sum(v["rec"][1:]) / N_WEEKS, NUM, bg=bg)
-        put(ws, r, 10, v["onroad"][N_WEEKS] / v["fleet"][N_WEEKS], UT, bg=bg)
         ss = sheets_ if india else [q(c_)]
-        put(ws, r, 3, "=(" + "+".join(f"SUM({rng(s_, 'AQ')})" for s_ in ss) + ")/("
-            + "+".join(f"SUM({rng(s_, 'AH')})+SUM({rng(s_, 'AP')})" for s_ in ss) + ")", ATT, bold=True, bg=bg)
-        put(ws, r, 7, "=(" + "+".join(f"SUM({rng(s_, 'AU')})" for s_ in ss) + f")/{N_WEEKS}", NUM, bold=True, bg=bg)
-        put(ws, r, 11, "=(" + "+".join(f"{s_}!Y{LAST}" for s_ in ss) + ")/(" + "+".join(f"{s_}!E{LAST}" for s_ in ss) + ")",
-            UT, bold=True, bg=bg)
         city = '"*"' if india else f'"{c_}"'
-        dates = f'raw_performance!$C:$C,">="&{ly0},raw_performance!$C:$C,"<="&{ly1}'
-        def rsr(field):
-            cc = rc(field)
-            return (f'SUMIFS(raw_performance!${cc}:${cc},raw_performance!$D:$D,{city},raw_performance!$E:$E,"CNG",{dates})')
-        mondays = "+".join(f"{rs('uniq_partners_dt_beginning', 'C', f'{ly0}+{7 * k}', city)}" for k in range(N_WEEKS))
-        put(ws, r, 4, f"=IFERROR(({rsr('attrition_cnt')}+{rsr('temp_attrition_cnt')}-{rsr('rejoin_cnt')}-{rsr('temp_rejoin_cnt')})/({mondays}),\"\")",
-            ATT, font=F_HIST, bg=HIST)
-        put(ws, r, 8, f"=({rsr('newjoin_cnt')}+{rsr('resurrection_cnt')})/{N_WEEKS}", NUM, font=F_HIST, bg=HIST)
-        put(ws, r, 12, f"=IFERROR({rs('allotted_cars_eod', 'C', ly1, city)}/{rs('fleet_total_cars_cnt', 'C', ly1, city)},\"\")", UT,
-            font=F_HIST, bg=HIST)
-        for c0, key, fmt in ((5, "att", ATT), (9, "rec", NUM), (13, "ut", UT), (17, "add", NUM), (21, "sold", NUM)):
-            put(ws, r, c0, f'={a8(key, f"$A{r}")}', fmt, bg=bg)
-        for c0, key, k, col in ((14, "added", 0, "AD"), (18, "sold", 1, "AE")):
-            put(ws, r, c0, sum(v[key][1:]) / N_WEEKS, NUM, bg=bg)
-            put(ws, r, c0 + 1, "=(" + "+".join(f"SUM({rng(s_, col)})" for s_ in ss) + f")/{N_WEEKS}", NUM, bold=True, bg=bg)
-            put(ws, r, c0 + 2, sum(flows(c_, wk0 + dt.timedelta(days=7 * w - 364), k) for w in range(1, NW)) / N_WEEKS, NUM,
-                font=F_HIST, bg=HIST)
-    r_end = R2_T + 3 + n
-    for c0 in (2, 6, 10):
-        ws.conditional_formatting.add(f"{L(c0 + 1)}{R2_T + 3}:{L(c0 + 1)}{r_end}",
-                                      FormulaRule(formula=[f"ABS({L(c0 + 1)}{R2_T + 3}-{L(c0)}{R2_T + 3})>0.1*{L(c0)}{R2_T + 3}"],
-                                                  font=RED_FONT))
+        lk_c = lk[c_]
+        # city header row
+        hdr(ws, r, 1, "INDIA" if india else c_, NAVY)
+        for j in range(2, 22):
+            hdr(ws, r, j, "", NAVY)
+        top = r + 1
+        for w in range(1, NW):
+            r += 1
+            cr = OPEN_ROW + w
+            wk = wk0 + dt.timedelta(days=7 * w)
+            lyw = wk - dt.timedelta(days=364)
+            d = f"$A{r}"
+            ly = f"({d}-364)"
+            put(ws, r, 1, f"=Inputs!$B${R_CAL0 + w - 1}", 'dd" "mmm', bold=True)
+            # Lakshya
+            put(ws, r, 2, lk_att[c_][w], ATT)
+            put(ws, r, 6, lk_c["rec"][w], NUM)
+            put(ws, r, 10, lk_ut[c_][w], UT)
+            put(ws, r, 14, lk_c["added"][w], NUM)
+            put(ws, r, 18, lk_c["sold"][w], NUM)
+            # Plan (city tabs)
+            put(ws, r, 3, "=(" + "+".join(f"{s_}!AQ{cr}" for s_ in ss) + ")/(" + "+".join(f"{s_}!AH{cr}+{s_}!AP{cr}" for s_ in ss) + ")",
+                ATT, bold=True)
+            put(ws, r, 7, "=" + "+".join(f"{s_}!AU{cr}" for s_ in ss), NUM, bold=True)
+            put(ws, r, 11, "=(" + "+".join(f"{s_}!Y{cr}" for s_ in ss) + ")/(" + "+".join(f"{s_}!E{cr}" for s_ in ss) + ")", UT, bold=True)
+            put(ws, r, 15, "=" + "+".join(f"{s_}!AD{cr}" for s_ in ss), NUM, bold=True)
+            put(ws, r, 19, "=" + "+".join(f"{s_}!AE{cr}" for s_ in ss), NUM, bold=True)
+            # last year, same week
+            put(ws, r, 4, f"=IFERROR({na('B', ly, city)}/{rs('uniq_partners_dt_beginning', 'C', ly, city)},\"\")", ATT, font=F_HIST, bg=HIST)
+            put(ws, r, 8, f"={rec('B', ly, city)}", NUM, font=F_HIST, bg=HIST)
+            put(ws, r, 12, f"=IFERROR({rs('allotted_cars_eod', 'C', f'{ly}+6', city)}/{rs('fleet_total_cars_cnt', 'C', f'{ly}+6', city)},\"\")",
+                UT, font=F_HIST, bg=HIST)
+            put(ws, r, 16, flows(c_, lyw, 0), NUM, font=F_HIST, bg=HIST)
+            put(ws, r, 20, flows(c_, lyw, 1), NUM, font=F_HIST, bg=HIST)
+            # last 8 weeks (section 3)
+            for c0, key, fmt in ((5, "att", ATT), (9, "rec", NUM), (13, "ut", UT), (17, "add", NUM), (21, "sold", NUM)):
+                put(ws, r, c0, f'={a8(key, city if not india else chr(34) + "INDIA" + chr(34))}', fmt)
+        r += 1
+        put(ws, r, 1, "Average", bold=True, bg=LIGHT)
+        for j in range(2, 22):
+            fmt = NUM if (6 <= j <= 9 or j >= 14) else ATT
+            put(ws, r, j, f"=AVERAGE({L(j)}{top}:{L(j)}{r - 1})", fmt, bold=True, bg=LIGHT)
+        for c0 in (2, 6, 10):
+            ws.conditional_formatting.add(f"{L(c0 + 1)}{top}:{L(c0 + 1)}{r}",
+                                          FormulaRule(formula=[f"ABS({L(c0 + 1)}{top}-{L(c0)}{top})>0.1*{L(c0)}{top}"], font=RED_FONT))
+        r += 2
+    r_end = r
     assert r_end + 3 < R8_T, "section 3 overlaps section 2"
     ws.freeze_panes = "B4"
     ws.sheet_view.zoomScale = 90
