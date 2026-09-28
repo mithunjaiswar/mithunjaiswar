@@ -18,18 +18,20 @@ capacity and the 12-week attrition trend.
 A realistic path from the current run rate to the December target, with an operational basis for every week:
 
 1. **Start** from the actual on the latest day loaded (Inputs A1); the current week (w/c 28 Sep) is plan week 1.
-2. **Hiring** at the current run rate: driver acquisition (new joins + resurrections) over the last 4 weeks (Inputs A3).
+2. **Hiring** at the current run rate: driver acquisition (new joins + resurrections) over the last 8 weeks (Inputs A3), held flat.
 3. **New cars**: all of Lakshya's 2,300. The 582 bought and at the stock yard are phased by RTO status over 8 weeks
    (ready: weeks 1–2, registration done: 2–3, under RTO: 3–6, RTO not started: 5–8); the cars still to buy land in
-   Lakshya's months (Oct–Nov, Inputs A6). Each car gets a driver the week after it lands. These are **flagged**: a car
+   Lakshya's months (Oct–Nov, Inputs A6). Each car gets a driver the week after it lands, taken out of that week's
+   hiring (not added on top, so hiring doesn't jump). These are **flagged**: a car
    ordered now reaches the road 5 weeks later at the earliest, so Inputs A6 shows the order-by dates by city and
    Summary View shows (in red, under Recruitment) the drivers each week that depend on cars not bought yet.
-4. **Attrition** at the current rate (net attrition / drivers at week start, last 4 weeks). This year runs below last
+4. **Attrition** at the current rate (net attrition / drivers at week start, last 8 weeks). This year runs below last
    year, but has been flat for 12 weeks while last year rose; the plan keeps this year's level.
-5. **Seasonality** only where 2024 and 2025 agree: each season block (Pre-Diwali, Diwali weeks, Recovery, December)
-   is compared with the 4 weeks before it, aligned on Diwali; it changes hiring or attrition only if both years moved
-   the same way by at least 5% (Seasonality Check tab).
-6. **To Lakshya**: a steady extra hiring ramp on top of the run rate — the same extra each week, solved so 27 Dec
+5. **Seasonality**: only two festival dips — Diwali (w/c 2 and 9 Nov, every city) and Durga Puja (w/c 12 and 19 Oct,
+   Kolkata only), each the average of 2024 and 2025 vs the 4 weeks before (Seasonality Check, section 1). Every other
+   week is flat.
+6. **To Lakshya**: a steady extra hiring ramp on top of the run rate (hiring starts at today's level and rises in a
+   straight line, never up and down) — the same extra each week, solved so 27 Dec
    lands on Lakshya — flagged wherever driver acquisition exceeds the city's proven capacity (best 4 weeks since
    Sep 2025). Inputs A1 picks the plan: `Capacity` (the default: same ramp, but total driver acquisition in any week
    never above the city's best, so 27 Dec can land below Lakshya), `Lakshya` (full ramp) or `Run rate`.
@@ -44,7 +46,7 @@ A realistic path from the current run rate to the December target, with an opera
 | Monthly Dashboard | Month by month (India or a city): hiring, new-car drivers, extra ramp, attrition, run rate / capacity / plan vs AOP and Lakshya; why driver acquisition differs; insights |
 | LY vs CY vs Plan | Last year, this year, run rate, within capacity, plan, AOP and Lakshya side by side, week on week |
 | Inputs | A1 dates and the December-target switch, A2 city start and targets, A3 current run rate, A4 Lakshya month-ends, A5 AOP month-ends, A6 new cars (stock, delivery windows, pending, future orders), A7 cars sold, A8 calendar; C1 summary, C2 sources |
-| Seasonality Check | Seasonal changes used, the 2024 vs 2025 check, attrition this year vs last, week-by-week 4-week averages aligned on Diwali |
+| Seasonality Check | The two festival dips used (Diwali, Durga Puja in Kolkata), the 2024 vs 2025 history by season, attrition this year vs last, week-by-week 4-week averages aligned on Diwali |
 | Mumbai … Pune | One tab per city: Weekly Supply Plan layout (A–AC), layers (AF–AW), last year (AY–BD), operational basis (BE–BT), Lakshya/AOP month-ends and paths (BU–CH) |
 | Combined All | One QUERY stacking every city tab |
 | raw_performance | Output of the SSOT query (`analytics.ssot_scorecard_agg`) |
