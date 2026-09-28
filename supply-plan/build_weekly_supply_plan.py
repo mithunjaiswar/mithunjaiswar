@@ -579,9 +579,9 @@ def build_city(wb, idx, city):
     cput(ws, r, "BH", "Extra hiring step (drivers a week, added once more each week)", bold=True)
     ws.merge_cells(f"BH{r}:BK{r}")
     rng = lambda c: f"${c}${FIRST}:${c}${LAST}"
-    cput(ws, r, "BL", (f'=({ci("t_onroad", idx)}-BS{LAST})/SUMPRODUCT((ROW({rng("BE")})-{FIRST - 1})'
+    cput(ws, r, "BL", (f'=({ci("t_onroad", idx)}/{ci("lk_fleet", idx)}*E{LAST}-BS{LAST})/SUMPRODUCT((ROW({rng("BE")})-{FIRST - 1})'
                        f'*(1+{rng("BE")})*{rng("AC")}/7*{rng("CC")})'), "0.0", bold=True, bg=INPUT)
-    cput(ws, r, "BM", "Step = (Lakshya 27 Dec - run-rate path in BS) spread as a steady ramp (negative = hire a little below the run rate). Inputs A1 decides how much of it the plan "
+    cput(ws, r, "BM", "Step = (Lakshya util x our fleet on 27 Dec - run-rate path in BS) spread as a steady ramp (negative = hire a little below the run rate). Inputs A1 decides how much of it the plan "
                       "uses: all (Lakshya), only within proven capacity (Capacity, column CE), or none (Run rate).", font=F_NOTE)
 
     # ---- conditional formats
@@ -722,10 +722,10 @@ def build_inputs(wb):
         ("Actuals used up to", dt.date(2026, 9, 26), DATE, True,
          "The plan is based on actuals up to this day (Sat 26 Sep): opening numbers, the run rate and the last actual week "
          "(w/c 21 Sep, 6 of 7 days, scaled to a week). Move it on only when newer days are loaded in raw_performance."),
-        ("December target", "Capacity", None, True,
-         "Capacity (used) = the steady hiring ramp toward Lakshya, but total driver acquisition in a week (run rate + drivers for new "
-         "cars + ramp) never above the city's best (proven capacity, Inputs A3) - 27 Dec may land below Lakshya. Lakshya = the full "
-         "ramp to Lakshya, even above proven capacity (weeks show red). Run rate = no extra hiring."),
+        ("December target", "Lakshya", None, True,
+         "Lakshya (used) = a steady hiring ramp so every city's util on 27 Dec equals Lakshya's util (Lakshya on road / Lakshya fleet, "
+         "times our fleet); weeks above the city's best (proven capacity) show red. Capacity = the same ramp, never above proven "
+         "capacity (lands lower). Run rate = no extra hiring."),
         ("Seasonal change: minimum in both years", 0.05, "0%", True,
          f"History check only ({SEAS_TAB}, section 2). The plan's only seasonal dips are Diwali and Durga Puja (Kolkata)."),
     ]
@@ -1471,11 +1471,11 @@ def build_readme(wb):
         "To move toward Lakshya the plan adds a steady hiring ramp on top of the run rate: the same extra number of drivers every "
         "week (1x in week 1, 2x in week 2, ...), so hiring starts at today's level and rises in a straight line - never up and down. Each city tab shows the step (column BL) and flags weeks where total "
         "driver acquisition is above the city's proven capacity - its best 4 weeks since Sep 2025 (column BP). Inputs A1 picks the plan: "
-        "'Capacity' (used: the same ramp, but total driver acquisition in any week never above the city's proven capacity - so 27 Dec lands "
-        "below Lakshya where hiring can't get there), 'Lakshya' (the full ramp, even above proven capacity) or 'Run rate' (no extra hiring). "
-        "All three paths are shown on the Monthly Dashboard and the LY vs CY vs Plan tab whichever is picked.",
+        "'Lakshya' (used: the ramp that makes every city's util on 27 Dec equal Lakshya's util, even above proven capacity), 'Capacity' "
+        "(the same ramp, never above proven capacity - lands lower) or 'Run rate' (no extra hiring). "
+        "All three paths are shown on the Monthly Dashboard whichever is picked.",
         "The path is shown against AOP (the baseline, Inputs A5) and Lakshya (the target, Inputs A4) on the Monthly Dashboard and the "
-        "LY vs CY vs Plan tab.",
+        "Lakshya vs Plan vs LY tab.",
     ])
 
     # ---- 2. the bridge by city
@@ -1893,7 +1893,7 @@ def build_dashboard(wb):
          f'&". Durga Puja (w/c 12 and 19 Oct, Kolkata only): hiring "&TEXT({SQ}!$C${R_SU0 + CITIES.index("Kolkata")},"+0%;-0%;0%")'
          f'&" a week. Every other week runs at the flat 8-week rate (Seasonality Check, section 1)."'),
         # three paths
-        (f'="27 Dec: run rate "&TEXT({c1("F")},"#,##0")&", within proven hiring capacity "&TEXT({c1("X")},"#,##0")&", Lakshya ramp "'
+        (f'="27 Dec: run rate "&TEXT({c1("F")},"#,##0")&", within proven hiring capacity "&TEXT({c1("X")},"#,##0")&", Lakshya "'
          f'&TEXT({c1("D")},"#,##0")&" (AOP "&TEXT({c1("G")},"#,##0")&"). The plan uses: "&{G_CAP}&" (Inputs A1) and lands at "'
          f'&TEXT({c1("C")},"#,##0")&"."'),
         # what Lakshya takes
@@ -1911,12 +1911,12 @@ def build_dashboard(wb):
         (f'=IF({c1("Y")}<0.5,"Cars: the fleet carries the plan within every city\'s max utilisation.","Cars: at max utilisation the fleet is "'
          f'&TEXT({c1("Y")},"#,##0")&" cars short of the plan on 27 Dec ("&IF(({above})="","",LEFT({above},LEN({above})-2))&") - the plan needs '
          f'more cars or fewer cars sold.")'),
-        # the gap to Lakshya: what it is made of (LY vs CY vs Plan, section 3)
+        # the gap to Lakshya: what it is made of
         (f'=IF({c1("E")}>-0.5,"Plan reaches Lakshya on 27 Dec.","Gap to Lakshya on 27 Dec: "&TEXT({c1("E")},"+#,##0;-#,##0")&" = start "'
          f'&TEXT({c1("B")}-Inputs!$N${R_MS0 + n},"+#,##0;-#,##0")&", EIP "&TEXT({c1("I")}-Inputs!$E${R_MS0 + n},"+#,##0;-#,##0")'
          f'&", more hiring than Lakshya "&TEXT({c1("Q")}-{LK_HIRES_ALL},"+#,##0;-#,##0")&", more drivers leaving "'
          f'&TEXT({c1("E")}-({c1("B")}-Inputs!$N${R_MS0 + n})-({c1("I")}-Inputs!$E${R_MS0 + n})-({c1("Q")}-{LK_HIRES_ALL}),"+#,##0;-#,##0")'
-         f'&" (attrition "&TEXT({rri("na_rate")},"0.0%")&" a week vs Lakshya\'s lower rate). What closes it: {BRIDGE_TAB} tab, section 3.")'),
+         f'&" (attrition "&TEXT({rri("na_rate")},"0.0%")&" a week vs Lakshya\'s lower rate).")'),
     ]
     for k, f in enumerate(ins):
         r = R_IN_T + 1 + k
@@ -2191,7 +2191,7 @@ CMP_TAB = "Lakshya vs Plan vs LY"
 
 def build_cmp(wb):
     """Attrition %, driver recruitment and util: Lakshya vs plan vs the same week last year vs the last 8 weeks' average."""
-    ws = wb.create_sheet(CMP_TAB, 4)
+    ws = wb.create_sheet(CMP_TAB, 3)
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = TEAL
     ws.column_dimensions["A"].width = 22
@@ -2672,12 +2672,11 @@ def main(out, raw_path):
         build_city(wb, i, city)
     build_summary(wb)
     build_dashboard(wb)
-    build_bridge(wb)
-    build_cmp(wb)
+    build_cmp(wb)   # (the LY vs CY vs Plan tab, build_bridge, was removed from the sheet by the user)
     build_combined(wb)
     build_readme(wb)
     build_raw(wb, raw)
-    order = ["Read Me", "Summary View", DASH, BRIDGE_TAB, CMP_TAB, "Inputs", SEAS_TAB, LW_TAB] + CITIES + ["Combined All", "raw_performance"]
+    order = ["Read Me", "Summary View", DASH, CMP_TAB, "Inputs", SEAS_TAB, LW_TAB] + CITIES + ["Combined All", "raw_performance"]
     wb._sheets.sort(key=lambda ws: order.index(ws.title))
     wb.active = 0
     wb.save(out)

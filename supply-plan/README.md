@@ -34,8 +34,9 @@ A realistic path from the current run rate to the December target, with an opera
 6. **To Lakshya**: a steady extra hiring ramp on top of the run rate (hiring starts at today's level and rises in a
    straight line, never up and down) — the same extra each week, solved so 27 Dec
    lands on Lakshya — flagged wherever driver acquisition exceeds the city's proven capacity (best 4 weeks since
-   Sep 2025). Inputs A1 picks the plan: `Capacity` (the default: same ramp, but total driver acquisition in any week
-   never above the city's best, so 27 Dec can land below Lakshya), `Lakshya` (full ramp) or `Run rate`.
+   Sep 2025). Inputs A1 picks the plan: `Lakshya` (the default: the ramp that makes every city's util on 27 Dec equal
+   Lakshya's util — Lakshya on road / Lakshya fleet × our fleet), `Capacity` (same ramp, never above the city's best
+   week, lands lower) or `Run rate`.
    All three paths are always shown, next to AOP and Lakshya.
 
 ## Tabs
@@ -45,7 +46,6 @@ A realistic path from the current run rate to the December target, with an opera
 | Read Me | The principle, the bridge by city (now → run rate → within capacity → plan → AOP → Lakshya), new cars, seasonality |
 | Summary View | Weekly dashboard with a city picker: plan, actual and same week last year per metric |
 | Monthly Dashboard | Month by month (India or a city): hiring, new-car drivers, extra ramp, attrition, run rate / capacity / plan vs AOP and Lakshya; why driver acquisition differs; insights |
-| LY vs CY vs Plan | Last year, this year, run rate, within capacity, plan, AOP and Lakshya side by side, week on week; section 3: the gap to Lakshya by city and what closes it |
 | Lakshya vs Plan vs LY | Attrition %, driver recruitment and util: Lakshya vs plan vs the same week last year vs the last 8 weeks' average — week by week (pick a city), by city, and the 8 actual weeks behind the average |
 | Inputs | A1 dates and the December-target switch, A2 city start and targets, A3 current run rate, A4 Lakshya month-ends, A5 AOP month-ends, A6 new cars (stock, delivery windows, pending, future orders), A7 cars sold, A8 calendar; C1 summary, C2 sources |
 | Seasonality Check | The two festival dips used (Diwali, Durga Puja in Kolkata), the 2024 vs 2025 history by season, attrition this year vs last, week-by-week 4-week averages aligned on Diwali |
