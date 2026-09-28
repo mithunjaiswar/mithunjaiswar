@@ -24,6 +24,7 @@ from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.utils import column_index_from_string, get_column_letter
 
 sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
+from lakshya_cmp import LK_CMP
 from plan_history import ALIGNED, ATTR_TREND, CAPACITY, SEASON_CHANGE, SEASON_OFFSETS  # noqa: E402
 
 # ---------------------------------------------------------------- data
@@ -2176,6 +2177,220 @@ def combined_query():
     return f'=QUERY({{{stack}}},"select {",".join(cols)} where Col2 is not null",0)'
 
 
+# ---------------------------------------------------------------- Lakshya vs Plan vs LY (attrition, recruitment, util)
+CMP_TAB = "Lakshya vs Plan vs LY"
+
+
+def build_cmp(wb):
+    """Attrition %, driver recruitment and util: Lakshya vs plan vs the same week last year vs the last 8 weeks' average."""
+    ws = wb.create_sheet(CMP_TAB, 4)
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = TEAL
+    ws.column_dimensions["A"].width = 22
+    for j in range(2, 16):
+        ws.column_dimensions[get_column_letter(j)].width = 11
+    L = get_column_letter
+    n = len(CITIES)
+    PICK, CF = "$B$3", "$E$3"
+    city_list = f"Inputs!$A${R_SUM0}:$A${R_SUM0 + n - 1}"
+    ATT, RATE, UT = "0.0%", "0.0%", "0.0%"
+    NW = N_WEEKS + 1                                   # w/c 21 Sep (actual) + the 13 plan weeks
+
+    def pick(exprs, india):
+        return f'=IF({PICK}="India",{india},CHOOSE(MATCH({PICK},{city_list},0),{",".join(exprs)}))'
+
+    def rs(field, crit_col, crit, city=CF):
+        c = rc(field)
+        return (f'SUMIFS(raw_performance!${c}:${c},raw_performance!$D:$D,{city},raw_performance!$E:$E,"CNG",'
+                f'raw_performance!${crit_col}:${crit_col},{crit})')
+
+    def na(crit_col, crit, city=CF):
+        return (f"({rs('attrition_cnt', crit_col, crit, city)}+{rs('temp_attrition_cnt', crit_col, crit, city)}"
+                f"-{rs('rejoin_cnt', crit_col, crit, city)}-{rs('temp_rejoin_cnt', crit_col, crit, city)})")
+
+    def rec(crit_col, crit, city=CF):
+        return f"({rs('newjoin_cnt', crit_col, crit, city)}+{rs('resurrection_cnt', crit_col, crit, city)})"
+
+    # Lakshya v4 week by week (lakshya_cmp.py, from the v2 sheet); India = sum of the cities
+    lk = {c: LK_CMP[c] for c in CITIES}
+    lk["INDIA"] = {k: [sum(LK_CMP[c][k][w] for c in CITIES) for w in range(NW)] for k in LK_CMP[CITIES[0]]}
+    lk_att = {c: [v["leave"][w] / v["book"][w] for w in range(NW)] for c, v in lk.items()}
+    lk_ut = {c: [v["onroad"][w] / v["fleet"][w] for w in range(NW)] for c, v in lk.items()}
+
+    ws["A1"] = "LAKSHYA vs PLAN vs LAST YEAR vs LAST 8 WEEKS  -  attrition, driver recruitment, util"
+    ws["A1"].font = F_TITLE
+    ws["A2"] = ("Attrition % = drivers leaving in the week (attrition + temp - rejoins) / drivers at the start of the week, the same way "
+                "for all four. Recruitment = new joins + resurrections a week. Util = cars on road / total cars at week end.")
+    ws["A2"].font = F_NOTE
+    ws["A3"] = "Show (pick):"
+    ws["A3"].font = F_BOLD
+    c = ws["B3"]
+    c.value = "India"
+    c.font = Font(name="Calibri", size=11, bold=True, color=BLUE_TXT)
+    c.fill = fill(INPUT)
+    c.border = BOX
+    dv = DataValidation(type="list", formula1='"' + ",".join(["India"] + CITIES) + '"', allow_blank=False)
+    ws.add_data_validation(dv)
+    dv.add("B3")
+    ws["D3"] = "City filter:"
+    ws["D3"].font = F_NOTE
+    ws["E3"] = f'=IF({PICK}="India","*",{PICK})'
+    ws["E3"].font = F_NOTE
+
+    # ---- 3 first (the other sections read its averages): the last 8 weeks, actual, by city
+    R8_T = 7 + NW + 6 + len(CITIES) + 1 + 6          # below sections 1 and 2
+    blocks = [("att", "ATTRITION % a week", ATT), ("rec", "DRIVER RECRUITMENT a week", NUM), ("ut", "UTIL % (week end)", UT)]
+    avg8 = {}
+    put(ws, R8_T, 1, "3.  THE LAST 8 WEEKS, ACTUAL  -  where the 'last 8 weeks' columns come from (w/c 21 Sep: days loaded, scaled to a week)",
+        font=F_SECTION).border = Border()
+    cols8 = CITIES + ["INDIA"]
+    r = R8_T + 2
+    for key, label, fmt in blocks:
+        hdr(ws, r, 1, label, GREY_HDR)
+        for j, c_ in enumerate(cols8, start=2):
+            hdr(ws, r, j, c_)
+        for k in range(8):
+            rr_ = r + 1 + k
+            put(ws, rr_, 1, f"={G_OPEN_DATE}-55+{7 * k}", 'dd" "mmm', bold=True)
+            d = f"$A{rr_}"
+            scale = f"7/MIN(7,{G_LAST}-{d}+1)"
+            for j, c_ in enumerate(cols8, start=2):
+                city = '"*"' if c_ == "INDIA" else f'"{c_}"'
+                if key == "att":
+                    v = f"=IFERROR({na('B', d, city)}*{scale}/{rs('uniq_partners_dt_beginning', 'C', d, city)},\"\")"
+                elif key == "rec":
+                    v = f"={rec('B', d, city)}*{scale}"
+                else:
+                    day = f"MIN({d}+6,{G_LAST})"
+                    v = (f"=IFERROR({rs('allotted_cars_eod', 'C', day, city)}/{rs('fleet_total_cars_cnt', 'C', day, city)},\"\")")
+                put(ws, rr_, j, v, fmt, bg=LIGHT if c_ == "INDIA" else None)
+        ra = r + 9
+        put(ws, ra, 1, "Average", bold=True, bg=LIGHT)
+        for j, c_ in enumerate(cols8, start=2):
+            put(ws, ra, j, f"=AVERAGE({L(j)}{r + 1}:{L(j)}{r + 8})", fmt, bold=True, bg=LIGHT)
+        avg8[key] = (r, ra)                          # header row, average row
+        r = ra + 3
+    note(ws, r - 2, "A week's attrition = drivers leaving that week / drivers at its Monday start. Util on the week's Sunday "
+                    "(Sat 26 Sep for w/c 21 Sep). INDIA = the seven cities.")
+
+    def a8(key, city_cell):                          # the 8-week average for a city name (or India)
+        h, ra = avg8[key]
+        return f"INDEX($B${ra}:${L(1 + len(cols8))}${ra},MATCH({city_cell},$B${h}:${L(1 + len(cols8))}${h},0))"
+
+    # ---- 1. week by week, for the pick
+    R1_T = 5
+    put(ws, R1_T, 1, f'="1.  WEEK BY WEEK  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
+    groups = [("ATTRITION % a week", 2), ("DRIVER RECRUITMENT a week", 6), ("UTIL % (week end)", 10)]
+    heads = ["Lakshya", "Plan", "Last year (same week)", "Last 8 weeks avg"]
+    hdr(ws, R1_T + 1, 1, "", GREY_HDR)
+    hdr(ws, R1_T + 2, 1, "Week (w/c)")
+    for t, c0 in groups:
+        hdr(ws, R1_T + 1, c0, t, GREY_HDR)
+        ws.merge_cells(start_row=R1_T + 1, start_column=c0, end_row=R1_T + 1, end_column=c0 + 3)
+        for k, h in enumerate(heads):
+            hdr(ws, R1_T + 2, c0 + k, h)
+    ws.row_dimensions[R1_T + 2].height = 30
+    sheets_ = [q(c) for c in CITIES]
+    for w in range(NW):
+        r = R1_T + 3 + w
+        cr = OPEN_ROW + w                            # city-tab row: w/c 21 Sep = the actual opening week
+        d = f"$A{r}"
+        ly = f"({d}-364)"
+        if w == 0:
+            put(ws, r, 1, f"={G_OPEN_DATE}-6", 'dd" "mmm" (actual)"', bold=True, bg=ACTUAL)
+        else:
+            put(ws, r, 1, f"=Inputs!$B${R_CAL0 + w - 1}", 'dd" "mmm', bold=True)
+        # Lakshya
+        put(ws, r, 2, pick([str(round(lk_att[c][w], 5)) for c in CITIES], str(round(lk_att["INDIA"][w], 5))), ATT)
+        put(ws, r, 6, pick([str(round(lk[c]["rec"][w], 1)) for c in CITIES], str(round(lk["INDIA"]["rec"][w], 1))), NUM)
+        put(ws, r, 10, pick([str(round(lk_ut[c][w], 5)) for c in CITIES], str(round(lk_ut["INDIA"][w], 5))), UT)
+        # Plan (w/c 21 Sep = the actual, from raw_performance, scaled to a week)
+        if w == 0:
+            scale = f"7/MIN(7,{G_LAST}-{d}+1)"
+            put(ws, r, 3, f"=IFERROR({na('B', d)}*{scale}/{rs('uniq_partners_dt_beginning', 'C', d)},\"\")", ATT, bg=ACTUAL)
+            put(ws, r, 7, f"={rec('B', d)}*{scale}", NUM, bg=ACTUAL)
+            put(ws, r, 11, f"=IFERROR({rs('allotted_cars_eod', 'C', G_LAST)}/{rs('fleet_total_cars_cnt', 'C', G_LAST)},\"\")", UT, bg=ACTUAL)
+        else:
+            put(ws, r, 3, pick([f"{s_}!AQ{cr}/({s_}!AH{cr}+{s_}!AP{cr})" for s_ in sheets_],
+                               "(" + "+".join(f"{s_}!AQ{cr}" for s_ in sheets_) + ")/("
+                               + "+".join(f"{s_}!AH{cr}+{s_}!AP{cr}" for s_ in sheets_) + ")"), ATT, bold=True)
+            put(ws, r, 7, pick([f"{s_}!AU{cr}" for s_ in sheets_], "+".join(f"{s_}!AU{cr}" for s_ in sheets_)), NUM, bold=True)
+            put(ws, r, 11, pick([f"{s_}!Y{cr}/{s_}!E{cr}" for s_ in sheets_],
+                                "(" + "+".join(f"{s_}!Y{cr}" for s_ in sheets_) + ")/(" + "+".join(f"{s_}!E{cr}" for s_ in sheets_) + ")"),
+                UT, bold=True)
+        # last year, same week
+        put(ws, r, 4, f"=IFERROR({na('B', ly)}/{rs('uniq_partners_dt_beginning', 'C', ly)},\"\")", ATT, font=F_HIST, bg=HIST)
+        put(ws, r, 8, f"={rec('B', ly)}", NUM, font=F_HIST, bg=HIST)
+        put(ws, r, 12, f"=IFERROR({rs('allotted_cars_eod', 'C', f'{ly}+6')}/{rs('fleet_total_cars_cnt', 'C', f'{ly}+6')},\"\")", UT,
+            font=F_HIST, bg=HIST)
+        # last 8 weeks (section 3)
+        for c0, key, fmt in ((5, "att", ATT), (9, "rec", NUM), (13, "ut", UT)):
+            put(ws, r, c0, f"={a8(key, PICK)}", fmt)
+    r = R1_T + 3 + NW
+    put(ws, r, 1, "Average 28 Sep - 21 Dec", bold=True, bg=LIGHT)
+    for j in range(2, 14):
+        fmt = NUM if 6 <= j <= 9 else ATT
+        put(ws, r, j, f"=AVERAGE({L(j)}{R1_T + 4}:{L(j)}{r - 1})", fmt, bold=True, bg=LIGHT)
+    for c0 in (2, 6, 10):
+        ws.conditional_formatting.add(f"{L(c0 + 1)}{R1_T + 3}:{L(c0 + 1)}{r}",
+                                      FormulaRule(formula=[f"ABS({L(c0 + 1)}{R1_T + 3}-{L(c0)}{R1_T + 3})>0.1*{L(c0)}{R1_T + 3}"],
+                                                  font=RED_FONT))
+    note(ws, r + 1, "Plan = the city tabs (Inputs A1: the plan in use). Lakshya = Lakshya v4 week by week as the v2 sheet runs it. "
+                    "Last year = the same week 364 days earlier. Red = plan more than 10% away from Lakshya.")
+
+    # ---- 2. by city
+    R2_T = r + 4
+    put(ws, R2_T, 1, "2.  BY CITY  -  attrition and recruitment: average of the 13 plan weeks; util: w/c 21 Dec (27 Dec)",
+        font=F_SECTION).border = Border()
+    hdr(ws, R2_T + 1, 1, "", GREY_HDR)
+    hdr(ws, R2_T + 2, 1, "City")
+    for t, c0 in groups:
+        hdr(ws, R2_T + 1, c0, t, GREY_HDR)
+        ws.merge_cells(start_row=R2_T + 1, start_column=c0, end_row=R2_T + 1, end_column=c0 + 3)
+        for k, h in enumerate(heads):
+            hdr(ws, R2_T + 2, c0 + k, h.replace(" (same week)", " (same weeks)"))
+    ws.row_dimensions[R2_T + 2].height = 30
+    ly0, ly1 = f"({G_OPEN_DATE}+1-364)", f"({G_PLAN_END}-364)"
+    rng = lambda s_, c_: f"{s_}!{c_}{FIRST}:{c_}{LAST}"
+    for i, c_ in enumerate(cols8):
+        r = R2_T + 3 + i
+        india = c_ == "INDIA"
+        bg = LIGHT if india else None
+        put(ws, r, 1, c_, bold=True, bg=bg)
+        v = lk[c_]
+        put(ws, r, 2, sum(v["leave"][1:]) / sum(v["book"][1:]), ATT, bg=bg)
+        put(ws, r, 6, sum(v["rec"][1:]) / N_WEEKS, NUM, bg=bg)
+        put(ws, r, 10, v["onroad"][N_WEEKS] / v["fleet"][N_WEEKS], UT, bg=bg)
+        ss = sheets_ if india else [q(c_)]
+        put(ws, r, 3, "=(" + "+".join(f"SUM({rng(s_, 'AQ')})" for s_ in ss) + ")/("
+            + "+".join(f"SUM({rng(s_, 'AH')})+SUM({rng(s_, 'AP')})" for s_ in ss) + ")", ATT, bold=True, bg=bg)
+        put(ws, r, 7, "=(" + "+".join(f"SUM({rng(s_, 'AU')})" for s_ in ss) + f")/{N_WEEKS}", NUM, bold=True, bg=bg)
+        put(ws, r, 11, "=(" + "+".join(f"{s_}!Y{LAST}" for s_ in ss) + ")/(" + "+".join(f"{s_}!E{LAST}" for s_ in ss) + ")",
+            UT, bold=True, bg=bg)
+        city = '"*"' if india else f'"{c_}"'
+        dates = f'raw_performance!$C:$C,">="&{ly0},raw_performance!$C:$C,"<="&{ly1}'
+        def rsr(field):
+            cc = rc(field)
+            return (f'SUMIFS(raw_performance!${cc}:${cc},raw_performance!$D:$D,{city},raw_performance!$E:$E,"CNG",{dates})')
+        mondays = "+".join(f"{rs('uniq_partners_dt_beginning', 'C', f'{ly0}+{7 * k}', city)}" for k in range(N_WEEKS))
+        put(ws, r, 4, f"=IFERROR(({rsr('attrition_cnt')}+{rsr('temp_attrition_cnt')}-{rsr('rejoin_cnt')}-{rsr('temp_rejoin_cnt')})/({mondays}),\"\")",
+            ATT, font=F_HIST, bg=HIST)
+        put(ws, r, 8, f"=({rsr('newjoin_cnt')}+{rsr('resurrection_cnt')})/{N_WEEKS}", NUM, font=F_HIST, bg=HIST)
+        put(ws, r, 12, f"=IFERROR({rs('allotted_cars_eod', 'C', ly1, city)}/{rs('fleet_total_cars_cnt', 'C', ly1, city)},\"\")", UT,
+            font=F_HIST, bg=HIST)
+        for c0, key, fmt in ((5, "att", ATT), (9, "rec", NUM), (13, "ut", UT)):
+            put(ws, r, c0, f'={a8(key, f"$A{r}")}', fmt, bg=bg)
+    r_end = R2_T + 3 + n
+    for c0 in (2, 6, 10):
+        ws.conditional_formatting.add(f"{L(c0 + 1)}{R2_T + 3}:{L(c0 + 1)}{r_end}",
+                                      FormulaRule(formula=[f"ABS({L(c0 + 1)}{R2_T + 3}-{L(c0)}{R2_T + 3})>0.1*{L(c0)}{R2_T + 3}"],
+                                                  font=RED_FONT))
+    assert r_end + 3 < R8_T, "section 3 overlaps section 2"
+    ws.freeze_panes = "B4"
+    ws.sheet_view.zoomScale = 90
+    return ws
+
+
 def build_combined(wb):
     ws = wb.create_sheet("Combined All")
     for j, (h, _) in enumerate(COMBINED, start=1):
@@ -2450,10 +2665,11 @@ def main(out, raw_path):
     build_summary(wb)
     build_dashboard(wb)
     build_bridge(wb)
+    build_cmp(wb)
     build_combined(wb)
     build_readme(wb)
     build_raw(wb, raw)
-    order = ["Read Me", "Summary View", DASH, BRIDGE_TAB, "Inputs", SEAS_TAB, LW_TAB] + CITIES + ["Combined All", "raw_performance"]
+    order = ["Read Me", "Summary View", DASH, BRIDGE_TAB, CMP_TAB, "Inputs", SEAS_TAB, LW_TAB] + CITIES + ["Combined All", "raw_performance"]
     wb._sheets.sort(key=lambda ws: order.index(ws.title))
     wb.active = 0
     wb.save(out)
