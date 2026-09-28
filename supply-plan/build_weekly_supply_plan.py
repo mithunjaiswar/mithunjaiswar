@@ -24,6 +24,7 @@ from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.utils import column_index_from_string, get_column_letter
 
 sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
+from car_flows import CAR_FLOWS
 from lakshya_cmp import LK_CMP
 from plan_history import ALIGNED, ATTR_TREND, CAPACITY, SEASON_CHANGE, SEASON_OFFSETS  # noqa: E402
 
@@ -2205,12 +2206,13 @@ CMP_TAB = "Lakshya vs Plan vs LY"
 
 
 def build_cmp(wb):
-    """Attrition %, driver recruitment and util: Lakshya vs plan vs the same week last year vs the last 8 weeks' average."""
+    """Attrition %, driver recruitment, util, cars added and cars sold: Lakshya vs plan vs the same week last year vs the
+    last 8 weeks' average."""
     ws = wb.create_sheet(CMP_TAB, 3)
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = TEAL
     ws.column_dimensions["A"].width = 22
-    for j in range(2, 16):
+    for j in range(2, 24):
         ws.column_dimensions[get_column_letter(j)].width = 11
     L = get_column_letter
     n = len(CITIES)
@@ -2234,16 +2236,25 @@ def build_cmp(wb):
     def rec(crit_col, crit, city=CF):
         return f"({rs('newjoin_cnt', crit_col, crit, city)}+{rs('resurrection_cnt', crit_col, crit, city)})"
 
+    def flows(city, wk, k):                          # actual cars added (k=0) / sold (k=1) in the week starting wk (date)
+        cs = CITIES if city == "INDIA" else [city]
+        return sum(CAR_FLOWS[c].get(wk.isoformat(), (0, 0))[k] for c in cs)
+
+    open_d = dt.date(2026, 9, 27)                    # opening Sunday the fixed history is keyed to (Inputs A1)
+    wk0 = open_d - dt.timedelta(days=6)              # w/c 21 Sep
+    wks8 = [open_d - dt.timedelta(days=55 - 7 * k) for k in range(8)]
+
     # Lakshya v4 week by week (lakshya_cmp.py, from the v2 sheet); India = sum of the cities
     lk = {c: LK_CMP[c] for c in CITIES}
     lk["INDIA"] = {k: [sum(LK_CMP[c][k][w] for c in CITIES) for w in range(NW)] for k in LK_CMP[CITIES[0]]}
     lk_att = {c: [v["leave"][w] / v["book"][w] for w in range(NW)] for c, v in lk.items()}
     lk_ut = {c: [v["onroad"][w] / v["fleet"][w] for w in range(NW)] for c, v in lk.items()}
 
-    ws["A1"] = "LAKSHYA vs PLAN vs LAST YEAR vs LAST 8 WEEKS  -  attrition, driver recruitment, util"
+    ws["A1"] = "LAKSHYA vs PLAN vs LAST YEAR vs LAST 8 WEEKS  -  attrition, driver recruitment, util, cars added, cars sold"
     ws["A1"].font = F_TITLE
     ws["A2"] = ("Attrition % = drivers leaving in the week (attrition + temp - rejoins) / drivers at the start of the week, the same way "
-                "for all four. Recruitment = new joins + resurrections a week. Util = cars on road / total cars at week end.")
+                "for all four. Recruitment = new joins + resurrections a week. Util = cars on road / total cars at week end. Cars added / sold = "
+                "cars joining / leaving the CNG fleet a week (actuals: reporting DB, car books start / end dates).")
     ws["A2"].font = F_NOTE
     ws["A3"] = "Show (pick):"
     ws["A3"].font = F_BOLD
@@ -2262,7 +2273,8 @@ def build_cmp(wb):
 
     # ---- 3 first (the other sections read its averages): the last 8 weeks, actual, by city
     R8_T = 7 + NW + 6 + len(CITIES) + 1 + 6          # below sections 1 and 2
-    blocks = [("att", "ATTRITION % a week", ATT), ("rec", "DRIVER RECRUITMENT a week", NUM), ("ut", "UTIL % (week end)", UT)]
+    blocks = [("att", "ATTRITION % a week", ATT), ("rec", "DRIVER RECRUITMENT a week", NUM), ("ut", "UTIL % (week end)", UT),
+              ("add", "CARS ADDED a week", NUM), ("sold", "CARS SOLD a week", NUM)]
     avg8 = {}
     put(ws, R8_T, 1, "3.  THE LAST 8 WEEKS, ACTUAL  -  where the 'last 8 weeks' columns come from (w/c 21 Sep: days loaded, scaled to a week)",
         font=F_SECTION).border = Border()
@@ -2279,6 +2291,9 @@ def build_cmp(wb):
             scale = f"7/MIN(7,{G_LAST}-{d}+1)"
             for j, c_ in enumerate(cols8, start=2):
                 city = '"*"' if c_ == "INDIA" else f'"{c_}"'
+                if key in ("add", "sold"):
+                    hist(ws, rr_, j, flows(c_, wks8[k], 0 if key == "add" else 1), NUM)
+                    continue
                 if key == "att":
                     v = f"=IFERROR({na('B', d, city)}*{scale}/{rs('uniq_partners_dt_beginning', 'C', d, city)},\"\")"
                 elif key == "rec":
@@ -2294,7 +2309,8 @@ def build_cmp(wb):
         avg8[key] = (r, ra)                          # header row, average row
         r = ra + 3
     note(ws, r - 2, "A week's attrition = drivers leaving that week / drivers at its Monday start. Util on the week's Sunday "
-                    "(Sat 26 Sep for w/c 21 Sep). INDIA = the seven cities.")
+                    "(Sat 26 Sep for w/c 21 Sep). Cars added / sold: grey = reporting DB history (w/c 21 Sep: 6 days, not scaled). "
+                    "INDIA = the seven cities.")
 
     def a8(key, city_cell):                          # the 8-week average for a city name (or India)
         h, ra = avg8[key]
@@ -2303,7 +2319,8 @@ def build_cmp(wb):
     # ---- 1. week by week, for the pick
     R1_T = 5
     put(ws, R1_T, 1, f'="1.  WEEK BY WEEK  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
-    groups = [("ATTRITION % a week", 2), ("DRIVER RECRUITMENT a week", 6), ("UTIL % (week end)", 10)]
+    groups = [("ATTRITION % a week", 2), ("DRIVER RECRUITMENT a week", 6), ("UTIL % (week end)", 10),
+              ("CARS ADDED a week", 14), ("CARS SOLD a week", 18)]
     heads = ["Lakshya", "Plan", "Last year (same week)", "Last 8 weeks avg"]
     hdr(ws, R1_T + 1, 1, "", GREY_HDR)
     hdr(ws, R1_T + 2, 1, "Week (w/c)")
@@ -2347,23 +2364,35 @@ def build_cmp(wb):
         put(ws, r, 12, f"=IFERROR({rs('allotted_cars_eod', 'C', f'{ly}+6')}/{rs('fleet_total_cars_cnt', 'C', f'{ly}+6')},\"\")", UT,
             font=F_HIST, bg=HIST)
         # last 8 weeks (section 3)
-        for c0, key, fmt in ((5, "att", ATT), (9, "rec", NUM), (13, "ut", UT)):
+        for c0, key, fmt in ((5, "att", ATT), (9, "rec", NUM), (13, "ut", UT), (17, "add", NUM), (21, "sold", NUM)):
             put(ws, r, c0, f"={a8(key, PICK)}", fmt)
+        # cars added (col 14-) and sold (col 18-): Lakshya, plan (city tabs AD / AE; w/c 21 Sep = actual), last year (DB history)
+        wk = wk0 + dt.timedelta(days=7 * w)
+        for c0, key, k, col in ((14, "added", 0, "AD"), (18, "sold", 1, "AE")):
+            put(ws, r, c0, pick([str(round(lk[c][key][w], 1)) for c in CITIES], str(round(lk["INDIA"][key][w], 1))), NUM)
+            if w == 0:
+                put(ws, r, c0 + 1, pick([str(flows(c, wk, k)) for c in CITIES], str(flows("INDIA", wk, k))), NUM, bg=ACTUAL)
+            else:
+                put(ws, r, c0 + 1, pick([f"{s_}!{col}{cr}" for s_ in sheets_], "+".join(f"{s_}!{col}{cr}" for s_ in sheets_)),
+                    NUM, bold=True)
+            lyw = wk - dt.timedelta(days=364)
+            put(ws, r, c0 + 2, pick([str(flows(c, lyw, k)) for c in CITIES], str(flows("INDIA", lyw, k))), NUM, font=F_HIST, bg=HIST)
     r = R1_T + 3 + NW
     put(ws, r, 1, "Average 28 Sep - 21 Dec", bold=True, bg=LIGHT)
-    for j in range(2, 14):
-        fmt = NUM if 6 <= j <= 9 else ATT
+    for j in range(2, 22):
+        fmt = NUM if (6 <= j <= 9 or j >= 14) else ATT
         put(ws, r, j, f"=AVERAGE({L(j)}{R1_T + 4}:{L(j)}{r - 1})", fmt, bold=True, bg=LIGHT)
     for c0 in (2, 6, 10):
         ws.conditional_formatting.add(f"{L(c0 + 1)}{R1_T + 3}:{L(c0 + 1)}{r}",
                                       FormulaRule(formula=[f"ABS({L(c0 + 1)}{R1_T + 3}-{L(c0)}{R1_T + 3})>0.1*{L(c0)}{R1_T + 3}"],
                                                   font=RED_FONT))
     note(ws, r + 1, "Plan = the city tabs (Inputs A1: the plan in use). Lakshya = Lakshya v4 week by week as the v2 sheet runs it. "
-                    "Last year = the same week 364 days earlier. Red = plan more than 10% away from Lakshya.")
+                    "Last year = the same week 364 days earlier. Red = plan more than 10% away from Lakshya. Cars: plan = cars bought landing by "
+                    "RTO status + Lakshya's cars still to buy (Inputs A6), and cars sold (A7); history = reporting DB.")
 
     # ---- 2. by city
     R2_T = r + 4
-    put(ws, R2_T, 1, "2.  BY CITY  -  attrition and recruitment: average of the 13 plan weeks; util: w/c 21 Dec (27 Dec)",
+    put(ws, R2_T, 1, "2.  BY CITY  -  attrition, recruitment, cars added and sold: average a week over the 13 plan weeks; util: w/c 21 Dec (27 Dec)",
         font=F_SECTION).border = Border()
     hdr(ws, R2_T + 1, 1, "", GREY_HDR)
     hdr(ws, R2_T + 2, 1, "City")
@@ -2401,8 +2430,13 @@ def build_cmp(wb):
         put(ws, r, 8, f"=({rsr('newjoin_cnt')}+{rsr('resurrection_cnt')})/{N_WEEKS}", NUM, font=F_HIST, bg=HIST)
         put(ws, r, 12, f"=IFERROR({rs('allotted_cars_eod', 'C', ly1, city)}/{rs('fleet_total_cars_cnt', 'C', ly1, city)},\"\")", UT,
             font=F_HIST, bg=HIST)
-        for c0, key, fmt in ((5, "att", ATT), (9, "rec", NUM), (13, "ut", UT)):
+        for c0, key, fmt in ((5, "att", ATT), (9, "rec", NUM), (13, "ut", UT), (17, "add", NUM), (21, "sold", NUM)):
             put(ws, r, c0, f'={a8(key, f"$A{r}")}', fmt, bg=bg)
+        for c0, key, k, col in ((14, "added", 0, "AD"), (18, "sold", 1, "AE")):
+            put(ws, r, c0, sum(v[key][1:]) / N_WEEKS, NUM, bg=bg)
+            put(ws, r, c0 + 1, "=(" + "+".join(f"SUM({rng(s_, col)})" for s_ in ss) + f")/{N_WEEKS}", NUM, bold=True, bg=bg)
+            put(ws, r, c0 + 2, sum(flows(c_, wk0 + dt.timedelta(days=7 * w - 364), k) for w in range(1, NW)) / N_WEEKS, NUM,
+                font=F_HIST, bg=HIST)
     r_end = R2_T + 3 + n
     for c0 in (2, 6, 10):
         ws.conditional_formatting.add(f"{L(c0 + 1)}{R2_T + 3}:{L(c0 + 1)}{r_end}",
