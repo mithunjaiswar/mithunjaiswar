@@ -272,7 +272,7 @@ CI = {k: i + 1 for i, k in enumerate([
 # Current run-rate columns (A3)
 RR = {k: i + 1 for i, k in enumerate([
     "city", "rec", "rec_ly", "rec_yoy", "na", "na_rate", "na_rate_ly", "na_yoy", "eip_wk", "own_wk",
-    "cap", "cap_from", "u_rec", "u_rate", "u_eip", "u_own"])}
+    "cap", "cap_from", "u_rec", "u_rate", "u_eip", "u_own", "lk_rate", "u_rate_end"])}
 
 
 def ci(key, city_idx):
@@ -524,7 +524,7 @@ def build_city(wb, idx, city):
             "BO": f"=(BM{r}-AI{r})/G{r}",
             "BP": f'=IF(AU{r}>BI{r}*AC{r}/7+0.5,"Above capacity","Within capacity")',
             "BQ": f"={ci('t_onroad', idx)}-Y{r}",
-            "BR": f"={rr('u_rate', idx)}*(1+BF{r})",
+            "BR": f"=({rr('u_rate', idx)}+({rr('u_rate_end', idx)}-{rr('u_rate', idx)})*{w + 1}/{N_WEEKS})*(1+BF{r})",
             # run-rate path: same EIP, hiring at the 8-week run rate (festival dips only), no extra ramp
             "BT": (f"=AH{r}+AP{r}+BK{r}-(AH{r}+AP{r})*BR{r}*AC{r}/7" if w == 0
                    else f"=BT{p}+BK{r}-BT{p}*BR{r}*AC{r}/7"),
@@ -795,14 +795,15 @@ def build_inputs(wb):
           "What the city is doing now (raw_performance, live). The plan's hiring and attrition start from the cream "
           "columns on the right; change them only with a reason.")
     groups = [(2, 4, "DRIVER ACQUISITION a week (new joins + resurrections)"), (5, 8, "NET ATTRITION (attrition + temp - rejoins)"),
-              (9, 10, "BOOK CHANGE a week"), (11, 12, "PROVEN HIRING CAPACITY"), (13, 16, "USED IN THE PLAN")]
+              (9, 10, "BOOK CHANGE a week"), (11, 12, "PROVEN HIRING CAPACITY"), (13, 18, "USED IN THE PLAN")]
     for c1, c2, t in groups:
         hdr(ws, R_RR_H - 1, c1, t, GREY_HDR)
         ws.merge_cells(start_row=R_RR_H - 1, start_column=c1, end_row=R_RR_H - 1, end_column=c2)
     heads = ["City", "Last 8 weeks", "Same weeks last year", "This year vs last",
              "Drivers leaving a week", "Rate a week (this year)", "Rate a week (last year)", "This year vs last",
              "EIP", "Own Now", "Best 4 weeks since Sep 2025 (a week)", "Best 4 weeks began",
-             "Driver acquisition a week", "Net attrition rate a week", "EIP net add a week", "Own Now net add a week (existing cars)"]
+             "Driver acquisition a week", "Net attrition rate a week (start)", "EIP net add a week (to Lakshya Dec)", "Own Now net add a week (existing cars)",
+             "Lakshya attrition a week (v4, 13 wks)", "Net attrition rate by 27 Dec (steps down from N)"]
     for j, t in enumerate(heads, start=1):
         hdr(ws, R_RR_H, j, t)
     ws.row_dimensions[R_RR_H].height = 44
@@ -829,7 +830,10 @@ def build_inputs(wb):
         put(ws, r, 12, dt.date.fromisoformat(since), "dd-mmm-yy", font=F_HIST, bg=HIST)
         put(ws, r, 13, f"=B{r}", NUM, font=F_INPUT, bg=INPUT)
         put(ws, r, 14, f"=F{r}", PCT, font=F_INPUT, bg=INPUT)
-        inp(ws, r, 15, 0, "+#,##0.0;-#,##0.0;0")
+        put(ws, r, 15, f"=(Inputs!$E${R_MS0 + i}-Inputs!$B${R_MS0 + i})/{N_WEEKS}", "+#,##0.0;-#,##0.0;0", font=F_INPUT, bg=INPUT)
+        lkc = LK_CMP[city]
+        hist(ws, r, 17, round(sum(lkc["leave"][1:]) / sum(lkc["book"][1:]), 4), PCT)
+        put(ws, r, 18, f"=Q{r}", PCT, font=F_INPUT, bg=INPUT)
         put(ws, r, 16, f"=J{r}", "+#,##0.0;-#,##0.0;0", font=F_INPUT, bg=INPUT)
     r = R_RR0 + n
     put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
@@ -844,9 +848,11 @@ def build_inputs(wb):
     put(ws, r, 8, f"=IFERROR(F{r}/G{r}-1,0)", "+0%;-0%;0%", bold=True, bg=LIGHT)
     put(ws, r, 12, None, bg=LIGHT)
     put(ws, r, 14, f"=SUMPRODUCT(N{r0}:N{r1},E{r0}:E{r1}/F{r0}:F{r1})/{drivers}", PCT, bold=True, bg=LIGHT)
-    note(ws, r + 1, "Window: the 8 weeks to 'Actuals used up to' (A1: w/c 3 Aug - Sat 26 Sep), scaled to a week. The plan holds these rates "
-                    "flat every week; the only changes are the Diwali and Durga Puja (Kolkata) dips (Seasonality Check, section 1). "
-                    "EIP is held flat by default.")
+    for j in (17, 18):
+        put(ws, r, j, f"=SUMPRODUCT({L(j)}{r0}:{L(j)}{r1},E{r0}:E{r1}/F{r0}:F{r1})/{drivers}", PCT, bold=True, bg=LIGHT)
+    note(ws, r + 1, "Window: the 8 weeks to 'Actuals used up to' (A1: w/c 3 Aug - Sat 26 Sep), scaled to a week. Hiring starts at the 8-week rate. "
+                    "Net attrition starts at the 8-week rate (N) and steps down a little every week to R by 27 Dec (default: Lakshya's rate, Q). "
+                    "EIP grows on a straight line to Lakshya's December EIP (A4). Festival dips on top (Seasonality Check, section 1).")
 
     # ---- A4. Lakshya month-end targets
     title(ws, R_MS_H - 3, "A4", "LAKSHYA MONTH-END TARGETS",
@@ -1457,7 +1463,8 @@ def build_readme(wb):
 
     r = para(6, "1.  THE PRINCIPLE - a realistic path from today's run rate to the December target", [
         "The plan starts from the actual on the latest day loaded (Inputs A1) and plans the current week onwards. Every week has an "
-        "operational basis: drivers are acquired at the last 8 weeks' run rate (Inputs A3) and leave at the last 8 weeks' attrition rate. "
+        "operational basis: drivers are acquired at the last 8 weeks' run rate (Inputs A3). Net attrition starts at the last 8 weeks' rate and "
+        "steps down a little every week to Lakshya's rate by 27 Dec; EIP grows on a straight line to Lakshya's December EIP. "
         "New cars get their drivers out of that hiring (city tab AI), not as extra jumps.",
         "Only two seasonal dips: Diwali (w/c 2 and 9 Nov, every city) and Durga Puja (w/c 12 and 19 Oct, Kolkata), each the average of "
         "2024 and 2025 (Seasonality Check, section 1). Every other week is flat.",
@@ -1495,7 +1502,7 @@ def build_readme(wb):
     ws.conditional_formatting.add(f"L{first}:L{r - 1}", FormulaRule(formula=[f"L{first}>M{first}+0.5"], font=RED_FONT,
                                                                      fill=fill("FFFFC7CE")))
     r += 1
-    ws.cell(r, 1, "Run rate = the last 8 weeks' hiring and attrition, flat except the festival dips. Within capacity = + the "
+    ws.cell(r, 1, "Run rate = the last 8 weeks' hiring, attrition stepping down to Lakshya's, EIP on Lakshya's line. Within capacity = + the "
                   "extra ramp, total driver acquisition never above proven capacity. Plan = the option in Inputs A1. Peak week above proven capacity (red) = hiring the city has not shown in the last year.").font = F_NOTE
     r += 3
 
@@ -1871,7 +1878,7 @@ def build_dashboard(wb):
         # current run rate
         (f'="Current run rate (last 8 weeks): "&TEXT({rri("rec")},"#,##0")&" drivers acquired a week ("&TEXT({rri("rec_yoy")},"+0%;-0%")'
          f'&" vs the same weeks last year) and "&TEXT({rri("na_rate")},"0.0%")&" of drivers leaving a week ("&TEXT({rri("na_yoy")},"+0%;-0%")'
-         f'&" vs last year). If that continues flat (festival dips only), 27 Dec lands at "&TEXT({c1("F")},"#,##0")&"."'),
+         f'&" vs last year). Hiring held at that rate, attrition stepping down to Lakshya\'s and EIP on Lakshya\'s line: 27 Dec lands at "&TEXT({c1("F")},"#,##0")&"."'),
         # new cars
         (f'="New cars: "&TEXT(Inputs!$F${R_STK0 + n},"#,##0")&" bought and at the stock yard reach the fleet between "'
          f'&TEXT(Inputs!$D${R_WIN0 + len(DELIVERY_WINDOWS) - 1},"d mmm")&" and "&TEXT(Inputs!$E${R_WIN0},"d mmm")'
@@ -1906,7 +1913,7 @@ def build_dashboard(wb):
          f'more cars or fewer cars sold.")'),
         # the gap to Lakshya: what it is made of (LY vs CY vs Plan, section 3)
         (f'=IF({c1("E")}>-0.5,"Plan reaches Lakshya on 27 Dec.","Gap to Lakshya on 27 Dec: "&TEXT({c1("E")},"+#,##0;-#,##0")&" = start "'
-         f'&TEXT({c1("B")}-Inputs!$N${R_MS0 + n},"+#,##0;-#,##0")&", EIP flat "&TEXT({c1("I")}-Inputs!$E${R_MS0 + n},"+#,##0;-#,##0")'
+         f'&TEXT({c1("B")}-Inputs!$N${R_MS0 + n},"+#,##0;-#,##0")&", EIP "&TEXT({c1("I")}-Inputs!$E${R_MS0 + n},"+#,##0;-#,##0")'
          f'&", more hiring than Lakshya "&TEXT({c1("Q")}-{LK_HIRES_ALL},"+#,##0;-#,##0")&", more drivers leaving "'
          f'&TEXT({c1("E")}-({c1("B")}-Inputs!$N${R_MS0 + n})-({c1("I")}-Inputs!$E${R_MS0 + n})-({c1("Q")}-{LK_HIRES_ALL}),"+#,##0;-#,##0")'
          f'&" (attrition "&TEXT({rri("na_rate")},"0.0%")&" a week vs Lakshya\'s lower rate). What closes it: {BRIDGE_TAB} tab, section 3.")'),
@@ -2071,7 +2078,7 @@ def build_bridge(wb):
     ws.row_dimensions[7].height = 30
     notes = [
         "Last year, same weeks: cars on road on the same Sunday of 2025; driver acquisition and attrition averaged over the plan's weeks a year earlier.",
-        "Run rate: the last 8 weeks' hiring and attrition, flat except the Diwali and Durga Puja dips - no extra hiring.",
+        "Run rate: the last 8 weeks' hiring, attrition stepping down to Lakshya's by 27 Dec, EIP on Lakshya's line, festival dips - no extra hiring.",
         "Within proven capacity: the steady extra ramp, but total driver acquisition never above the city's best 4 weeks since Sep 2025. Plan: the option chosen in Inputs A1.",
     ]
     for k, t in enumerate(notes):
@@ -2090,8 +2097,8 @@ def build_bridge(wb):
         hdr(ws, R_G_T + 1, a_, t, GREY_HDR)
         if b_ > a_:
             ws.merge_cells(start_row=R_G_T + 1, start_column=a_, end_row=R_G_T + 1, end_column=b_)
-    heads = ["City", "Plan", "Lakshya", "Plan - Lakshya", "Start: actual vs Lakshya's 27 Sep", "EIP: plan flat vs Lakshya's growth",
-             "Hiring: plan vs Lakshya (13 wks)", "Drivers leaving: plan vs Lakshya", "Plan (last 8 weeks)", "Lakshya (implied)",
+    heads = ["City", "Plan", "Lakshya", "Plan - Lakshya", "Start: actual vs Lakshya's 27 Sep", "EIP: plan vs Lakshya",
+             "Hiring: plan vs Lakshya (13 wks)", "Drivers leaving: plan vs Lakshya", "Plan (average, 13 wks)", "Lakshya (implied)",
              "Each 1 pt lower attrition a week adds", "Each +10 hires a week adds", "Attrition cut that closes the gap (pts a week)",
              "or extra hires a week that close it"]
     for j, t in enumerate(heads, start=1):
@@ -2118,7 +2125,8 @@ def build_bridge(wb):
             (2, f"=Inputs!$C${sr}", NUM), (3, f"=Inputs!$D${sr}", NUM), (4, f"=Inputs!$E${sr}", DIFF_FMT),
             (5, f"=ROUND(Inputs!$B${sr}-Inputs!$N${mr},0)", DIFF_FMT), (6, f"=ROUND(Inputs!$I${sr}-Inputs!$E${mr},0)", DIFF_FMT),
             (7, f"=ROUND(Inputs!$Q${sr}-{lk_h},0)", DIFF_FMT), (8, f"=D{r}-E{r}-F{r}-G{r}", DIFF_FMT),
-            (9, f"=Inputs!${L(RR['u_rate'])}${R_RR0 + i}", PCT),
+            (9, "=(" + "+".join(f"SUM({q(c_)}!AQ{FIRST}:AQ{LAST})" for c_ in (CITIES if india else [city])) + ")/("
+                + "+".join(f"SUM({q(c_)}!AH{FIRST}:AH{LAST})+SUM({q(c_)}!AP{FIRST}:AP{LAST})" for c_ in (CITIES if india else [city])) + ")", PCT),
             (10, f"=({lk_h}-({bk1}-{bk0}))/{N_WEEKS}/AVERAGE({bk0},{bk1})", PCT),
             (11, k_, NUM), (12, l_, NUM),
             (13, f"=IF(D{r}>=0,0,-D{r}/K{r})", "0.0"), (14, f"=IF(D{r}>=0,0,-D{r}/L{r}*10)", NUM),
@@ -2129,9 +2137,9 @@ def build_bridge(wb):
     for c_ in ("D", "E", "F", "G", "H"):
         ws.conditional_formatting.add(f"{c_}{R_G_H + 1}:{c_}{r_end}", FormulaRule(formula=[f"{c_}{R_G_H + 1}<-0.5"], font=RED_FONT))
     notes3 = [
-        "Plan - Lakshya = start + EIP + hiring + drivers leaving. Start: the actual on 26 Sep vs Lakshya's 27 Sep book. EIP: the plan holds "
-        "EIP flat (Inputs A3); Lakshya grows it (Inputs A4). Hiring: the plan's 13 weeks vs Lakshya's weekly driver acquisition. "
-        "Drivers leaving: the rest - the plan's attrition (last 8 weeks) is above Lakshya's.",
+        "Plan - Lakshya = start + EIP + hiring + drivers leaving. Start: the actual on 26 Sep vs Lakshya's 27 Sep book. EIP: the plan grows "
+        "EIP on Lakshya's line (Inputs A3, A4), so this is ~0. Hiring: the plan's 13 weeks vs Lakshya's weekly driver acquisition. "
+        "Drivers leaving: the rest - the plan's attrition starts at the last 8 weeks' rate and only reaches Lakshya's by December.",
         "What closes it: each lever alone, on 27 Dec. Attrition: one point lower every week (e.g. 10.9% -> 9.9%). Hires: 10 more drivers "
         "every week from w/c 28 Sep. Growing EIP as Lakshya does would also close the EIP column.",
     ]

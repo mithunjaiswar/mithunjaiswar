@@ -25,8 +25,9 @@ A realistic path from the current run rate to the December target, with an opera
    hiring (not added on top, so hiring doesn't jump). These are **flagged**: a car
    ordered now reaches the road 5 weeks later at the earliest, so Inputs A6 shows the order-by dates by city and
    Summary View shows (in red, under Recruitment) the drivers each week that depend on cars not bought yet.
-4. **Attrition** at the current rate (net attrition / drivers at week start, last 8 weeks). This year runs below last
-   year, but has been flat for 12 weeks while last year rose; the plan keeps this year's level.
+4. **Attrition** starts at the current rate (net attrition / drivers at week start, last 8 weeks) and steps down a
+   little every week to Lakshya's rate by 27 Dec (Inputs A3, column R). **EIP** grows on a straight line to Lakshya's December EIP.
+   This year's attrition runs below last year's.
 5. **Seasonality**: only two festival dips — Diwali (w/c 2 and 9 Nov, every city) and Durga Puja (w/c 12 and 19 Oct,
    Kolkata only), each the average of 2024 and 2025 vs the 4 weeks before (Seasonality Check, section 1). Every other
    week is flat.
