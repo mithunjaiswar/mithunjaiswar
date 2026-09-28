@@ -2272,7 +2272,7 @@ def build_cmp(wb):
     ws["E3"].font = F_NOTE
 
     # ---- 3 first (the other sections read its averages): the last 8 weeks, actual, by city
-    R8_T = (5 + 3 + NW + 4) + 3 + (len(CITIES) + 1) * (N_WEEKS + 3) + 4   # below sections 1 and 2
+    R8_T = (5 + 3 + (3 + 1 + N_WEEKS + 1) + 4) + 3 + (len(CITIES) + 1) * (3 + 1 + N_WEEKS + 1 + 2) + 4   # below sections 1 and 2
     blocks = [("att", "ATTRITION % a week", ATT), ("rec", "DRIVER RECRUITMENT a week", NUM), ("ut", "UTIL % (week end)", UT),
               ("add", "CARS ADDED a week", NUM), ("sold", "CARS SOLD a week", NUM)]
     avg8 = {}
@@ -2316,143 +2316,140 @@ def build_cmp(wb):
         h, ra = avg8[key]
         return f"INDEX($B${ra}:${L(1 + len(cols8))}${ra},MATCH({city_cell},$B${h}:${L(1 + len(cols8))}${h},0))"
 
+    # ---- rows shared by sections 1 and 2: 3 actual weeks (w/c 7, 14, 21 Sep), their average, the 13 plan weeks, their average
+    groups = [("ATTRITION % a week", 2), ("DRIVER RECRUITMENT a week", 6), ("UTIL % (week end)", 10),
+              ("CARS ADDED a week", 14), ("CARS SOLD a week", 18)]
+    heads = ["Lakshya", "Plan (actual in grey-blue)", "Last year (same week)", "Last 8 weeks avg"]
+    sheets_ = [q(c) for c in CITIES]
+    ACT_W = (-2, -1, 0)                              # weeks relative to w/c 21 Sep
+    BLOCK = len(ACT_W) + 1 + N_WEEKS + 1             # rows in one block
+    # Lakshya before the plan: recruitment w/e 13 and 20 Sep (ld_pre / own_pre), Sep attrition; no weekly util or cars
+    def lk_pre_rec(c, w):
+        if c == "INDIA":
+            return sum(lk_pre_rec(x, w) for x in CITIES)
+        v = LK_WEEKLY[c]
+        return {0: LK_CMP[c]["rec"][0], -1: v["ld_pre"][2] + v["own_pre"][1], -2: v["ld_pre"][1] + v["own_pre"][0]}[w]
+
+    def lk_val(c, w, key):
+        if key == "att":
+            return lk_att[c][max(w, 0)]
+        if key == "rec":
+            return lk[c]["rec"][w] if w >= 0 else lk_pre_rec(c, w)
+        if key == "ut":
+            return lk_ut[c][w] if w >= 0 else None
+        return lk[c][key][w] if w >= 0 else 0
+
+    def num(x, nd=5):
+        return '""' if x is None else str(round(x, nd))
+
+    def plan_expr(ss, cr, key):                      # plan weeks, from the city tabs
+        if key == "att":
+            return "(" + "+".join(f"{s_}!AQ{cr}" for s_ in ss) + ")/(" + "+".join(f"{s_}!AH{cr}+{s_}!AP{cr}" for s_ in ss) + ")"
+        if key == "ut":
+            return "(" + "+".join(f"{s_}!Y{cr}" for s_ in ss) + ")/(" + "+".join(f"{s_}!E{cr}" for s_ in ss) + ")"
+        col = {"rec": "AU", "added": "AD", "sold": "AE"}[key]
+        return "+".join(f"{s_}!{col}{cr}" for s_ in ss)
+
+    def raw_expr(key, d, city, actual):              # actual (scaled to a week if part-loaded) or last year from raw_performance
+        scale = f"*7/MIN(7,{G_LAST}-{d}+1)" if actual else ""
+        if key == "att":
+            return f"IFERROR({na('B', d, city)}{scale}/{rs('uniq_partners_dt_beginning', 'C', d, city)},\"\")"
+        if key == "rec":
+            return f"{rec('B', d, city)}{scale}"
+        day = f"MIN({d}+6,{G_LAST})" if actual else f"{d}+6"
+        return f"IFERROR({rs('allotted_cars_eod', 'C', day, city)}/{rs('fleet_total_cars_cnt', 'C', day, city)},\"\")"
+
+    KEYS = (("att", 2, ATT, "att"), ("rec", 6, NUM, "rec"), ("ut", 10, UT, "ut"), ("added", 14, NUM, "add"), ("sold", 18, NUM, "sold"))
+
+    def write_block(top, c_):
+        """Rows for one city (c_ = name / "INDIA") or the pick (c_ = None), starting at row top. Returns the row after."""
+        by_pick = c_ is None
+        ss = sheets_ if (by_pick or c_ == "INDIA") else [q(c_)]
+        city = CF if by_pick else ('"*"' if c_ == "INDIA" else f'"{c_}"')
+        cities_all = CITIES + ["INDIA"]
+
+        def const(fn):                               # a number per city -> the pick's value, or the city's
+            if by_pick:
+                return pick([num(fn(c)) for c in CITIES], num(fn("INDIA")))
+            return fn(c_)
+
+        r = top
+        for part, weeks in (("actual", ACT_W), ("plan", range(1, NW))):
+            first = r
+            for w in weeks:
+                cr = OPEN_ROW + w
+                wk = wk0 + dt.timedelta(days=7 * w)
+                d = f"$A{r}"
+                if part == "actual":
+                    put(ws, r, 1, f"={G_OPEN_DATE}-6+{7 * w}", 'dd" "mmm" (actual)"', bold=True, bg=ACTUAL)
+                else:
+                    put(ws, r, 1, f"=Inputs!$B${R_CAL0 + w - 1}", 'dd" "mmm', bold=True)
+                for key, c0, fmt, k8 in KEYS:
+                    v = const(lambda c: lk_val(c, w, key))
+                    put(ws, r, c0, v if by_pick else (v if v is not None else ""), fmt)
+                    kk = 0 if key == "added" else 1
+                    if key in ("added", "sold"):
+                        if part == "actual":
+                            put(ws, r, c0 + 1, const(lambda c: flows(c, wk, kk)), fmt, bg=ACTUAL)
+                        else:
+                            e = pick([plan_expr([s_], cr, key) for s_ in sheets_], plan_expr(sheets_, cr, key)) if by_pick \
+                                else "=" + plan_expr(ss, cr, key)
+                            put(ws, r, c0 + 1, e, fmt, bold=True)
+                        put(ws, r, c0 + 2, const(lambda c: flows(c, wk - dt.timedelta(days=364), kk)), fmt, font=F_HIST, bg=HIST)
+                    else:
+                        if part == "actual":
+                            put(ws, r, c0 + 1, "=" + raw_expr(key, d, city, True), fmt, bg=ACTUAL)
+                        else:
+                            e = pick([plan_expr([s_], cr, key) for s_ in sheets_], plan_expr(sheets_, cr, key)) if by_pick \
+                                else "=" + plan_expr(ss, cr, key)
+                            put(ws, r, c0 + 1, e, fmt, bold=True)
+                        put(ws, r, c0 + 2, "=" + raw_expr(key, f"({d}-364)", city, False), fmt, font=F_HIST, bg=HIST)
+                    put(ws, r, c0 + 3, f"={a8(k8, PICK if by_pick else (chr(34) + c_ + chr(34)))}", fmt)
+                r += 1
+            label = "Last 3 weeks avg (actual)" if part == "actual" else "Average 28 Sep - 21 Dec"
+            put(ws, r, 1, label, bold=True, bg=LIGHT)
+            for j in range(2, 22):
+                fmt = NUM if (6 <= j <= 9 or j >= 14) else ATT
+                put(ws, r, j, f'=IFERROR(AVERAGE({L(j)}{first}:{L(j)}{r - 1}),"")', fmt, bold=True, bg=LIGHT)
+            if part == "plan":
+                for c0 in (2, 6, 10):
+                    ws.conditional_formatting.add(f"{L(c0 + 1)}{first}:{L(c0 + 1)}{r}",
+                                                  FormulaRule(formula=[f"ABS({L(c0 + 1)}{first}-{L(c0)}{first})>0.1*{L(c0)}{first}"],
+                                                              font=RED_FONT))
+            r += 1
+        return r
+
+    def header_rows(r0, first_label):
+        hdr(ws, r0, 1, "", GREY_HDR)
+        hdr(ws, r0 + 1, 1, first_label)
+        for t, c0 in groups:
+            hdr(ws, r0, c0, t, GREY_HDR)
+            ws.merge_cells(start_row=r0, start_column=c0, end_row=r0, end_column=c0 + 3)
+            for k, h in enumerate(heads):
+                hdr(ws, r0 + 1, c0 + k, h)
+        ws.row_dimensions[r0 + 1].height = 30
+
     # ---- 1. week by week, for the pick
     R1_T = 5
     put(ws, R1_T, 1, f'="1.  WEEK BY WEEK  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
-    groups = [("ATTRITION % a week", 2), ("DRIVER RECRUITMENT a week", 6), ("UTIL % (week end)", 10),
-              ("CARS ADDED a week", 14), ("CARS SOLD a week", 18)]
-    heads = ["Lakshya", "Plan", "Last year (same week)", "Last 8 weeks avg"]
-    hdr(ws, R1_T + 1, 1, "", GREY_HDR)
-    hdr(ws, R1_T + 2, 1, "Week (w/c)")
-    for t, c0 in groups:
-        hdr(ws, R1_T + 1, c0, t, GREY_HDR)
-        ws.merge_cells(start_row=R1_T + 1, start_column=c0, end_row=R1_T + 1, end_column=c0 + 3)
-        for k, h in enumerate(heads):
-            hdr(ws, R1_T + 2, c0 + k, h)
-    ws.row_dimensions[R1_T + 2].height = 30
-    sheets_ = [q(c) for c in CITIES]
-    for w in range(NW):
-        r = R1_T + 3 + w
-        cr = OPEN_ROW + w                            # city-tab row: w/c 21 Sep = the actual opening week
-        d = f"$A{r}"
-        ly = f"({d}-364)"
-        if w == 0:
-            put(ws, r, 1, f"={G_OPEN_DATE}-6", 'dd" "mmm" (actual)"', bold=True, bg=ACTUAL)
-        else:
-            put(ws, r, 1, f"=Inputs!$B${R_CAL0 + w - 1}", 'dd" "mmm', bold=True)
-        # Lakshya
-        put(ws, r, 2, pick([str(round(lk_att[c][w], 5)) for c in CITIES], str(round(lk_att["INDIA"][w], 5))), ATT)
-        put(ws, r, 6, pick([str(round(lk[c]["rec"][w], 1)) for c in CITIES], str(round(lk["INDIA"]["rec"][w], 1))), NUM)
-        put(ws, r, 10, pick([str(round(lk_ut[c][w], 5)) for c in CITIES], str(round(lk_ut["INDIA"][w], 5))), UT)
-        # Plan (w/c 21 Sep = the actual, from raw_performance, scaled to a week)
-        if w == 0:
-            scale = f"7/MIN(7,{G_LAST}-{d}+1)"
-            put(ws, r, 3, f"=IFERROR({na('B', d)}*{scale}/{rs('uniq_partners_dt_beginning', 'C', d)},\"\")", ATT, bg=ACTUAL)
-            put(ws, r, 7, f"={rec('B', d)}*{scale}", NUM, bg=ACTUAL)
-            put(ws, r, 11, f"=IFERROR({rs('allotted_cars_eod', 'C', G_LAST)}/{rs('fleet_total_cars_cnt', 'C', G_LAST)},\"\")", UT, bg=ACTUAL)
-        else:
-            put(ws, r, 3, pick([f"{s_}!AQ{cr}/({s_}!AH{cr}+{s_}!AP{cr})" for s_ in sheets_],
-                               "(" + "+".join(f"{s_}!AQ{cr}" for s_ in sheets_) + ")/("
-                               + "+".join(f"{s_}!AH{cr}+{s_}!AP{cr}" for s_ in sheets_) + ")"), ATT, bold=True)
-            put(ws, r, 7, pick([f"{s_}!AU{cr}" for s_ in sheets_], "+".join(f"{s_}!AU{cr}" for s_ in sheets_)), NUM, bold=True)
-            put(ws, r, 11, pick([f"{s_}!Y{cr}/{s_}!E{cr}" for s_ in sheets_],
-                                "(" + "+".join(f"{s_}!Y{cr}" for s_ in sheets_) + ")/(" + "+".join(f"{s_}!E{cr}" for s_ in sheets_) + ")"),
-                UT, bold=True)
-        # last year, same week
-        put(ws, r, 4, f"=IFERROR({na('B', ly)}/{rs('uniq_partners_dt_beginning', 'C', ly)},\"\")", ATT, font=F_HIST, bg=HIST)
-        put(ws, r, 8, f"={rec('B', ly)}", NUM, font=F_HIST, bg=HIST)
-        put(ws, r, 12, f"=IFERROR({rs('allotted_cars_eod', 'C', f'{ly}+6')}/{rs('fleet_total_cars_cnt', 'C', f'{ly}+6')},\"\")", UT,
-            font=F_HIST, bg=HIST)
-        # last 8 weeks (section 3)
-        for c0, key, fmt in ((5, "att", ATT), (9, "rec", NUM), (13, "ut", UT), (17, "add", NUM), (21, "sold", NUM)):
-            put(ws, r, c0, f"={a8(key, PICK)}", fmt)
-        # cars added (col 14-) and sold (col 18-): Lakshya, plan (city tabs AD / AE; w/c 21 Sep = actual), last year (DB history)
-        wk = wk0 + dt.timedelta(days=7 * w)
-        for c0, key, k, col in ((14, "added", 0, "AD"), (18, "sold", 1, "AE")):
-            put(ws, r, c0, pick([str(round(lk[c][key][w], 1)) for c in CITIES], str(round(lk["INDIA"][key][w], 1))), NUM)
-            if w == 0:
-                put(ws, r, c0 + 1, pick([str(flows(c, wk, k)) for c in CITIES], str(flows("INDIA", wk, k))), NUM, bg=ACTUAL)
-            else:
-                put(ws, r, c0 + 1, pick([f"{s_}!{col}{cr}" for s_ in sheets_], "+".join(f"{s_}!{col}{cr}" for s_ in sheets_)),
-                    NUM, bold=True)
-            lyw = wk - dt.timedelta(days=364)
-            put(ws, r, c0 + 2, pick([str(flows(c, lyw, k)) for c in CITIES], str(flows("INDIA", lyw, k))), NUM, font=F_HIST, bg=HIST)
-    r = R1_T + 3 + NW
-    put(ws, r, 1, "Average 28 Sep - 21 Dec", bold=True, bg=LIGHT)
-    for j in range(2, 22):
-        fmt = NUM if (6 <= j <= 9 or j >= 14) else ATT
-        put(ws, r, j, f"=AVERAGE({L(j)}{R1_T + 4}:{L(j)}{r - 1})", fmt, bold=True, bg=LIGHT)
-    for c0 in (2, 6, 10):
-        ws.conditional_formatting.add(f"{L(c0 + 1)}{R1_T + 3}:{L(c0 + 1)}{r}",
-                                      FormulaRule(formula=[f"ABS({L(c0 + 1)}{R1_T + 3}-{L(c0)}{R1_T + 3})>0.1*{L(c0)}{R1_T + 3}"],
-                                                  font=RED_FONT))
-    note(ws, r + 1, "Plan = the city tabs (Inputs A1: the plan in use). Lakshya = Lakshya v4 week by week as the v2 sheet runs it. "
-                    "Last year = the same week 364 days earlier. Red = plan more than 10% away from Lakshya. Cars: plan = cars bought landing by "
-                    "RTO status + Lakshya's cars still to buy (Inputs A6), and cars sold (A7); history = reporting DB.")
+    header_rows(R1_T + 1, "Week (w/c)")
+    r = write_block(R1_T + 3, None)
+    note(ws, r, "Grey-blue rows = actual (w/c 21 Sep: days loaded, scaled to a week). Plan = the city tabs (Inputs A1). Lakshya = Lakshya "
+                "v4 week by week as the v2 sheet runs it (before 28 Sep: recruitment and Sep attrition only). Last year = the same week "
+                "364 days earlier. Red = plan more than 10% away from Lakshya. Cars: plan = bought cars by RTO status + Lakshya's cars "
+                "still to buy (Inputs A6), sold (A7); actual and last year = reporting DB.")
 
-    # ---- 2. by city, week by week: a block per city (header, the 13 plan weeks, average), India last
-    R2_T = R1_T + 3 + NW + 4
-    put(ws, R2_T, 1, "2.  BY CITY, WEEK BY WEEK  -  each city's 13 plan weeks (28 Sep - 21 Dec) and their average",
+    # ---- 2. by city, week by week: a block per city, India last
+    R2_T = R1_T + 3 + BLOCK + 4
+    put(ws, R2_T, 1, "2.  BY CITY, WEEK BY WEEK  -  each city's last 3 actual weeks, its 13 plan weeks (28 Sep - 21 Dec) and the averages",
         font=F_SECTION).border = Border()
-    hdr(ws, R2_T + 1, 1, "", GREY_HDR)
-    hdr(ws, R2_T + 2, 1, "City / week (w/c)")
-    for t, c0 in groups:
-        hdr(ws, R2_T + 1, c0, t, GREY_HDR)
-        ws.merge_cells(start_row=R2_T + 1, start_column=c0, end_row=R2_T + 1, end_column=c0 + 3)
-        for k, h in enumerate(heads):
-            hdr(ws, R2_T + 2, c0 + k, h)
-    ws.row_dimensions[R2_T + 2].height = 30
+    header_rows(R2_T + 1, "City / week (w/c)")
     r = R2_T + 3
     for c_ in cols8:
-        india = c_ == "INDIA"
-        ss = sheets_ if india else [q(c_)]
-        city = '"*"' if india else f'"{c_}"'
-        lk_c = lk[c_]
-        # city header row
-        hdr(ws, r, 1, "INDIA" if india else c_, NAVY)
+        hdr(ws, r, 1, c_, NAVY)
         for j in range(2, 22):
             hdr(ws, r, j, "", NAVY)
-        top = r + 1
-        for w in range(1, NW):
-            r += 1
-            cr = OPEN_ROW + w
-            wk = wk0 + dt.timedelta(days=7 * w)
-            lyw = wk - dt.timedelta(days=364)
-            d = f"$A{r}"
-            ly = f"({d}-364)"
-            put(ws, r, 1, f"=Inputs!$B${R_CAL0 + w - 1}", 'dd" "mmm', bold=True)
-            # Lakshya
-            put(ws, r, 2, lk_att[c_][w], ATT)
-            put(ws, r, 6, lk_c["rec"][w], NUM)
-            put(ws, r, 10, lk_ut[c_][w], UT)
-            put(ws, r, 14, lk_c["added"][w], NUM)
-            put(ws, r, 18, lk_c["sold"][w], NUM)
-            # Plan (city tabs)
-            put(ws, r, 3, "=(" + "+".join(f"{s_}!AQ{cr}" for s_ in ss) + ")/(" + "+".join(f"{s_}!AH{cr}+{s_}!AP{cr}" for s_ in ss) + ")",
-                ATT, bold=True)
-            put(ws, r, 7, "=" + "+".join(f"{s_}!AU{cr}" for s_ in ss), NUM, bold=True)
-            put(ws, r, 11, "=(" + "+".join(f"{s_}!Y{cr}" for s_ in ss) + ")/(" + "+".join(f"{s_}!E{cr}" for s_ in ss) + ")", UT, bold=True)
-            put(ws, r, 15, "=" + "+".join(f"{s_}!AD{cr}" for s_ in ss), NUM, bold=True)
-            put(ws, r, 19, "=" + "+".join(f"{s_}!AE{cr}" for s_ in ss), NUM, bold=True)
-            # last year, same week
-            put(ws, r, 4, f"=IFERROR({na('B', ly, city)}/{rs('uniq_partners_dt_beginning', 'C', ly, city)},\"\")", ATT, font=F_HIST, bg=HIST)
-            put(ws, r, 8, f"={rec('B', ly, city)}", NUM, font=F_HIST, bg=HIST)
-            put(ws, r, 12, f"=IFERROR({rs('allotted_cars_eod', 'C', f'{ly}+6', city)}/{rs('fleet_total_cars_cnt', 'C', f'{ly}+6', city)},\"\")",
-                UT, font=F_HIST, bg=HIST)
-            put(ws, r, 16, flows(c_, lyw, 0), NUM, font=F_HIST, bg=HIST)
-            put(ws, r, 20, flows(c_, lyw, 1), NUM, font=F_HIST, bg=HIST)
-            # last 8 weeks (section 3)
-            for c0, key, fmt in ((5, "att", ATT), (9, "rec", NUM), (13, "ut", UT), (17, "add", NUM), (21, "sold", NUM)):
-                put(ws, r, c0, f'={a8(key, city if not india else chr(34) + "INDIA" + chr(34))}', fmt)
-        r += 1
-        put(ws, r, 1, "Average", bold=True, bg=LIGHT)
-        for j in range(2, 22):
-            fmt = NUM if (6 <= j <= 9 or j >= 14) else ATT
-            put(ws, r, j, f"=AVERAGE({L(j)}{top}:{L(j)}{r - 1})", fmt, bold=True, bg=LIGHT)
-        for c0 in (2, 6, 10):
-            ws.conditional_formatting.add(f"{L(c0 + 1)}{top}:{L(c0 + 1)}{r}",
-                                          FormulaRule(formula=[f"ABS({L(c0 + 1)}{top}-{L(c0)}{top})>0.1*{L(c0)}{top}"], font=RED_FONT))
-        r += 2
+        r = write_block(r + 1, c_) + 1
     r_end = r
     assert r_end + 3 < R8_T, "section 3 overlaps section 2"
     ws.freeze_panes = "B4"
