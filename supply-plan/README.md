@@ -18,7 +18,8 @@ Three sheets come out of it:
 - **Actuals-based view** (`--actual`, sheet "Weekly CNG Supply Plan - Actuals view"): hiring and attrition = the last
   8 weeks' average x last year's week-by-week pattern, Diwali-aligned (`ly_pattern.py`); EIP on its last 4 weeks (the 8 weeks include August's Mumbai drop-offs); no
   catch-up. Before Diwali (w/c 28 Sep - 26 Oct) only Kolkata keeps last year's shape (Durga Puja); November
-  recruitment = Lakshya's month average (no stretch); w/c 2 Nov attrition keeps 35% of last year's jump (Inputs A3b P).
+  recruitment = Lakshya's month average (no stretch), October recruitment and
+  attrition too; the capacity ramp is December's only; w/c 2 Nov attrition keeps 35% of last year's jump (Inputs A3b P).
   Its comparison tab shows Lakshya and plan per measure (+ EIP net add), then a last-8-weeks box, the seasonality check
   and the attrition working; its Summary View has a colour scale on every row.
   Same cars as the Lakshya-based plan, so util compares like for like.

@@ -910,9 +910,10 @@ def build_inputs(wb):
     put(ws, r, 14, f"=SUMPRODUCT(N{r0}:N{r1},E{r0}:E{r1}/F{r0}:F{r1})/{drivers}", PCT, bold=True, bg=LIGHT)
     note(ws, r + 1, "Window: the 8 weeks to 'Actuals used up to' (A1: w/c 3 Aug - Sat 26 Sep), scaled to a week. "
                     + ("ACTUALS-BASED VIEW: hiring = the 8-week rate (M) and attrition = the 8-week rate (N), each times last year's pattern for "
-                       "the week (Diwali-aligned, city tab CL-CM). STRETCH: attrition steps down from N to A3b column O by 27 Dec (default: the "
+                       "the week (Diwali-aligned, city tab CL-CM). October (attrition, hiring) and November (hiring) = Lakshya's "
+                       "month averages (A3b E, K-L). STRETCH: attrition steps down from N to A3b column O by 27 Dec (default: the "
                        "city's best 4 weeks of the last 12, column N), never above that line except in the festival weeks; and a steady extra hiring "
-                       "ramp is added up to each city's best week (Inputs A1 'Capacity'). EIP follows its last 4 weeks (O: 30 Aug - 26 Sep; "
+                       "ramp is added in December up to each city's best week (Inputs A1 'Capacity'). EIP follows its last 4 weeks (O: 30 Aug - 26 Sep; "
                        "the 8 weeks in I include August's Mumbai drop-offs). "
                        if MODE == "actual" else
                        "Base recruitment and net attrition follow Lakshya month by month: each month's weeks average to A3b K-M and E-G "
@@ -2903,8 +2904,8 @@ def build_cmp(wb):
     cc = f"{L(CALC_C)}-{L(CALC_C + len(CALC_HEADS) - 1)}"
     if ACTL:
         note(ws, r, "Grey-blue rows = actual (w/c 21 Sep: days loaded, scaled to a week). Plan = the city tabs: the last 8 weeks x last "
-                    "year's Diwali-aligned shape (before Diwali only Kolkata keeps it, for Durga Puja); November recruitment = Lakshya's month "
-                    "average; w/c 2 Nov attrition keeps part of last year's jump (Inputs A3b P). Lakshya = Lakshya v4 week by week (EIP: a "
+                    "year's Diwali-aligned shape (before Diwali only Kolkata keeps it, for Durga Puja); October and November recruitment and "
+                    "October attrition = Lakshya's month averages, the capacity ramp is December's; w/c 2 Nov attrition keeps part of last year's jump (Inputs A3b P). Lakshya = Lakshya v4 week by week (EIP: a "
                     "straight line to its December EIP, Inputs A4). Red = plan more than 10% away from Lakshya. The last 8 weeks box = "
                     "section 3. Month by month box: each month's weekly average (cars added / sold and EIP: the month's total), by the "
                     "week's Monday (Oct = w/c 28 Sep - 26 Oct, Nov = 2 - 30 Nov, Dec = 7 - 21 Dec; Inputs A8, column Q); red = the plan's "
