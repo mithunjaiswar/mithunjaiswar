@@ -35,8 +35,7 @@ A realistic path from the current run rate to the December target, with an opera
    Lakshya's months (Oct–Nov, Inputs A6). Each car gets a driver the week after it lands, taken out of that week's
    hiring (not added on top, so hiring doesn't jump). These are **flagged**: a car
    ordered now reaches the road 5 weeks later at the earliest, so Inputs A6 shows the order-by dates by city.
-4. **Attrition** matches Lakshya month by month: each month's weeks average to Lakshya's month average (Inputs A3,
-   columns Q-V), keeping the Diwali / Durga Puja shape within the month. The last 8 weeks' rate is the reference. **EIP** grows on a straight line to Lakshya's December EIP.
+4. **Attrition** matches Lakshya month by month: each month's weeks average to Lakshya's month average (Inputs A3b), keeping the Diwali / Durga Puja shape within the month. The last 8 weeks' rate is the reference. **EIP** grows on a straight line to Lakshya's December EIP.
    This year's attrition runs below last year's.
 5. **Seasonality**: only two festival dips — Diwali (w/c 2 and 9 Nov, every city) and Durga Puja (w/c 12 and 19 Oct,
    Kolkata only), each the average of 2024 and 2025 vs the 4 weeks before (Seasonality Check, section 1). Every other
@@ -53,12 +52,15 @@ A realistic path from the current run rate to the December target, with an opera
 
 ## Tabs
 
+Read Me, Monthly Dashboard and Seasonality Check are built but hidden in the sheet.
+
 | Tab | What it is |
 |---|---|
 | Read Me | The principle, the bridge by city (now → run rate → within capacity → plan → AOP → Lakshya), new cars, seasonality |
 | Summary View | Weekly dashboard with a city picker: plan, actual and same week last year per metric |
 | Monthly Dashboard | Month by month (India or a city): hiring, new-car drivers, extra ramp, attrition, run rate / capacity / plan vs AOP and Lakshya; why driver acquisition differs; insights |
 | Lakshya vs Plan vs LY | Attrition %, driver recruitment, util, cars added and cars sold (actuals: reporting DB, `car_flows.py`): Lakshya vs plan vs the same week last year vs the last 8 weeks' average — week by week (pick a city), by city, and the 8 actual weeks behind the average |
+| Lakshya Source | Lakshya v4's own figures, typed as given: L+DTO book on 31 Aug, churn rate by city, Own Now churn and rollover, weekly placements (the comparison tab's working reads these) |
 | Inputs | A1 dates and the December-target switch, A2 city start and targets, A3 current run rate, A4 Lakshya month-ends, A5 AOP month-ends, A6 new cars (stock, delivery windows, pending, future orders), A7 cars sold, A8 calendar; C1 summary, C2 sources |
 | Seasonality Check | The two festival dips used (Diwali, Durga Puja in Kolkata), the 2024 vs 2025 history by season, attrition this year vs last, week-by-week 4-week averages aligned on Diwali |
 | Mumbai … Pune | One tab per city: Weekly Supply Plan layout (A–AC), layers (AF–AW), last year (AY–BD), operational basis (BE–BT), Lakshya/AOP month-ends and paths (BU–CH) |
