@@ -2443,12 +2443,15 @@ def build_cmp(wb):
     ws["D3"].font = F_NOTE
     ws["E3"] = f'=IF({PICK}="India","*",{PICK})'
     ws["E3"].font = F_NOTE
-    links = [("Lakshya v4 model", LAKSHYA_URL + "/edit"), ("Lakshya-based plan (this file)", PLAN_URL),
-             ("Actuals view (last 8 weeks x last year)", ACT_URL), ("v2 - everything = Lakshya", V2_URL.split("?")[0]),
-             ("SSOT query (raw data)", SSOT_URL + "/edit")]
-    for k, (lab, url) in enumerate(links, start=1):     # plain text (no HYPERLINK), label in K, link in L-M
-        ws.cell(k, 11, lab).font = F_BOLD
-        ws.cell(k, 12, url).font = F_NOTE
+    this = lambda m: " (this file)" if (MODE == m and not V2) else ""
+    links = [(1, 11, "Lakshya v4 model", LAKSHYA_URL + "/edit"),
+             (2, 11, "Lakshya-based plan" + this("main"), PLAN_URL),
+             (1, 13, "Actuals view (last 8 weeks x last year)" + this("actual"), ACT_URL),
+             (2, 13, "v2 - everything = Lakshya" + (" (this file)" if V2 else ""), V2_URL.split("?")[0]),
+             (1, 15, "SSOT query (raw data)", SSOT_URL + "/edit")]
+    for r_, c_, lab, url in links:                     # plain text (no HYPERLINK): label, then the link next to it
+        ws.cell(r_, c_, lab).font = F_BOLD
+        ws.cell(r_, c_ + 1, url).font = F_NOTE
 
     # ---- 3 first (the other sections read its averages): the last 8 weeks, actual, by city
     R8_T = (5 + 3 + (3 + 2 + N_WEEKS + 1) + 4) + 3 + (len(CITIES) + 1) * (3 + 2 + N_WEEKS + 1 + 2) + 4   # below sections 1 and 2
@@ -2546,6 +2549,7 @@ def build_cmp(wb):
 
     SEAS_C = LASTC                                   # seasonality check columns (after the last group)
     MONTH_EDGE = Side(style="medium", color="FF1F3864")
+    SEP_EDGE = Side(style="dashed", color="FF1F3864")
     CAR_R, CAR_A = 0.85, 1.15                        # last year's change that counts: hiring -15% or attrition +15%
 
     def seas_cells(r, w, c_, avg_r):
@@ -2764,6 +2768,14 @@ def build_cmp(wb):
                         cell = ws.cell(b_, j)
                         bd = cell.border
                         cell.border = Border(left=bd.left, right=bd.right, top=bd.top, bottom=MONTH_EDGE)
+                # September ends after w/c 28 Sep (it counts in October's averages): a thin dashed line, not through the month cells
+                merged_cols = {c0 + off for _, c0, _, _ in KEYS for off in (4, 5)}
+                for j in range(1, CALC_C + len(CALC_HEADS)):
+                    if j in merged_cols:
+                        continue
+                    cell = ws.cell(first, j)
+                    bd = cell.border
+                    cell.border = Border(left=bd.left, right=bd.right, top=bd.top, bottom=SEP_EDGE)
             r += 1
             if part == "actual":
                 r = write_8wk(r, c_)
