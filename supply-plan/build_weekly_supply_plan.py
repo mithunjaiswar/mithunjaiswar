@@ -549,9 +549,13 @@ def build_city(wb, idx, city):
                    f'=IF(CN{r}="Oct",{rr("pr_oct", idx)},IF(CN{r}="Nov",{rr("pr_nov", idx)},{rr("pr_dec", idx)}))'
                    f'*(1+BE{r})/(1+AVERAGEIF($CN${FIRST}:$CN${LAST},CN{r},$BE${FIRST}:$BE${LAST}))*AC{r}/7'),
             "CN": f"=Inputs!$Q${cal}",
-            # last year's shape; actuals view: before Diwali only Kolkata (Durga Puja) keeps it, the rest run flat
-            "CL": 1 if MODE == "actual" and w < 5 and city != "Kolkata" else LY_IDX[city]["rec"][w],
-            "CM": 1 if MODE == "actual" and w < 5 and city != "Kolkata" else LY_IDX[city]["att"][w],
+            # last year's shape; actuals view, before Diwali: Kolkata keeps it (Durga Puja); elsewhere only the Durga Puja /
+            # Dussehra weeks (w/c 12, 19 Oct) and the week before Diwali week (w/c 26 Oct) move: hiring dips by the city's or
+            # India's last-year dip, whichever is bigger (the month stays on Lakshya's average); attrition keeps the step-down line
+            "CL": (LY_IDX[city]["rec"][w] if MODE != "actual" or w >= 5 or city == "Kolkata" else
+                   min(1, LY_IDX[city]["rec"][w], LY_IDX["INDIA"]["rec"][w]) if w in (2, 3, 4) else 1),
+            "CM": (LY_IDX[city]["att"][w] if MODE != "actual" or w >= 5 or city == "Kolkata" else
+                   1),
             # the plan's extra hiring: the steady ramp to Lakshya, the same ramp kept within proven capacity, or none
             "BL": f'=IF({G_CAP}="Lakshya",{STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7-CJ{r}+CK{r},IF({G_CAP}="Capacity",CE{r},0))',
             # hiring cap (Inputs A8): hires above the cap are cut and moved to the 'Yes' weeks, grossed up for attrition (CC)
@@ -575,8 +579,12 @@ def build_city(wb, idx, city):
             "BQ": f"={ci('t_onroad', idx)}-Y{r}",
             # attrition: the month's rate (Inputs A3, = Lakshya's month average), shaped by the festival change within the month
             # actuals view: the 8-week rate stepping down to the best-4-weeks level, x last year's shape - only festival weeks may go above
-            # (October: Lakshya's month average, A3b E, x last year's pattern within the month - Kolkata's Durga Puja only)
-            "BR": ((f'=IF(CN{r}="Oct",{rr("p_oct", idx)}*CM{r}/AVERAGEIF($CN${FIRST}:$CN${LAST},"Oct",$CM${FIRST}:$CM${LAST}),'
+            # (October: Lakshya's month average, A3b E, shaped by the step-down line and the festival pattern - Kolkata's Durga Puja,
+            # the Diwali lead-in on w/c 26 Oct)
+            "BR": ((f'=IF(CN{r}="Oct",{rr("p_oct", idx)}*({rr("u_rate", idx)}+({rr("att_end", idx)}-{rr("u_rate", idx)})*{w + 1}/{N_WEEKS})*CM{r}'
+                    f'/(SUMPRODUCT(($CN${FIRST}:$CN${LAST}="Oct")*({rr("u_rate", idx)}+({rr("att_end", idx)}-{rr("u_rate", idx)})'
+                    f'*(ROW($CN${FIRST}:$CN${LAST})-{FIRST - 1})/{N_WEEKS})*$CM${FIRST}:$CM${LAST})'
+                    f'/COUNTIF($CN${FIRST}:$CN${LAST},"Oct")),'
                     f"({rr('u_rate', idx)}+({rr('att_end', idx)}-{rr('u_rate', idx)})*{w + 1}/{N_WEEKS})"
                     + (f"*IF(BF{r}<>0,1+(CM{r}-1)*{rr('att_diw', idx)},MIN(1,CM{r})))" if w == 5 else f"*IF(BF{r}<>0,CM{r},MIN(1,CM{r})))"))
                    if MODE == "actual" else
@@ -2906,7 +2914,8 @@ def build_cmp(wb):
     cc = f"{L(CALC_C)}-{L(CALC_C + len(CALC_HEADS) - 1)}"
     if ACTL:
         note(ws, r, "Grey-blue rows = actual (w/c 21 Sep: days loaded, scaled to a week). Plan = the city tabs: the last 8 weeks x last "
-                    "year's Diwali-aligned shape (before Diwali only Kolkata keeps it, for Durga Puja); October and November recruitment and "
+                    "year's Diwali-aligned shape (before Diwali: Kolkata keeps it; elsewhere hiring dips only in the Durga Puja / Dussehra weeks and "
+                    "the week before Diwali week, by last year's dip, and those hires move to the weeks before); October and November recruitment and "
                     "October attrition = Lakshya's month averages, the capacity ramp is December's; w/c 2 Nov attrition keeps part of last year's jump (Inputs A3b P). Lakshya = Lakshya v4 week by week (EIP: a "
                     "straight line to its December EIP, Inputs A4). Red = plan more than 10% away from Lakshya. The last 8 weeks box = "
                     "section 3. Month by month box: each month's weekly average (cars added / sold and EIP: the month's total), by the "
