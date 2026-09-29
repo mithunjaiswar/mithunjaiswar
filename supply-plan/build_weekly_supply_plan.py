@@ -542,8 +542,9 @@ def build_city(wb, idx, city):
             "BJ": "=0" if w == 0 else f"=AD{p}",
             # base hiring: Lakshya plan = the month's base recruitment (Inputs A3 Z-AB, = Lakshya's month average) shaped by the
             # festival change within the month; actuals view = the 8-week rate x last year's pattern for the week (CL), and in
-            # November Lakshya's month average (A3b K-M) x last year's pattern within the month (no extra ramp in November, CE)
-            "BK": (f'=IF(CN{r}="Nov",{rr("pr_nov", idx)}*CL{r}/AVERAGEIF($CN${FIRST}:$CN${LAST},"Nov",$CL${FIRST}:$CL${LAST}),BH{r}*CL{r})*AC{r}/7'
+            # October and November Lakshya's month average (A3b K-M) x last year's pattern within the month (no extra ramp, CE)
+            "BK": (f'=IF(CN{r}="Dec",BH{r}*CL{r},IF(CN{r}="Oct",{rr("pr_oct", idx)},{rr("pr_nov", idx)})'
+                   f'*CL{r}/AVERAGEIF($CN${FIRST}:$CN${LAST},CN{r},$CL${FIRST}:$CL${LAST}))*AC{r}/7'
                    if MODE == "actual" else
                    f'=IF(CN{r}="Oct",{rr("pr_oct", idx)},IF(CN{r}="Nov",{rr("pr_nov", idx)},{rr("pr_dec", idx)}))'
                    f'*(1+BE{r})/(1+AVERAGEIF($CN${FIRST}:$CN${LAST},CN{r},$BE${FIRST}:$BE${LAST}))*AC{r}/7'),
@@ -560,7 +561,7 @@ def build_city(wb, idx, city):
             "CK": (f'=IF(Inputs!$P${cal}="Yes",SUMPRODUCT($CJ${FIRST}:$CJ${LAST},$CC${FIRST}:$CC${LAST})'
                    f'/SUMPRODUCT((Inputs!$P${R_CAL0}:$P${R_CAL0 + N_WEEKS - 1}="Yes")*$CC${FIRST}:$CC${LAST}),0)'),
             # extra hiring within proven capacity (x the Diwali / Durga Puja dip)
-            "CE": (f'=IF(CN{r}="Nov",0,MAX(0,MIN({STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,BI{r}*(1+BE{r})*AC{r}/7-BK{r})))'
+            "CE": (f'=IF(CN{r}<>"Dec",0,MAX(0,MIN({STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,BI{r}*(1+BE{r})*AC{r}/7-BK{r})))'
                    if MODE == "actual" else
                    f"=MIN({STEP_CELL}*{w + 1}*(1+BE{r})*AC{r}/7,BI{r}*(1+BE{r})*AC{r}/7-BK{r})"),
             "CF": (f"=AH{r}+AP{r}+BK{r}+CE{r}-(AH{r}+AP{r})*BR{r}*AC{r}/7" if w == 0
@@ -574,8 +575,10 @@ def build_city(wb, idx, city):
             "BQ": f"={ci('t_onroad', idx)}-Y{r}",
             # attrition: the month's rate (Inputs A3, = Lakshya's month average), shaped by the festival change within the month
             # actuals view: the 8-week rate stepping down to the best-4-weeks level, x last year's shape - only festival weeks may go above
-            "BR": (f"=({rr('u_rate', idx)}+({rr('att_end', idx)}-{rr('u_rate', idx)})*{w + 1}/{N_WEEKS})"
-                   + (f"*IF(BF{r}<>0,1+(CM{r}-1)*{rr('att_diw', idx)},MIN(1,CM{r}))" if w == 5 else f"*IF(BF{r}<>0,CM{r},MIN(1,CM{r}))")
+            # (October: Lakshya's month average, A3b E, x last year's pattern within the month - Kolkata's Durga Puja only)
+            "BR": ((f'=IF(CN{r}="Oct",{rr("p_oct", idx)}*CM{r}/AVERAGEIF($CN${FIRST}:$CN${LAST},"Oct",$CM${FIRST}:$CM${LAST}),'
+                    f"({rr('u_rate', idx)}+({rr('att_end', idx)}-{rr('u_rate', idx)})*{w + 1}/{N_WEEKS})"
+                    + (f"*IF(BF{r}<>0,1+(CM{r}-1)*{rr('att_diw', idx)},MIN(1,CM{r})))" if w == 5 else f"*IF(BF{r}<>0,CM{r},MIN(1,CM{r})))"))
                    if MODE == "actual" else
                    f'=IF(CN{r}="Oct",{rr("p_oct", idx)},IF(CN{r}="Nov",{rr("p_nov", idx)},{rr("p_dec", idx)}))'
                    f'*(1+BF{r})/(1+AVERAGEIF($CN${FIRST}:$CN${LAST},CN{r},$BF${FIRST}:$BF${LAST}))'),
@@ -634,7 +637,8 @@ def build_city(wb, idx, city):
     ws.merge_cells(f"BH{r}:BK{r}")
     rng = lambda c: f"${c}${FIRST}:${c}${LAST}"
     cput(ws, r, "BL", (f'=({ci("t_onroad", idx)}/{ci("lk_fleet", idx)}*E{LAST}-BS{LAST})/SUMPRODUCT((ROW({rng("BE")})-{FIRST - 1})'
-                       f'*(1+{rng("BE")})*{rng("AC")}/7*{rng("CC")})'), "0.0", bold=True, bg=INPUT)
+                       f'*(1+{rng("BE")})*{rng("AC")}/7*{rng("CC")}' + (f'*({rng("CN")}="Dec"))' if MODE == "actual" else ")")),
+         "0.0", bold=True, bg=INPUT)   # actuals view: Oct and Nov hire at Lakshya's month average, the ramp is December's only
     cput(ws, r, "BM", "Step = (Lakshya util x our fleet on 27 Dec - run-rate path in BS) spread as a steady ramp (negative = hire a little below the run rate). Inputs A1 decides how much of it the plan "
                       "uses: all (Lakshya), only within proven capacity (Capacity, column CE), or none (Run rate).", font=F_NOTE)
 
@@ -2894,6 +2898,7 @@ def build_cmp(wb):
     put(ws, R1_T, 1, f'="1.  WEEK BY WEEK  -  "&UPPER({PICK})', font=F_SECTION).border = Border()
     header_rows(R1_T + 1, "Week (w/c)")
     r = write_block(R1_T + 3, None)
+    r1_end = r
     sc = f"{L(SEAS_C)}-{L(SEAS_C + 1)}"
     cc = f"{L(CALC_C)}-{L(CALC_C + len(CALC_HEADS) - 1)}"
     if ACTL:
@@ -2934,6 +2939,26 @@ def build_cmp(wb):
         r = write_block(r + 1, c_) + 1
     r_end = r
     assert r_end + 3 < R8_T, "section 3 overlaps section 2"
+    if ACTL:   # centred text, and a navy splitter before every measure, the 8-week box, the month box and the working
+        SPLIT = Side(style="medium", color="FF1F3864")
+        split_cols = ({c0 for _, c0, _, _ in KEYS} | {cm(g)[0] for g in range(len(KEYS))}
+                      | {W8_C, SEAS_C, CALC_C, CALC_C + len(CALC_HEADS)})
+        rows = list(range(R1_T + 1, r1_end)) + list(range(R2_T + 1, r_end))
+        for rr_ in rows:
+            if ws.cell(rr_, 1).value is None and ws.cell(rr_, 2).value is None:
+                continue                                              # blank row between city blocks
+            for j in range(1, CALC_C + len(CALC_HEADS) + 1):
+                cell = ws.cell(rr_, j)
+                if j not in (SEAS_C, SEAS_C + 1):
+                    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=cell.alignment.wrap_text)
+                else:
+                    cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                if j in split_cols:
+                    bd = cell.border
+                    cell.border = Border(left=SPLIT, right=bd.right, top=bd.top, bottom=bd.bottom)
+        for rr_ in range(R8_T + 2, ws.max_row + 1):                  # section 3
+            for j in range(2, len(cols8) + 2):
+                ws.cell(rr_, j).alignment = Alignment(horizontal="center", vertical="center")
     ws.freeze_panes = "B4"
     ws.sheet_view.zoomScale = 90
     return ws
