@@ -2403,7 +2403,8 @@ def build_cmp(wb):
     ws.sheet_properties.tabColor = TEAL
     ws.column_dimensions["A"].width = 22
     L = get_column_letter
-    ACTL = MODE == "actual"                           # actuals view: Lakshya and plan per measure, then one 8-week box, + EIP
+    ACTL = MODE == "actual"                           # actuals view
+    NEWL = not V2                                     # layout: Lakshya and plan per measure (+ EIP), the 8-week box, the month box
     n = len(CITIES)
     PICK, CF = "$B$3", "$E$3"
     city_list = f"Inputs!$A${R_SUM0}:$A${R_SUM0 + n - 1}"
@@ -2439,14 +2440,15 @@ def build_cmp(wb):
     lk_att = {c: [v["leave"][w] / v["book"][w] for w in range(NW)] for c, v in lk.items()}
     lk_ut = {c: [v["onroad"][w] / v["fleet"][w] for w in range(NW)] for c, v in lk.items()}
 
-    ws["A1"] = ("ACTUALS-BASED VIEW  -  LAKSHYA vs PLAN vs LAST 8 WEEKS  -  attrition, driver recruitment, util, cars added, cars sold, EIP"
-                if ACTL else
+    ws["A1"] = (("ACTUALS-BASED VIEW  -  " if ACTL else "") +
+                "LAKSHYA vs PLAN vs LAST 8 WEEKS  -  attrition, driver recruitment, util, cars added, cars sold, EIP"
+                if NEWL else
                 "LAKSHYA vs PLAN vs LAST YEAR vs LAST 8 WEEKS  -  attrition, driver recruitment, util, cars added, cars sold")
     ws["A1"].font = F_TITLE
     ws["A2"] = ("Attrition % = drivers leaving in the week (attrition + temp - rejoins) / drivers at the start of the week, the same way "
                 "for all four. Recruitment = new joins + resurrections a week. Util = cars on road / total cars at week end. Cars added / sold = "
                 "cars joining / leaving the CNG fleet a week (actuals: reporting DB, car books start / end dates)." +
-                (" EIP net add = EIP cars in minus out a week (raw_performance 'Net EIP Add-ons')." if ACTL else ""))
+                (" EIP net add = EIP cars in minus out a week (raw_performance 'Net EIP Add-ons')." if NEWL else ""))
     ws["A2"].font = F_NOTE
     ws["A3"] = "Show (pick):"
     ws["A3"].font = F_BOLD
@@ -2476,7 +2478,7 @@ def build_cmp(wb):
     R8_T = (5 + 3 + (3 + 2 + N_WEEKS + 1) + 4) + 3 + (len(CITIES) + 1) * (3 + 2 + N_WEEKS + 1 + 2) + 4   # below sections 1 and 2
     blocks = [("att", "ATTRITION % a week", ATT), ("rec", "DRIVER RECRUITMENT a week", NUM), ("ut", "UTIL % (week end)", UT),
               ("add", "CARS ADDED a week", NUM), ("sold", "CARS SOLD a week", NUM)]
-    if ACTL:
+    if NEWL:
         blocks.append(("eip", "EIP NET ADD a week", NUM))
     avg8 = {}
     put(ws, R8_T, 1, "3.  THE LAST 8 WEEKS, ACTUAL  -  where the 'last 8 weeks' columns come from (w/c 21 Sep: days loaded, scaled to a week)",
@@ -2525,7 +2527,7 @@ def build_cmp(wb):
     measures = [("att", ATT, "att", "ATTRITION % a week", "Attrition %"), ("rec", NUM, "rec", "DRIVER RECRUITMENT a week", "Recruitment"),
                 ("ut", UT, "ut", "UTIL % (week end)", "Util %"), ("added", NUM, "add", "CARS ADDED a week", "Cars added"),
                 ("sold", NUM, "sold", "CARS SOLD a week", "Cars sold")]
-    if ACTL:
+    if NEWL:
         measures.append(("eip", NUM, "eip", "EIP NET ADD a week", "EIP net add"))
         heads = ["Lakshya", "Plan (actual in grey-blue)"]
         GW = 2
@@ -2538,13 +2540,13 @@ def build_cmp(wb):
     GFMT = [f for _, f, _, _, _ in measures]
     W8_C = 2 + GW * len(KEYS)                        # actuals view: the 8-week box, one column per measure
     MON_C = W8_C + len(KEYS)                         # actuals view: then the month-by-month box, Lakshya and plan per measure
-    LASTC = MON_C + 2 * len(KEYS) if ACTL else W8_C  # first column after the groups
+    LASTC = MON_C + 2 * len(KEYS) if NEWL else W8_C  # first column after the groups
 
     def c8(g):                                       # the measure's 8-week column
-        return W8_C + g if ACTL else KEYS[g][1] + 3
+        return W8_C + g if NEWL else KEYS[g][1] + 3
 
     def cm(g):                                       # the measure's month columns (Lakshya, plan)
-        return (MON_C + 2 * g, MON_C + 2 * g + 1) if ACTL else (KEYS[g][1] + 4, KEYS[g][1] + 5)
+        return (MON_C + 2 * g, MON_C + 2 * g + 1) if NEWL else (KEYS[g][1] + 4, KEYS[g][1] + 5)
     LK_REC, PL_REC, PL_ATT = L(KEYS[1][1]), L(KEYS[1][1] + 1), L(KEYS[0][1] + 1)
     sheets_ = [q(c) for c in CITIES]
     ACT_W = (-2, -1, 0)                              # weeks relative to w/c 21 Sep
@@ -2718,7 +2720,7 @@ def build_cmp(wb):
               "rec": f'=({rsr("newjoin_cnt")}+{rsr("resurrection_cnt")})/8',
               "ut": f'=IFERROR(({on})/({fl}),"")'}
         put(ws, r, 1, "Last 8 weeks avg (actual)", bold=True, bg=LIGHT)
-        if ACTL:
+        if NEWL:
             for g, (key, c0, fmt, k8) in enumerate(KEYS):
                 put(ws, r, c0, None, bg=LIGHT)
                 put(ws, r, c0 + 1, f"={a8(k8, sel)}", fmt, bold=True, bg=ACTUAL)
@@ -2789,7 +2791,7 @@ def build_cmp(wb):
                             e = pick([plan_expr([s_], cr, key) for s_ in sheets_], plan_expr(sheets_, cr, key)) if by_pick \
                                 else "=" + plan_expr(ss, cr, key)
                             put(ws, r, c0 + 1, e, fmt, bold=True)
-                        if not ACTL:
+                        if not NEWL:
                             put(ws, r, c0 + 2, const(lambda c: flows(c, wk - dt.timedelta(days=364), kk)), fmt, font=F_HIST, bg=HIST)
                     else:
                         if part == "actual":
@@ -2798,7 +2800,7 @@ def build_cmp(wb):
                             e = pick([plan_expr([s_], cr, key) for s_ in sheets_], plan_expr(sheets_, cr, key)) if by_pick \
                                 else "=" + plan_expr(ss, cr, key)
                             put(ws, r, c0 + 1, e, fmt, bold=True)
-                        if not ACTL:
+                        if not NEWL:
                             put(ws, r, c0 + 2, "=" + raw_expr(key, f"({d}-364)", city, False), fmt, font=F_HIST, bg=HIST)
                     put(ws, r, c8(g), f"={a8(k8, PICK if by_pick else (chr(34) + c_ + chr(34)))}", fmt)
                 if part == "plan":
@@ -2806,15 +2808,15 @@ def build_cmp(wb):
                 calc_cells(r, w, c_, part == "actual")
                 r += 1
             label = ("Last 3 weeks avg (actual)" if part == "actual" else
-                     "Avg 28 Sep - 21 Dec (cars, EIP: total)" if ACTL else "Avg 28 Sep - 21 Dec (cars: total)")
+                     "Avg 28 Sep - 21 Dec (cars, EIP: total)" if NEWL else "Avg 28 Sep - 21 Dec (cars: total)")
             put(ws, r, 1, label, bold=True, bg=LIGHT)
-            for g, (key, c0, fmt, k8) in enumerate(KEYS if ACTL else ()):
+            for g, (key, c0, fmt, k8) in enumerate(KEYS if NEWL else ()):
                 agg = "SUM" if part == "plan" and key in ("added", "sold", "eip") else "AVERAGE"   # cars, EIP: the 13 weeks' total
                 for j in (c0, c0 + 1, c8(g)):
                     put(ws, r, j, f'=IFERROR({agg}({L(j)}{first}:{L(j)}{r - 1}),"")', fmt, bold=True, bg=LIGHT)
                 for j in cm(g):                                    # month box: cars, EIP = the 3 months' total
                     put(ws, r, j, f'=SUM({L(j)}{first}:{L(j)}{r - 1})' if agg == "SUM" else None, fmt, bold=True, bg=LIGHT)
-            for j in range(2, 2 if ACTL else LASTC):
+            for j in range(2, 2 if NEWL else LASTC):
                 g, off = divmod(j - 2, GW)
                 cars_total = part == "plan" and g >= 3            # cars added / sold: the 13 weeks' total
                 if cars_total:
@@ -2876,7 +2878,7 @@ def build_cmp(wb):
         ws.merge_cells(start_row=r0, start_column=CALC_C + 10, end_row=r0, end_column=CALC_C + 13)
         for k, (h, _) in enumerate(CALC_HEADS):
             hdr(ws, r0 + 1, CALC_C + k, h)
-        if ACTL:
+        if NEWL:
             hdr(ws, r0, W8_C, "LAST 8 WEEKS AVG (actual)", GREY_HDR)
             ws.merge_cells(start_row=r0, start_column=W8_C, end_row=r0, end_column=MON_C - 1)
             hdr(ws, r0, MON_C, "MONTH BY MONTH - Lakshya vs Plan (a week; cars and EIP: the month's total)", GREY_HDR)
@@ -2914,6 +2916,19 @@ def build_cmp(wb):
                     f"the plan does not - take the action, or expect the plan to miss by about that much. How attrition is calculated ({cc}): "
                     "Lakshya = its Churn tab rate x the month's opening L+DTO book, / the weeks in the month, + Own Now churn and rollover / "
                     "weeks, / the book at week start (= column B). Plan = the book at week start x this week's rate (= column C).")
+    elif NEWL:
+        note(ws, r, "Grey-blue rows = actual (w/c 21 Sep: days loaded, scaled to a week). Plan = the city tabs: attrition and base recruitment "
+                    "at Lakshya's month averages (festival shape within the month) + the steady catch-up to Lakshya's 27 Dec util (Inputs A1); "
+                    "EIP on a straight line to Lakshya's December EIP. Lakshya = Lakshya v4 week by week (EIP: the same straight line, "
+                    "Inputs A4). Red = plan more than 10% away from Lakshya. The last 8 weeks box = section 3. Month by month box: each "
+                    "month's weekly average (cars added / sold and EIP: the month's total), by the week's Monday (Oct = w/c 28 Sep - 26 Oct, "
+                    "Nov = 2 - 30 Nov, Dec = 7 - 21 Dec; Inputs A8, column Q); red = the plan's month more than 2% away from Lakshya's. "
+                    "Last row: averages; cars added / sold and EIP = the 13 weeks' total. Cars: plan = bought cars by RTO status + Lakshya's "
+                    "cars still to buy (Inputs A6), sold (A7); actual = reporting DB. "
+                    f"Seasonality check ({sc}): weeks where last year, lined up on Diwali, saw hiring fall 15%+ or attrition rise 15%+ and "
+                    f"the plan does not - take the action, or expect the plan to miss by about that much. How attrition is calculated ({cc}): "
+                    "Lakshya = its Churn tab rate x the month's opening L+DTO book, / the weeks in the month, + Own Now churn and rollover / "
+                    "weeks, / the book at week start (= column B). Plan = the book at week start x this week's rate (= column C).")
     else:
         note(ws, r, "Grey-blue rows = actual (w/c 21 Sep: days loaded, scaled to a week). Plan = the city tabs (Inputs A1). Lakshya = Lakshya "
                     "v4 week by week as the v2 sheet runs it (before 28 Sep: recruitment and Sep attrition only). Last year = the same week "
@@ -2940,7 +2955,7 @@ def build_cmp(wb):
         r = write_block(r + 1, c_) + 1
     r_end = r
     assert r_end + 3 < R8_T, "section 3 overlaps section 2"
-    if ACTL:   # centred text, and a navy splitter before every measure, the 8-week box, the month box and the working
+    if NEWL:   # centred text, and a navy splitter before every measure, the 8-week box, the month box and the working
         SPLIT = Side(style="medium", color="FF1F3864")
         split_cols = ({c0 for _, c0, _, _ in KEYS} | {cm(g)[0] for g in range(len(KEYS))}
                       | {W8_C, SEAS_C, CALC_C, CALC_C + len(CALC_HEADS)})
