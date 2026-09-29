@@ -2431,6 +2431,7 @@ def build_cmp(wb):
     GFMT = [ATT, NUM, UT, NUM, NUM]
 
     SEAS_C = LASTC                                   # seasonality check columns (after the last group)
+    MONTH_EDGE = Side(style="medium", color="FF1F3864")
     CAR_R, CAR_A = 0.85, 1.15                        # last year's change that counts: hiring -15% or attrition +15%
 
     def seas_cells(r, w, c_, avg_r):
@@ -2533,10 +2534,16 @@ def build_cmp(wb):
                             cell.alignment = CENTER
                             for rr_ in range(a_ + 1, b_ + 1):
                                 put(ws, rr_, c0 + off, None, bg=INPUT if off == 5 else LIGHT)
+                            cell.border = Border(left=THIN, right=THIN, top=THIN, bottom=MONTH_EDGE)   # month split line
                             ws.merge_cells(start_row=a_, start_column=c0 + off, end_row=b_, end_column=c0 + off)
                         ws.conditional_formatting.add(
                             f"{L(c0 + 5)}{a_}", FormulaRule(formula=[f"ABS({L(c0 + 5)}{a_}-{L(c0 + 4)}{a_})>0.02*ABS({L(c0 + 4)}{a_})+0.0001"],
                                                             font=RED_FONT))
+                    # month split: a thick line under the month's last week, across every column
+                    for j in range(1, SEAS_C + 2):
+                        cell = ws.cell(b_, j)
+                        bd = cell.border
+                        cell.border = Border(left=bd.left, right=bd.right, top=bd.top, bottom=MONTH_EDGE)
             r += 1
         return r
 
