@@ -253,7 +253,11 @@ R_SALE_H = R_ADD0 + 8 + 4     # A7 header
 R_SALE0 = R_SALE_H + 1
 R_CAL_H = R_SALE0 + 8 + 4     # A8 header
 R_CAL0 = R_CAL_H + 1
-R_SUM_H = R_CAL0 + N_WEEKS + 1 + 7   # C1 header (PART C banner above the title)
+R_LKS_H = R_CAL0 + N_WEEKS + 6          # A9a Lakshya churn inputs header
+R_LKS0 = R_LKS_H + 1
+R_LKA_H = R_LKS0 + 8 + 5                # A9b Lakshya weekly driver acquisition header (3 rows a city: L+DTO, Own Now, Total)
+R_LKA0 = R_LKA_H + 1
+R_SUM_H = R_LKA0 + 7 * 3 + 1 + 7        # C1 header (PART C banner above the title)
 R_SUM0 = R_SUM_H + 1
 R_SRC_H = R_SUM0 + 8 + 4      # C2 header
 
@@ -722,7 +726,8 @@ def build_inputs(wb):
         ("PART A  What the plan runs on", [("A1", "Dates and switches", R_GLOBAL - 2), ("A2", "City start, Dec targets", R_CITY_H - 3),
                                            ("A3", "Current run rate", R_RR_H - 3), ("A4", "Lakshya month-ends", R_MS_H - 3),
                                            ("A5", "AOP month-ends", R_AOP_H - 3), ("A6", "New cars", R_STK_H - 3),
-                                           ("A7", "Cars sold", R_SALE_H - 2), ("A8", "Weekly calendar", R_CAL_H - 2)]),
+                                           ("A7", "Cars sold", R_SALE_H - 2), ("A8", "Weekly calendar", R_CAL_H - 2),
+                                           ("A9", "Lakshya v4 source figures", R_LKS_H - 3)]),
         ("Seasonality", [("tab", f"Checked city by city against 2024 and 2025: {SEAS_TAB} tab", None)]),
         ("PART C  Output and sources", [("C1", "Plan summary by city", R_SUM_H - 2), ("C2", "Sources", R_SRC_H - 2)]),
     ]
@@ -1106,6 +1111,57 @@ def build_inputs(wb):
     note(ws, r + 1, "Festivals: Diwali (Sun 8 Nov) w/c 2 and 9 Nov, every city; Durga Puja (17-20 Oct) w/c 12 and 19 Oct, Kolkata only. "
                     "No other week has a seasonal change. A week counts in the month its Monday falls in. Hiring cap: in a capped week no city hires "
                     "more than the cap; the hires cut move to the 'Yes' weeks, split evenly, sized so 27 Dec is unchanged.")
+
+    # ---- A9. Lakshya v4 source figures (typed as given in Lakshya_15000_Model_v4; the comparison tab's working reads these)
+    title(ws, R_LKS_H - 3, "A9", "LAKSHYA v4 SOURCE FIGURES  -  typed as given in Lakshya_15000_Model_v4",
+          "The 'Lakshya' attrition and recruitment on the Lakshya vs Plan vs LY tab are calculated from these, step by step (columns AH-AQ).")
+    ws.cell(R_LKS_H - 1, 1, "A9a. Churn: L+DTO churn a month = L+DTO opening book x rate (Lakshya Inputs section 6 / Churn tab); Own Now churn "
+                            "and rollover (Lakshya Weekly Own Now tab). Oct-Dec opening books are Lakshya's month-end L+DTO (A4).").font = F_BOLD
+    heads = (["City", "L+DTO book 31 Aug (Sep opening)", "Churn rate a month (Lakshya Inputs B73-B79)"] +
+             [f"Own Now churn, {m}" for m in MONTHS] + [f"Own Now rollover to L+DTO, {m}" for m in MONTHS])
+    for j, t in enumerate(heads, start=1):
+        hdr(ws, R_LKS_H, j, t)
+    ws.row_dimensions[R_LKS_H].height = 44
+    for i, city in enumerate(CITIES):
+        r = R_LKS0 + i
+        v = LK_WEEKLY[city]
+        put(ws, r, 1, city, bold=True)
+        hist(ws, r, 2, LK_LDTO_OPEN[city], NUM)
+        hist(ws, r, 3, LK_CHURN_RATE[city], PCT)
+        for m in range(4):
+            hist(ws, r, 4 + m, v["own_churn"][m], NUM)
+            hist(ws, r, 8 + m, v["own_roll"][m], NUM)
+    r = R_LKS0 + len(CITIES)
+    india_row(ws, r, [2] + list(range(4, 12)))
+    put(ws, r, 3, None, bg=LIGHT)
+    ws.cell(R_LKA_H - 1, 1, "A9b. Lakshya driver acquisition a week (Lakshya Weekly L+DTO and Weekly Own Now tabs, placements per week)").font = F_BOLD
+    wk_dates = [dt.date(2026, 9, 7) + dt.timedelta(days=7 * k) for k in range(3 + N_WEEKS)]      # w/c 7 Sep - 21 Dec
+    hdr(ws, R_LKA_H, 1, "City")
+    hdr(ws, R_LKA_H, 2, "Line")
+    for k, d_ in enumerate(wk_dates):
+        c = hdr(ws, R_LKA_H, 3 + k, d_)
+        c.number_format = 'dd" "mmm'
+    tot_rows = []
+    for i, city in enumerate(CITIES):
+        v = LK_WEEKLY[city]
+        ld = [v["ld_pre"][1], v["ld_pre"][2]] + list(v["ld_wk"][:N_WEEKS + 1])
+        own = [v["own_pre"][0], v["own_pre"][1]] + list(v["own_wk"][:N_WEEKS + 1])
+        r = R_LKA0 + 3 * i
+        for k_, (lab, vals) in enumerate((("L+DTO", ld), ("Own Now", own))):
+            put(ws, r + k_, 1, city if k_ == 0 else "", bold=True)
+            put(ws, r + k_, 2, lab)
+            for k, x in enumerate(vals):
+                hist(ws, r + k_, 3 + k, x, NUM)
+        put(ws, r + 2, 1, "", bold=True)
+        put(ws, r + 2, 2, "Total", bold=True, bg=LIGHT)
+        for k in range(len(wk_dates)):
+            put(ws, r + 2, 3 + k, f"={L(3 + k)}{r}+{L(3 + k)}{r + 1}", NUM, bold=True, bg=LIGHT)
+        tot_rows.append(r + 2)
+    r = R_LKA0 + 3 * len(CITIES)
+    put(ws, r, 1, "INDIA", bold=True, bg=LIGHT)
+    put(ws, r, 2, "Total", bold=True, bg=LIGHT)
+    for k in range(len(wk_dates)):
+        put(ws, r, 3 + k, "=" + "+".join(f"{L(3 + k)}{t}" for t in tot_rows), NUM, bold=True, bg=LIGHT)
 
     # ================================================================ PART C
     banner(ws, R_SUM_H - 4, "PART C  -  OUTPUT AND SOURCES  (nothing to type)", GREY_HDR)
@@ -2483,36 +2539,38 @@ def build_cmp(wb):
     ]
 
     def calc_cells(r, w, c_, actual):
-        """The attrition working for one week: Lakshya's monthly churn split into the week, and the plan's book x rate."""
+        """The attrition working for one week, all formulas: Lakshya's monthly churn (Inputs A4 / A9) split into the week, and the
+        plan's book x rate."""
         by_pick = c_ is None
         m = 0 if w <= 0 else MONTHS.index(WEEK_MONTH[w - 1])          # Lakshya month (Sep = the actual weeks)
-        nwk = 4 if m == 0 else WEEK_MONTH.count(MONTHS[m])
-        def lkv(c, key):
-            if c == "INDIA":
-                return sum(lkv(x, key) for x in CITIES)
-            v = LK_WEEKLY[c]
-            if key == "open":
-                return LK_LDTO_OPEN[c] if m == 0 else LK_LDTO_ME[c][m - 1]
-            if key == "churn":
-                return v["ld_churn"][m]
-            if key == "own":
-                return v["own_churn"][m] + v["own_roll"][m]
-            return LK_CMP[c]["book"][max(w, 0)]
-        def const(key):
-            return (pick([num(lkv(c, key), 2) for c in CITIES], num(lkv("INDIA", key), 2)) if by_pick else lkv(c_, key))
         C = lambda k: L(CALC_C + k)
-        put(ws, r, CALC_C, const("open"), NUM)
-        if by_pick:
-            put(ws, r, CALC_C + 1, pick([str(LK_CHURN_RATE[c]) for c in CITIES], f"{C(2)}{r}/{C(0)}{r}"), PCT)
-        else:
-            put(ws, r, CALC_C + 1, LK_CHURN_RATE[c_] if c_ != "INDIA" else f"={C(2)}{r}/{C(0)}{r}", PCT)
-        put(ws, r, CALC_C + 2, const("churn"), NUM, bold=True)
-        put(ws, r, CALC_C + 3, nwk, "0")
+        ni = len(CITIES)                                               # INDIA row offset in A4 / A9a
+        def f_open(i):   # L+DTO opening book of the month: 31 Aug (A9a) for Sep, else Lakshya's previous month-end L+DTO (A4)
+            return f"Inputs!$B${R_LKS0 + i}" if m == 0 else f"Inputs!${L(9 + m)}${R_MS0 + i}"
+        def f_own(i):    # Own Now churn + rollover in the month (A9a)
+            return f"Inputs!${L(4 + m)}${R_LKS0 + i}+Inputs!${L(8 + m)}${R_LKS0 + i}"
+        def f_book(i):   # Lakshya's 27 Sep book: Own Now + L+DTO September month-end (A4)
+            return f"Inputs!$F${R_MS0 + i}+Inputs!$J${R_MS0 + i}"
+        open_rng = (f"Inputs!$B${R_LKS0}:$B${R_LKS0 + ni - 1}" if m == 0 else
+                    f"Inputs!${L(9 + m)}${R_MS0}:${L(9 + m)}${R_MS0 + ni - 1}")
+        india_churn = f"SUMPRODUCT(ROUND({open_rng}*Inputs!$C${R_LKS0}:$C${R_LKS0 + ni - 1},0))"
+        idx = None if by_pick else (ni if c_ == "INDIA" else CITIES.index(c_))
+        def per_city(fn, india):
+            if by_pick:
+                return pick([fn(i) for i in range(ni)], india)
+            return "=" + (india if c_ == "INDIA" else fn(idx))
+        put(ws, r, CALC_C, per_city(f_open, f_open(ni)), NUM)
+        put(ws, r, CALC_C + 1, per_city(lambda i: f"Inputs!$C${R_LKS0 + i}", f"{C(2)}{r}/{C(0)}{r}"), PCT)
+        put(ws, r, CALC_C + 2, per_city(lambda i: f"ROUND({C(0)}{r}*{C(1)}{r},0)", india_churn), NUM, bold=True)
+        put(ws, r, CALC_C + 3, 4 if m == 0 else f'=COUNTIF(Inputs!$N${R_CAL0}:$N${R_CAL0 + N_WEEKS - 1},"{MONTHS[m]}")', "0")
         put(ws, r, CALC_C + 4, f"={C(2)}{r}/{C(3)}{r}", "0.0")
-        put(ws, r, CALC_C + 5, const("own"), NUM)
+        put(ws, r, CALC_C + 5, per_city(f_own, f_own(ni)), NUM)
         put(ws, r, CALC_C + 6, f"={C(5)}{r}/{C(3)}{r}", "0.0")
         put(ws, r, CALC_C + 7, f"={C(4)}{r}+{C(6)}{r}", "0.0", bold=True)
-        put(ws, r, CALC_C + 8, const("book"), NUM)
+        if w <= 1:       # the weeks up to 28 Sep start from Lakshya's 27 Sep book
+            put(ws, r, CALC_C + 8, per_city(f_book, f_book(ni)), NUM)
+        else:            # then: last week's book + Lakshya's hires last week (col H) - drivers leaving last week
+            put(ws, r, CALC_C + 8, f"={C(8)}{r - 1}+{L(8)}{r - 1}-{C(7)}{r - 1}", NUM)
         put(ws, r, CALC_C + 9, f"={C(7)}{r}/{C(8)}{r}", ATT, bold=True, bg=LIGHT)
         # plan side
         ss = sheets_ if (by_pick or c_ == "INDIA") else [q(c_)]
@@ -2564,7 +2622,15 @@ def build_cmp(wb):
                 else:
                     put(ws, r, 1, f"=Inputs!$B${R_CAL0 + w - 1}", 'dd" "mmm', bold=True)
                 for key, c0, fmt, k8 in KEYS:
-                    v = const(lambda c: lk_val(c, w, key))
+                    if key == "att":         # Lakshya attrition = the working in AH-AQ
+                        v = f"={L(CALC_C + 9)}{r}"
+                    elif key == "rec":       # Lakshya driver acquisition = Inputs A9b (Lakshya's weekly placements)
+                        col = L(3 + w + 2)
+                        refs = [f"Inputs!${col}${R_LKA0 + 3 * i + 2}" for i in range(len(CITIES))]
+                        india = f"Inputs!${col}${R_LKA0 + 3 * len(CITIES)}"
+                        v = pick(refs, india) if by_pick else "=" + (india if c_ == "INDIA" else refs[CITIES.index(c_)])
+                    else:
+                        v = const(lambda c: lk_val(c, w, key))
                     put(ws, r, c0, v if by_pick else (v if v is not None else ""), fmt)
                     kk = 0 if key == "added" else 1
                     if key in ("added", "sold"):
