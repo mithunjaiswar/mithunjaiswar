@@ -9,7 +9,17 @@
 | **Lakshya-based plan** (main) | Matches Lakshya v4 month by month on attrition, recruitment, cars added and cars sold, and lands on Lakshya's util on 27 Dec. | [Open](https://docs.google.com/spreadsheets/d/1h314RtB8WjMOZEQTGEbR-Ly4iYUdXsnzWPUhGvpzvWI/edit) |
 | **Actuals view** | What the business is likely to do: the last 8 weeks' run rate, last year's festival pattern, and Lakshya's month averages where agreed. | [Open](https://docs.google.com/spreadsheets/d/1qgLxZmiLOfBWFnmHzQrQZj10571ae8ln9Ao3q2991RI/edit) |
 | **v2** | Every Own Now and L+DTO number taken from Lakshya v4 as given (reference). | [Open](https://docs.google.com/spreadsheets/d/1mYh3raKeU-taJxLsObbOfNbJpDx4wtx_2OPdJhQZjbY/edit) |
-| Lakshya v4 model | The source target model. | [Open](https://docs.google.com/spreadsheets/d/1Bu8NkgNVcakYondqbyK_jW4nFuFDBqEk/edit) |
+
+### Source data behind the sheets
+
+| Source | What comes from it | Where |
+|---|---|---|
+| **Lakshya_15000_Model_v4** | Lakshya's targets:<br>• month-end on road, fleet, Own Now and L+DTO books<br>• weekly driver placements<br>• churn rates (Churn tab)<br>• cars to buy and sell | [Open](https://docs.google.com/spreadsheets/d/1Bu8NkgNVcakYondqbyK_jW4nFuFDBqEk/edit) |
+| **SSOT query** (raw_performance) | Daily actuals by city and fuel type:<br>• drivers<br>• new joins, resurrections<br>• attrition, rejoins<br>• cars on road, fleet<br>• EIP add-ons and drop-offs<br><br>Covers this year and last year (last year gives the seasonality pattern). | [Query doc](https://docs.google.com/document/d/1UIKW0voWgrUu2HDonBR4GsWdFz8XLVgWq7r5UoaYMpc/edit). The output is pasted into the **raw_performance** tab of each sheet. |
+| **Everest Reporting DB** (car books) | Actual cars added and sold each week, by city (car book start and end dates). | Read-only database. The figures are typed into the comparison tab as grey history. |
+| **Lakshya Source** tab (in each sheet) | Lakshya v4 figures typed exactly as given: churn inputs and weekly placements. The attrition working traces back to this tab. | Inside each sheet |
+| **Inputs** tab (in each sheet) | Every assumption the plan runs on:<br>• A1 switches<br>• A2 city start and targets<br>• A3 / A3b run rates and month rates<br>• A4 month-ends<br>• A6 cars<br>• A8 calendar | Inside each sheet |
+| **Builder code** | The script that builds and publishes all three sheets. | GitHub repo `mithunjaiswar/mithunjaiswar`, branch `claude/pensive-mendel-s62wy1`, folder `supply-plan/` |
 
 **Tabs to look at in each sheet**
 - **Summary View:** weekly dashboard with a city picker. Each metric shows the plan, the actual and the same week last year.
