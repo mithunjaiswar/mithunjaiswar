@@ -2276,6 +2276,8 @@ def build_cmp(wb):
     ws.column_dimensions["A"].width = 22
     for j in range(2, 34):
         ws.column_dimensions[get_column_letter(j)].width = 11
+    ws.column_dimensions["AF"].width = 34
+    ws.column_dimensions["AG"].width = 52
     L = get_column_letter
     n = len(CITIES)
     PICK, CF = "$B$3", "$E$3"
@@ -2428,6 +2430,40 @@ def build_cmp(wb):
     KEYS = (("att", 2, ATT, "att"), ("rec", 8, NUM, "rec"), ("ut", 14, UT, "ut"), ("added", 20, NUM, "add"), ("sold", 26, NUM, "sold"))
     GFMT = [ATT, NUM, UT, NUM, NUM]
 
+    SEAS_C = LASTC                                   # seasonality check columns (after the last group)
+    CAR_R, CAR_A = 0.85, 1.15                        # last year's change that counts: hiring -15% or attrition +15%
+
+    def seas_cells(r, w, c_, avg_r):
+        """Weeks where last year (Diwali-aligned, ly_pattern.py) moved and the plan does not: what, and the action."""
+        by_pick = c_ is None
+        if by_pick:
+            ly_r = pick([str(LY_IDX[c]["rec"][w - 1]) for c in CITIES], str(LY_IDX["INDIA"]["rec"][w - 1]))[1:]
+            ly_a = pick([str(LY_IDX[c]["att"][w - 1]) for c in CITIES], str(LY_IDX["INDIA"]["att"][w - 1]))[1:]
+        else:
+            ly_r, ly_a = str(LY_IDX[c_]["rec"][w - 1]), str(LY_IDX[c_]["att"][w - 1])
+        fest = WEEK_FESTIVAL[w - 1]
+        if fest == "Diwali":
+            tag = '"Diwali: dip in plan. "'
+        elif fest == "Durga Puja":
+            tag = (f'IF({PICK}="Kolkata","Durga Puja: dip in plan. ","")' if by_pick else
+                   ('"Durga Puja: dip in plan. "' if c_ == "Kolkata" else '""'))
+        else:
+            tag = '""'
+        rec_p, rec_a = f"{L(9)}{r}", f"{L(9)}{avg_r}"      # plan recruitment this week / plan average
+        att_p, att_a = f"{L(3)}{r}", f"{L(3)}{avg_r}"      # plan attrition this week / plan average
+        miss_r = f"AND({ly_r}<={CAR_R},{rec_p}>=0.95*{rec_a})"
+        miss_a = f"AND({ly_a}>={CAR_A},{att_p}<=1.05*{att_a})"
+        c = put(ws, r, SEAS_C, f'=TRIM({tag}&IF({miss_r},"Hiring "&TEXT({ly_r}-1,"+0%;-0%")&" last year vs "'
+                              f'&TEXT({rec_p}/{rec_a}-1,"+0%;-0%;0%")&" in plan. ","")'
+                              f'&IF({miss_a},"Attrition "&TEXT({ly_a}-1,"+0%;-0%")&" last year vs "'
+                              f'&TEXT({att_p}/{att_a}-1,"+0%;-0%;0%")&" in plan.",""))')
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+        c = put(ws, r, SEAS_C + 1,
+                f'=TRIM(IF({miss_r},"Sourcing push (referral / vendor / FSE drive) or plan ~"&TEXT({rec_p}*(1-{ly_r}),"#,##0")'
+                f'&" fewer hires. ","")&IF({miss_a},"Retention push (rejoin calls, weekly incentive) or plan ~"'
+                f'&TEXT({att_p}*({ly_a}-1),"0.0%")&" more attrition.",""))', font=Font(name="Calibri", size=10, bold=True, color="FFC00000"))
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+
     def write_block(top, c_):
         """Rows for one city (c_ = name / "INDIA") or the pick (c_ = None), starting at row top. Returns the row after."""
         by_pick = c_ is None
@@ -2472,6 +2508,8 @@ def build_cmp(wb):
                             put(ws, r, c0 + 1, e, fmt, bold=True)
                         put(ws, r, c0 + 2, "=" + raw_expr(key, f"({d}-364)", city, False), fmt, font=F_HIST, bg=HIST)
                     put(ws, r, c0 + 3, f"={a8(k8, PICK if by_pick else (chr(34) + c_ + chr(34)))}", fmt)
+                if part == "plan":
+                    seas_cells(r, w, c_, first + NW - 1)
                 r += 1
             label = "Last 3 weeks avg (actual)" if part == "actual" else "Average 28 Sep - 21 Dec"
             put(ws, r, 1, label, bold=True, bg=LIGHT)
@@ -2505,6 +2543,10 @@ def build_cmp(wb):
     def header_rows(r0, first_label):
         hdr(ws, r0, 1, "", GREY_HDR)
         hdr(ws, r0 + 1, 1, first_label)
+        hdr(ws, r0, SEAS_C, "SEASONALITY CHECK (last year, Diwali-aligned)", GREY_HDR)
+        ws.merge_cells(start_row=r0, start_column=SEAS_C, end_row=r0, end_column=SEAS_C + 1)
+        hdr(ws, r0 + 1, SEAS_C, "Seasonality not in plan")
+        hdr(ws, r0 + 1, SEAS_C + 1, "Action needed")
         for t, c0 in groups:
             hdr(ws, r0, c0, t, GREY_HDR)
             ws.merge_cells(start_row=r0, start_column=c0, end_row=r0, end_column=c0 + GW - 1)
@@ -2522,7 +2564,9 @@ def build_cmp(wb):
                 "364 days earlier. Red = plan more than 10% away from Lakshya. Cars: plan = bought cars by RTO status + Lakshya's cars "
                 "still to buy (Inputs A6), sold (A7); actual and last year = reporting DB. Month avg = the average of the month's weeks, by "
                 "the week's Monday (Oct = w/c 28 Sep - 26 Oct, Nov = 2 - 30 Nov, Dec = 7 - 21 Dec; Inputs A8, column Q); plan attrition and base "
-                "recruitment are set to match Lakshya's month average (red = the plan's month is more than 2% away from Lakshya's).")
+                "recruitment are set to match Lakshya's month average (red = the plan's month is more than 2% away from Lakshya's). "
+                "Seasonality check (AF-AG): weeks where last year, lined up on Diwali, saw hiring fall 15%+ or attrition rise 15%+ vs its "
+                "usual level and the plan does not - take the action, or expect the plan to miss by about that much.")
 
     # ---- 2. by city, week by week: a block per city, India last
     R2_T = R1_T + 3 + BLOCK + 4
@@ -2532,7 +2576,7 @@ def build_cmp(wb):
     r = R2_T + 3
     for c_ in cols8:
         hdr(ws, r, 1, c_, NAVY)
-        for j in range(2, LASTC):
+        for j in range(2, LASTC + 2):
             hdr(ws, r, j, "", NAVY)
         r = write_block(r + 1, c_) + 1
     r_end = r
