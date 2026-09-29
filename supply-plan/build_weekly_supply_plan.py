@@ -552,7 +552,10 @@ def build_city(wb, idx, city):
             # last year's shape; actuals view, before Diwali: Kolkata keeps it (Durga Puja); elsewhere only the Durga Puja /
             # Dussehra weeks (w/c 12, 19 Oct) and the week before Diwali week (w/c 26 Oct) move: hiring dips by the city's or
             # India's last-year dip, whichever is bigger (the month stays on Lakshya's average); attrition keeps the step-down line
-            "CL": (LY_IDX[city]["rec"][w] if MODE != "actual" or w >= 5 or city == "Kolkata" else
+            # w/c 2 Nov: this year Dhanteras - Diwali (Fri 6 - Sun 8 Nov) fall in it, not in the week before as last year, so it
+            # takes last year's Diwali-week hiring dip (w/c 9 Nov's) too
+            "CL": (min(LY_IDX[city]["rec"][5], LY_IDX[city]["rec"][6]) if MODE == "actual" and w == 5 else
+                   LY_IDX[city]["rec"][w] if MODE != "actual" or w >= 5 or city == "Kolkata" else
                    min(1, LY_IDX[city]["rec"][w], LY_IDX["INDIA"]["rec"][w]) if w in (2, 3, 4) else 1),
             "CM": (LY_IDX[city]["att"][w] if MODE != "actual" or w >= 5 or city == "Kolkata" else
                    1),

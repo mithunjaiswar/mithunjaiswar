@@ -20,7 +20,8 @@ Three sheets come out of it:
   catch-up. Before Diwali (w/c 28 Sep - 26 Oct) Kolkata keeps last year's shape (Durga Puja); elsewhere hiring
   dips only in w/c 12, 19 Oct (Durga Puja / Dussehra) and 26 Oct (pre-Diwali), the hires moving to the earlier weeks; November
   recruitment = Lakshya's month average (no stretch), October recruitment and
-  attrition too; the capacity ramp is December's only; w/c 2 Nov attrition keeps 35% of last year's jump (Inputs A3b P).
+  attrition too; the capacity ramp is December's only; w/c 2 Nov attrition keeps 35% of last year's jump (Inputs A3b P); w/c 2 Nov hiring takes last year's
+  Diwali-week dip (Dhanteras - Diwali fall in it this year).
   Its comparison tab shows Lakshya and plan per measure (+ EIP net add), then a last-8-weeks box, the seasonality check
   and the attrition working; its Summary View has a colour scale on every row.
   Same cars as the Lakshya-based plan, so util compares like for like.
