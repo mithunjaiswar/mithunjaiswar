@@ -2263,6 +2263,10 @@ def combined_query():
     return f'=QUERY({{{stack}}},"select {",".join(cols)} where Col2 is not null",0)'
 
 
+# Lakshya v4 'Churn' tab, planning rate: net churn a month on the L+DTO book (x opening book = the month's L+DTO churn)
+LK_CHURN_RATE = {"Mumbai": 0.58, "Delhi NCR": 0.49, "Bangalore": 0.54, "Hyderabad": 0.65, "Chennai": 0.56, "Kolkata": 0.73,
+                 "Pune": 0.68}
+
 # ---------------------------------------------------------------- Lakshya vs Plan vs LY (attrition, recruitment, util)
 CMP_TAB = "Lakshya vs Plan vs LY"
 
@@ -2278,6 +2282,8 @@ def build_cmp(wb):
         ws.column_dimensions[get_column_letter(j)].width = 11
     ws.column_dimensions["AF"].width = 34
     ws.column_dimensions["AG"].width = 52
+    for j in range(34, 48):
+        ws.column_dimensions[get_column_letter(j)].width = 13
     L = get_column_letter
     n = len(CITIES)
     PICK, CF = "$B$3", "$E$3"
@@ -2465,6 +2471,75 @@ def build_cmp(wb):
                 f'&TEXT({att_p}*({ly_a}-1),"0.0%")&" more attrition.",""))', font=Font(name="Calibri", size=10, bold=True, color="FFC00000"))
         c.alignment = Alignment(wrap_text=True, vertical="center")
 
+    CALC_C = SEAS_C + 2                              # attrition working columns (after the seasonality check)
+    CALC_HEADS = [
+        ("L+DTO opening book, month (Lakshya)", NUM), ("Lakshya churn rate a month (Churn tab)", PCT),
+        ("L+DTO churn in the month (book x rate)", NUM), ("Weeks in Lakshya's month", "0"),
+        ("L+DTO churn a week (churn / weeks)", "0.0"), ("Own Now churn + rollover in the month (Lakshya)", NUM),
+        ("Own Now leaving a week (/ weeks)", "0.0"), ("Lakshya drivers leaving a week", "0.0"),
+        ("Lakshya book at week start (Own Now + L+DTO)", NUM), ("Lakshya attrition % (leaving / book) = col B", ATT),
+        ("Plan book at week start (Own Now + L+DTO)", NUM), ("Plan attrition rate this week", ATT),
+        ("Plan drivers leaving (book x rate)", "0.0"), ("Plan attrition % (leaving / book) = col C", ATT),
+    ]
+
+    def calc_cells(r, w, c_, actual):
+        """The attrition working for one week: Lakshya's monthly churn split into the week, and the plan's book x rate."""
+        by_pick = c_ is None
+        m = 0 if w <= 0 else MONTHS.index(WEEK_MONTH[w - 1])          # Lakshya month (Sep = the actual weeks)
+        nwk = 4 if m == 0 else WEEK_MONTH.count(MONTHS[m])
+        def lkv(c, key):
+            if c == "INDIA":
+                return sum(lkv(x, key) for x in CITIES)
+            v = LK_WEEKLY[c]
+            if key == "open":
+                return LK_LDTO_OPEN[c] if m == 0 else LK_LDTO_ME[c][m - 1]
+            if key == "churn":
+                return v["ld_churn"][m]
+            if key == "own":
+                return v["own_churn"][m] + v["own_roll"][m]
+            return LK_CMP[c]["book"][max(w, 0)]
+        def const(key):
+            return (pick([num(lkv(c, key), 2) for c in CITIES], num(lkv("INDIA", key), 2)) if by_pick else lkv(c_, key))
+        C = lambda k: L(CALC_C + k)
+        put(ws, r, CALC_C, const("open"), NUM)
+        if by_pick:
+            put(ws, r, CALC_C + 1, pick([str(LK_CHURN_RATE[c]) for c in CITIES], f"{C(2)}{r}/{C(0)}{r}"), PCT)
+        else:
+            put(ws, r, CALC_C + 1, LK_CHURN_RATE[c_] if c_ != "INDIA" else f"={C(2)}{r}/{C(0)}{r}", PCT)
+        put(ws, r, CALC_C + 2, const("churn"), NUM, bold=True)
+        put(ws, r, CALC_C + 3, nwk, "0")
+        put(ws, r, CALC_C + 4, f"={C(2)}{r}/{C(3)}{r}", "0.0")
+        put(ws, r, CALC_C + 5, const("own"), NUM)
+        put(ws, r, CALC_C + 6, f"={C(5)}{r}/{C(3)}{r}", "0.0")
+        put(ws, r, CALC_C + 7, f"={C(4)}{r}+{C(6)}{r}", "0.0", bold=True)
+        put(ws, r, CALC_C + 8, const("book"), NUM)
+        put(ws, r, CALC_C + 9, f"={C(7)}{r}/{C(8)}{r}", ATT, bold=True, bg=LIGHT)
+        # plan side
+        ss = sheets_ if (by_pick or c_ == "INDIA") else [q(c_)]
+        city = CF if by_pick else ('"*"' if c_ == "INDIA" else f'"{c_}"')
+        cr = OPEN_ROW + w
+        d = f"$A{r}"
+        if actual:
+            put(ws, r, CALC_C + 10, f"={rs('uniq_partners_dt_beginning', 'C', d, city)}", NUM, bg=ACTUAL)
+            put(ws, r, CALC_C + 11, f'=IFERROR({C(12)}{r}/{C(10)}{r},"")', ATT, bg=ACTUAL)
+            put(ws, r, CALC_C + 12, f"={na('B', d, city)}*7/MIN(7,{G_LAST}-{d}+1)", "0.0", bg=ACTUAL)
+        else:
+            book = lambda xs: "+".join(f"{s_}!AH{cr}+{s_}!AP{cr}" for s_ in xs)
+            if by_pick:
+                put(ws, r, CALC_C + 10, pick([book([s_]) for s_ in sheets_], book(sheets_)), NUM)
+                put(ws, r, CALC_C + 11, pick([f"{s_}!BR{cr}" for s_ in sheets_], f"{C(12)}{r}/{C(10)}{r}"), ATT)
+                put(ws, r, CALC_C + 12, pick([f"{C(10)}{r}*{C(11)}{r}"] * len(CITIES), "+".join(f"{s_}!AQ{cr}" for s_ in sheets_)), "0.0",
+                    bold=True)
+            else:
+                put(ws, r, CALC_C + 10, "=" + book(ss), NUM)
+                if c_ == "INDIA":
+                    put(ws, r, CALC_C + 11, f"={C(12)}{r}/{C(10)}{r}", ATT)
+                    put(ws, r, CALC_C + 12, "=" + "+".join(f"{s_}!AQ{cr}" for s_ in ss), "0.0", bold=True)
+                else:
+                    put(ws, r, CALC_C + 11, f"={ss[0]}!BR{cr}", ATT)
+                    put(ws, r, CALC_C + 12, f"={C(10)}{r}*{C(11)}{r}", "0.0", bold=True)
+        put(ws, r, CALC_C + 13, f'=IFERROR({C(12)}{r}/{C(10)}{r},"")', ATT, bold=True, bg=LIGHT)
+
     def write_block(top, c_):
         """Rows for one city (c_ = name / "INDIA") or the pick (c_ = None), starting at row top. Returns the row after."""
         by_pick = c_ is None
@@ -2511,6 +2586,7 @@ def build_cmp(wb):
                     put(ws, r, c0 + 3, f"={a8(k8, PICK if by_pick else (chr(34) + c_ + chr(34)))}", fmt)
                 if part == "plan":
                     seas_cells(r, w, c_, first + NW - 1)
+                calc_cells(r, w, c_, part == "actual")
                 r += 1
             label = "Last 3 weeks avg (actual)" if part == "actual" else "Average 28 Sep - 21 Dec"
             put(ws, r, 1, label, bold=True, bg=LIGHT)
@@ -2554,6 +2630,12 @@ def build_cmp(wb):
         ws.merge_cells(start_row=r0, start_column=SEAS_C, end_row=r0, end_column=SEAS_C + 1)
         hdr(ws, r0 + 1, SEAS_C, "Seasonality not in plan")
         hdr(ws, r0 + 1, SEAS_C + 1, "Action needed")
+        hdr(ws, r0, CALC_C, "HOW ATTRITION IS CALCULATED - LAKSHYA: the Churn tab's monthly L+DTO churn, split into the week", GREY_HDR)
+        ws.merge_cells(start_row=r0, start_column=CALC_C, end_row=r0, end_column=CALC_C + 9)
+        hdr(ws, r0, CALC_C + 10, "PLAN: book x this week's rate", GREY_HDR)
+        ws.merge_cells(start_row=r0, start_column=CALC_C + 10, end_row=r0, end_column=CALC_C + 13)
+        for k, (h, _) in enumerate(CALC_HEADS):
+            hdr(ws, r0 + 1, CALC_C + k, h)
         for t, c0 in groups:
             hdr(ws, r0, c0, t, GREY_HDR)
             ws.merge_cells(start_row=r0, start_column=c0, end_row=r0, end_column=c0 + GW - 1)
@@ -2573,7 +2655,10 @@ def build_cmp(wb):
                 "the week's Monday (Oct = w/c 28 Sep - 26 Oct, Nov = 2 - 30 Nov, Dec = 7 - 21 Dec; Inputs A8, column Q); plan attrition and base "
                 "recruitment are set to match Lakshya's month average (red = the plan's month is more than 2% away from Lakshya's). "
                 "Seasonality check (AF-AG): weeks where last year, lined up on Diwali, saw hiring fall 15%+ or attrition rise 15%+ vs its "
-                "usual level and the plan does not - take the action, or expect the plan to miss by about that much.")
+                "usual level and the plan does not - take the action, or expect the plan to miss by about that much. How attrition is calculated "
+                "(AH-AU): Lakshya = its Churn tab rate x the month's opening L+DTO book = the month's L+DTO churn, / the weeks in Lakshya's "
+                "month, + Own Now churn and rollover / weeks, / the book at week start (= column B). Plan = the book at week start x this "
+                "week's rate (Inputs A3 month average x the festival shape; actual weeks: raw_performance) (= column C).")
 
     # ---- 2. by city, week by week: a block per city, India last
     R2_T = R1_T + 3 + BLOCK + 4
@@ -2583,7 +2668,7 @@ def build_cmp(wb):
     r = R2_T + 3
     for c_ in cols8:
         hdr(ws, r, 1, c_, NAVY)
-        for j in range(2, LASTC + 2):
+        for j in range(2, CALC_C + len(CALC_HEADS)):
             hdr(ws, r, j, "", NAVY)
         r = write_block(r + 1, c_) + 1
     r_end = r
