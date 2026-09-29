@@ -2550,14 +2550,25 @@ def build_cmp(wb):
     groups = [(t, 2 + GW * g) for g, (_, _, _, t, _) in enumerate(measures)]
     GFMT = [f for _, f, _, _, _ in measures]
     W8_C = 2 + GW * len(KEYS)                        # actuals view: the 8-week box, one column per measure
-    MON_C = W8_C + len(KEYS)                         # actuals view: then the month-by-month box, Lakshya and plan per measure
-    LASTC = MON_C + 2 * len(KEYS) if NEWL else W8_C  # first column after the groups
+    MON_C = W8_C + len(KEYS)                         # then the month-by-month box: the month, then Lakshya and plan per measure
 
     def c8(g):                                       # the measure's 8-week column
         return W8_C + g if NEWL else KEYS[g][1] + 3
 
-    def cm(g):                                       # the measure's month columns (Lakshya, plan)
-        return (MON_C + 2 * g, MON_C + 2 * g + 1) if NEWL else (KEYS[g][1] + 4, KEYS[g][1] + 5)
+    def mcols(g):
+        """The measure's month columns: (column, weekly column it rolls up, SUM / AVERAGE, plan?, header)."""
+        key, c0, fmt, k8 = KEYS[g]
+        agg = "SUM" if key in ("added", "sold", "eip") else "AVERAGE"          # cars, EIP: the month's total
+        if not NEWL:
+            return [(c0 + 4, c0, agg, False, None), (c0 + 5, c0 + 1, agg, True, None)]
+        base = MON_C + 1 + sum(4 if KEYS[k][0] == "rec" else 2 for k in range(g))
+        name = measures[g][4] + (" (month total)" if agg == "SUM" else " (a week)")
+        out = [(base, c0, agg, False, name + "\nLakshya"), (base + 1, c0 + 1, agg, True, name + "\nPlan")]
+        if key == "rec":                                                      # recruitment: the month's total as well
+            out += [(base + 2, c0, "SUM", False, "Recruitment (month total)\nLakshya"),
+                    (base + 3, c0 + 1, "SUM", True, "Recruitment (month total)\nPlan")]
+        return out
+    LASTC = MON_C + 1 + sum(len(mcols(g)) for g in range(len(KEYS))) if NEWL else W8_C   # first column after the groups
     LK_REC, PL_REC, PL_ATT = L(KEYS[1][1]), L(KEYS[1][1] + 1), L(KEYS[0][1] + 1)
     sheets_ = [q(c) for c in CITIES]
     ACT_W = (-2, -1, 0)                              # weeks relative to w/c 21 Sep
@@ -2603,6 +2614,10 @@ def build_cmp(wb):
     for j in range(2, SEAS_C):
         ws.column_dimensions[L(j)].width = 11
     ws.column_dimensions[L(SEAS_C)].width = 34
+    if NEWL:
+        for j in range(MON_C + 1, LASTC):
+            ws.column_dimensions[L(j)].width = 12
+        ws.column_dimensions[L(MON_C)].width = 9
     ws.column_dimensions[L(SEAS_C + 1)].width = 52
     MONTH_EDGE = Side(style="medium", color="FF1F3864")
     SEP_EDGE = Side(style="dashed", color="FF1F3864")
@@ -2736,8 +2751,9 @@ def build_cmp(wb):
                 put(ws, r, c0, None, bg=LIGHT)
                 put(ws, r, c0 + 1, f"={a8(k8, sel)}", fmt, bold=True, bg=ACTUAL)
                 put(ws, r, c8(g), f"={a8(k8, sel)}", fmt, bold=True, bg=LIGHT)
-                for j in cm(g):
+                for j, *_ in mcols(g):
                     put(ws, r, j, None, bg=LIGHT)
+            put(ws, r, MON_C, None, bg=LIGHT)
             return r + 1
         for key, c0, fmt, k8 in KEYS:
             put(ws, r, c0, None, bg=LIGHT)
@@ -2825,8 +2841,11 @@ def build_cmp(wb):
                 agg = "SUM" if part == "plan" and key in ("added", "sold", "eip") else "AVERAGE"   # cars, EIP: the 13 weeks' total
                 for j in (c0, c0 + 1, c8(g)):
                     put(ws, r, j, f'=IFERROR({agg}({L(j)}{first}:{L(j)}{r - 1}),"")', fmt, bold=True, bg=LIGHT)
-                for j in cm(g):                                    # month box: cars, EIP = the 3 months' total
-                    put(ws, r, j, f'=SUM({L(j)}{first}:{L(j)}{r - 1})' if agg == "SUM" else None, fmt, bold=True, bg=LIGHT)
+                for j, src, agg_, _, _ in mcols(g):                  # month box: the 13 weeks' average / total
+                    v = f'=IFERROR({agg_}({L(src)}{first}:{L(src)}{r - 1}),"")' if part == "plan" else None
+                    put(ws, r, j, v, fmt, bold=True, bg=LIGHT)
+            if NEWL:
+                put(ws, r, MON_C, "13 weeks" if part == "plan" else None, bold=True, bg=LIGHT).alignment = CENTER
             for j in range(2, 2 if NEWL else LASTC):
                 g, off = divmod(j - 2, GW)
                 cars_total = part == "plan" and g >= 3            # cars added / sold: the 13 weeks' total
@@ -2844,27 +2863,35 @@ def build_cmp(wb):
                 for mon in PLAN_MONTHS:
                     rows_m = [first + w - 1 for w in range(1, NW) if MATCH_MONTH[w - 1] == mon]
                     a_, b_ = rows_m[0], rows_m[-1]
+                    if NEWL:                                            # the month's name
+                        cell = put(ws, a_, MON_C, mon, bold=True, bg=LIGHT)
+                        cell.alignment = CENTER
+                        for rr_ in range(a_ + 1, b_ + 1):
+                            put(ws, rr_, MON_C, None, bg=LIGHT)
+                        cell.border = Border(left=THIN, right=THIN, top=THIN, bottom=MONTH_EDGE)
+                        ws.merge_cells(start_row=a_, start_column=MON_C, end_row=b_, end_column=MON_C)
                     for g, (key, c0, fmt, k8) in enumerate(KEYS):
-                        dl, dp = cm(g)
-                        for dst, src in ((dl, c0), (dp, c0 + 1)):
-                            agg = "SUM" if key in ("added", "sold", "eip") else "AVERAGE"   # cars, EIP: the month's total
+                        mc = mcols(g)
+                        for dst, src, agg, is_plan, _ in mc:
                             cell = put(ws, a_, dst, f'=IFERROR({agg}({L(src)}{a_}:{L(src)}{b_}),"")', fmt,
-                                       bold=(dst == dp), bg=INPUT if dst == dp else LIGHT)
+                                       bold=is_plan, bg=INPUT if is_plan else LIGHT)
                             cell.alignment = CENTER
                             for rr_ in range(a_ + 1, b_ + 1):
-                                put(ws, rr_, dst, None, bg=INPUT if dst == dp else LIGHT)
+                                put(ws, rr_, dst, None, bg=INPUT if is_plan else LIGHT)
                             cell.border = Border(left=THIN, right=THIN, top=THIN, bottom=MONTH_EDGE)   # month split line
                             ws.merge_cells(start_row=a_, start_column=dst, end_row=b_, end_column=dst)
-                        ws.conditional_formatting.add(
-                            f"{L(dp)}{a_}", FormulaRule(formula=[f"ABS({L(dp)}{a_}-{L(dl)}{a_})>0.02*ABS({L(dl)}{a_})+0.0001"],
-                                                        font=RED_FONT))
+                        for k in range(0, len(mc), 2):                  # red = the plan's month more than 2% off Lakshya's
+                            dl, dp = mc[k][0], mc[k + 1][0]
+                            ws.conditional_formatting.add(
+                                f"{L(dp)}{a_}", FormulaRule(formula=[f"ABS({L(dp)}{a_}-{L(dl)}{a_})>0.02*ABS({L(dl)}{a_})+0.0001"],
+                                                            font=RED_FONT))
                     # month split: a thick line under the month's last week, across every column
                     for j in range(1, CALC_C + len(CALC_HEADS)):
                         cell = ws.cell(b_, j)
                         bd = cell.border
                         cell.border = Border(left=bd.left, right=bd.right, top=bd.top, bottom=MONTH_EDGE)
                 # September ends after w/c 28 Sep (it counts in October's averages): a thin dashed line, not through the month cells
-                merged_cols = {j for g in range(len(KEYS)) for j in cm(g)}
+                merged_cols = {j for g in range(len(KEYS)) for j, *_ in mcols(g)} | ({MON_C} if NEWL else set())
                 for j in range(1, CALC_C + len(CALC_HEADS)):
                     if j in merged_cols:
                         continue
@@ -2892,12 +2919,14 @@ def build_cmp(wb):
         if NEWL:
             hdr(ws, r0, W8_C, "LAST 8 WEEKS AVG (actual)", GREY_HDR)
             ws.merge_cells(start_row=r0, start_column=W8_C, end_row=r0, end_column=MON_C - 1)
-            hdr(ws, r0, MON_C, "MONTH BY MONTH - Lakshya vs Plan (a week; cars and EIP: the month's total)", GREY_HDR)
+            hdr(ws, r0, MON_C, "MONTH BY MONTH  -  Lakshya vs Plan  (attrition, util: a week;  recruitment: a week and the month's total;  "
+                               "cars and EIP: the month's total)", GREY_HDR)
             ws.merge_cells(start_row=r0, start_column=MON_C, end_row=r0, end_column=LASTC - 1)
+            hdr(ws, r0 + 1, MON_C, "Month")
             for g, m_ in enumerate(measures):
                 hdr(ws, r0 + 1, c8(g), m_[4])
-                hdr(ws, r0 + 1, cm(g)[0], m_[4] + " - Lakshya")
-                hdr(ws, r0 + 1, cm(g)[1], m_[4] + " - Plan")
+                for j, _, _, is_plan, h in mcols(g):
+                    hdr(ws, r0 + 1, j, h, NAVY if is_plan else GREY_HDR)
         for t, c0 in groups:
             hdr(ws, r0, c0, t, GREY_HDR)
             ws.merge_cells(start_row=r0, start_column=c0, end_row=r0, end_column=c0 + GW - 1)
@@ -2905,7 +2934,7 @@ def build_cmp(wb):
                 if c0 >= 20 and k >= 4:                 # cars added / sold: the month's total, not a weekly average
                     h = h.replace("month avg", "month total")
                 hdr(ws, r0 + 1, c0 + k, h)
-        ws.row_dimensions[r0 + 1].height = 30
+        ws.row_dimensions[r0 + 1].height = 46 if NEWL else 30
 
     # ---- 1. week by week, for the pick
     R1_T = 5
@@ -2921,7 +2950,8 @@ def build_cmp(wb):
                     "the week before Diwali week, by last year's dip, and those hires move to the weeks before); October and November recruitment and "
                     "October attrition = Lakshya's month averages, the capacity ramp is December's; w/c 2 Nov attrition keeps part of last year's jump (Inputs A3b P). Lakshya = Lakshya v4 week by week (EIP: a "
                     "straight line to its December EIP, Inputs A4). Red = plan more than 10% away from Lakshya. The last 8 weeks box = "
-                    "section 3. Month by month box: each month's weekly average (cars added / sold and EIP: the month's total), by the "
+                    "section 3. Month by month box: each month's weekly average (recruitment: also the month's total; cars added / sold "
+                    "and EIP: the month's total), by the "
                     "week's Monday (Oct = w/c 28 Sep - 26 Oct, Nov = 2 - 30 Nov, Dec = 7 - 21 Dec; Inputs A8, column Q); red = the plan's "
                     "month more than 2% away from Lakshya's. Last row: averages; cars added / sold and EIP = the 13 weeks' total. "
                     f"Seasonality check ({sc}): weeks where last year, lined up on Diwali, saw hiring fall 15%+ or attrition rise 15%+ and "
@@ -2933,7 +2963,7 @@ def build_cmp(wb):
                     "at Lakshya's month averages (festival shape within the month) + the steady catch-up to Lakshya's 27 Dec util (Inputs A1); "
                     "EIP on a straight line to Lakshya's December EIP. Lakshya = Lakshya v4 week by week (EIP: the same straight line, "
                     "Inputs A4). Red = plan more than 10% away from Lakshya. The last 8 weeks box = section 3. Month by month box: each "
-                    "month's weekly average (cars added / sold and EIP: the month's total), by the week's Monday (Oct = w/c 28 Sep - 26 Oct, "
+                    "month's weekly average (recruitment: also the month's total; cars added / sold and EIP: the month's total), by the week's Monday (Oct = w/c 28 Sep - 26 Oct, "
                     "Nov = 2 - 30 Nov, Dec = 7 - 21 Dec; Inputs A8, column Q); red = the plan's month more than 2% away from Lakshya's. "
                     "Last row: averages; cars added / sold and EIP = the 13 weeks' total. Cars: plan = bought cars by RTO status + Lakshya's "
                     "cars still to buy (Inputs A6), sold (A7); actual = reporting DB. "
@@ -2969,7 +2999,7 @@ def build_cmp(wb):
     assert r_end + 3 < R8_T, "section 3 overlaps section 2"
     if NEWL:   # centred text, and a navy splitter before every measure, the 8-week box, the month box and the working
         SPLIT = Side(style="medium", color="FF1F3864")
-        split_cols = ({c0 for _, c0, _, _ in KEYS} | {cm(g)[0] for g in range(len(KEYS))}
+        split_cols = ({c0 for _, c0, _, _ in KEYS} | {mcols(g)[0][0] for g in range(len(KEYS))} | {MON_C}
                       | {W8_C, SEAS_C, CALC_C, CALC_C + len(CALC_HEADS)})
         rows = list(range(R1_T + 1, r1_end)) + list(range(R2_T + 1, r_end))
         for rr_ in rows:
