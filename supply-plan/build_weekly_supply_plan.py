@@ -885,7 +885,10 @@ def build_inputs(wb):
         put(ws, r, 12, dt.date.fromisoformat(since), "dd-mmm-yy", font=F_HIST, bg=HIST)
         put(ws, r, 13, f"=B{r}", NUM, font=F_INPUT, bg=INPUT)
         put(ws, r, 14, f"=F{r}", PCT, font=F_INPUT, bg=INPUT)
-        put(ws, r, 15, f"=I{r}" if MODE == "actual" else f"=(Inputs!$E${R_MS0 + i}-Inputs!$B${R_MS0 + i})/{N_WEEKS}",
+        # actuals view: EIP's last 4 weeks (30 Aug - 26 Sep); the 8 weeks (I) include August's Mumbai drop-offs
+        eip4 = (f"=({_raw_sum('eip_vehicles_cnt', r, date=G_LAST)}-{_raw_sum('eip_vehicles_cnt', r, date=f'({G_OPEN_DATE}-28)')})"
+                f"/(({G_LAST}-({G_OPEN_DATE}-28)+1)/7)")
+        put(ws, r, 15, eip4 if MODE == "actual" else f"=(Inputs!$E${R_MS0 + i}-Inputs!$B${R_MS0 + i})/{N_WEEKS}",
             "+#,##0.0;-#,##0.0;0", font=F_INPUT, bg=INPUT)
         put(ws, r, 16, f"=J{r}", "+#,##0.0;-#,##0.0;0", font=F_INPUT, bg=INPUT)
     r = R_RR0 + n
@@ -905,7 +908,8 @@ def build_inputs(wb):
                     + ("ACTUALS-BASED VIEW: hiring = the 8-week rate (M) and attrition = the 8-week rate (N), each times last year's pattern for "
                        "the week (Diwali-aligned, city tab CL-CM). STRETCH: attrition steps down from N to A3b column O by 27 Dec (default: the "
                        "city's best 4 weeks of the last 12, column N), never above that line except in the festival weeks; and a steady extra hiring "
-                       "ramp is added up to each city's best week (Inputs A1 'Capacity'). EIP follows its 8-week trend (O). "
+                       "ramp is added up to each city's best week (Inputs A1 'Capacity'). EIP follows its last 4 weeks (O: 30 Aug - 26 Sep; "
+                       "the 8 weeks in I include August's Mumbai drop-offs). "
                        if MODE == "actual" else
                        "Base recruitment and net attrition follow Lakshya month by month: each month's weeks average to A3b K-M and E-G "
                        "(default = Lakshya's month averages, H-J and B-D), keeping the festival shape within the month, so every month "
@@ -1569,7 +1573,7 @@ def build_readme(wb):
         c = ws.cell(4, 1, "ACTUALS-BASED VIEW: hiring and attrition = the last 8 weeks' average (w/c 3 Aug - 26 Sep) x last year's week-by-week "
                           "pattern, Diwali-aligned (w/c 9 Nov 2026 = w/c 20 Oct 2025; city tab columns CL-CM). STRETCH: attrition steps down to each "
                           "city's best 4 weeks of the last 12 by 27 Dec (Inputs A3b N-O; above that line only in festival weeks), and hiring adds a steady ramp toward Lakshya but never "
-                          "above the city's best week of the last year (Inputs A1 'Capacity'; 'Run rate' = no stretch). EIP follows its 8-week trend. Cars (bought + Lakshya's still to buy) and cars sold are the same as the Lakshya-based "
+                          "above the city's best week of the last year (Inputs A1 'Capacity'; 'Run rate' = no stretch). EIP follows its last 4 weeks. Cars (bought + Lakshya's still to buy) and cars sold are the same as the Lakshya-based "
                           "plan, so util compares like for like. The Lakshya month-matching described below is NOT used here.")
         c.font = Font(name="Calibri", size=10, bold=True, color="FFC00000")
         c.alignment = Alignment(wrap_text=True, vertical="top")
