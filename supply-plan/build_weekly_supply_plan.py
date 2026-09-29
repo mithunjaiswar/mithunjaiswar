@@ -2528,10 +2528,14 @@ def build_cmp(wb):
     groups = [(t, 2 + GW * g) for g, (_, _, _, t, _) in enumerate(measures)]
     GFMT = [f for _, f, _, _, _ in measures]
     W8_C = 2 + GW * len(KEYS)                        # actuals view: the 8-week box, one column per measure
-    LASTC = W8_C + len(KEYS) if ACTL else W8_C       # first column after the groups
+    MON_C = W8_C + len(KEYS)                         # actuals view: then the month-by-month box, Lakshya and plan per measure
+    LASTC = MON_C + 2 * len(KEYS) if ACTL else W8_C  # first column after the groups
 
     def c8(g):                                       # the measure's 8-week column
         return W8_C + g if ACTL else KEYS[g][1] + 3
+
+    def cm(g):                                       # the measure's month columns (Lakshya, plan)
+        return (MON_C + 2 * g, MON_C + 2 * g + 1) if ACTL else (KEYS[g][1] + 4, KEYS[g][1] + 5)
     LK_REC, PL_REC, PL_ATT = L(KEYS[1][1]), L(KEYS[1][1] + 1), L(KEYS[0][1] + 1)
     sheets_ = [q(c) for c in CITIES]
     ACT_W = (-2, -1, 0)                              # weeks relative to w/c 21 Sep
@@ -2710,6 +2714,8 @@ def build_cmp(wb):
                 put(ws, r, c0, None, bg=LIGHT)
                 put(ws, r, c0 + 1, f"={a8(k8, sel)}", fmt, bold=True, bg=ACTUAL)
                 put(ws, r, c8(g), f"={a8(k8, sel)}", fmt, bold=True, bg=LIGHT)
+                for j in cm(g):
+                    put(ws, r, j, None, bg=LIGHT)
             return r + 1
         for key, c0, fmt, k8 in KEYS:
             put(ws, r, c0, None, bg=LIGHT)
@@ -2797,6 +2803,8 @@ def build_cmp(wb):
                 agg = "SUM" if part == "plan" and key in ("added", "sold", "eip") else "AVERAGE"   # cars, EIP: the 13 weeks' total
                 for j in (c0, c0 + 1, c8(g)):
                     put(ws, r, j, f'=IFERROR({agg}({L(j)}{first}:{L(j)}{r - 1}),"")', fmt, bold=True, bg=LIGHT)
+                for j in cm(g):                                    # month box: cars, EIP = the 3 months' total
+                    put(ws, r, j, f'=SUM({L(j)}{first}:{L(j)}{r - 1})' if agg == "SUM" else None, fmt, bold=True, bg=LIGHT)
             for j in range(2, 2 if ACTL else LASTC):
                 g, off = divmod(j - 2, GW)
                 cars_total = part == "plan" and g >= 3            # cars added / sold: the 13 weeks' total
@@ -2814,26 +2822,27 @@ def build_cmp(wb):
                 for mon in PLAN_MONTHS:
                     rows_m = [first + w - 1 for w in range(1, NW) if MATCH_MONTH[w - 1] == mon]
                     a_, b_ = rows_m[0], rows_m[-1]
-                    for g, (key, c0, fmt, k8) in enumerate(() if ACTL else KEYS):
-                        for off, src in ((4, c0), (5, c0 + 1)):
-                            agg = "SUM" if key in ("added", "sold") else "AVERAGE"   # cars: the month's total
-                            cell = put(ws, a_, c0 + off, f'=IFERROR({agg}({L(src)}{a_}:{L(src)}{b_}),"")', fmt,
-                                       bold=(off == 5), bg=INPUT if off == 5 else LIGHT)
+                    for g, (key, c0, fmt, k8) in enumerate(KEYS):
+                        dl, dp = cm(g)
+                        for dst, src in ((dl, c0), (dp, c0 + 1)):
+                            agg = "SUM" if key in ("added", "sold", "eip") else "AVERAGE"   # cars, EIP: the month's total
+                            cell = put(ws, a_, dst, f'=IFERROR({agg}({L(src)}{a_}:{L(src)}{b_}),"")', fmt,
+                                       bold=(dst == dp), bg=INPUT if dst == dp else LIGHT)
                             cell.alignment = CENTER
                             for rr_ in range(a_ + 1, b_ + 1):
-                                put(ws, rr_, c0 + off, None, bg=INPUT if off == 5 else LIGHT)
+                                put(ws, rr_, dst, None, bg=INPUT if dst == dp else LIGHT)
                             cell.border = Border(left=THIN, right=THIN, top=THIN, bottom=MONTH_EDGE)   # month split line
-                            ws.merge_cells(start_row=a_, start_column=c0 + off, end_row=b_, end_column=c0 + off)
+                            ws.merge_cells(start_row=a_, start_column=dst, end_row=b_, end_column=dst)
                         ws.conditional_formatting.add(
-                            f"{L(c0 + 5)}{a_}", FormulaRule(formula=[f"ABS({L(c0 + 5)}{a_}-{L(c0 + 4)}{a_})>0.02*ABS({L(c0 + 4)}{a_})+0.0001"],
-                                                            font=RED_FONT))
+                            f"{L(dp)}{a_}", FormulaRule(formula=[f"ABS({L(dp)}{a_}-{L(dl)}{a_})>0.02*ABS({L(dl)}{a_})+0.0001"],
+                                                        font=RED_FONT))
                     # month split: a thick line under the month's last week, across every column
                     for j in range(1, CALC_C + len(CALC_HEADS)):
                         cell = ws.cell(b_, j)
                         bd = cell.border
                         cell.border = Border(left=bd.left, right=bd.right, top=bd.top, bottom=MONTH_EDGE)
                 # September ends after w/c 28 Sep (it counts in October's averages): a thin dashed line, not through the month cells
-                merged_cols = set() if ACTL else {c0 + off for _, c0, _, _ in KEYS for off in (4, 5)}
+                merged_cols = {j for g in range(len(KEYS)) for j in cm(g)}
                 for j in range(1, CALC_C + len(CALC_HEADS)):
                     if j in merged_cols:
                         continue
@@ -2860,9 +2869,13 @@ def build_cmp(wb):
             hdr(ws, r0 + 1, CALC_C + k, h)
         if ACTL:
             hdr(ws, r0, W8_C, "LAST 8 WEEKS AVG (actual)", GREY_HDR)
-            ws.merge_cells(start_row=r0, start_column=W8_C, end_row=r0, end_column=LASTC - 1)
+            ws.merge_cells(start_row=r0, start_column=W8_C, end_row=r0, end_column=MON_C - 1)
+            hdr(ws, r0, MON_C, "MONTH BY MONTH - Lakshya vs Plan (a week; cars and EIP: the month's total)", GREY_HDR)
+            ws.merge_cells(start_row=r0, start_column=MON_C, end_row=r0, end_column=LASTC - 1)
             for g, m_ in enumerate(measures):
                 hdr(ws, r0 + 1, c8(g), m_[4])
+                hdr(ws, r0 + 1, cm(g)[0], m_[4] + " - Lakshya")
+                hdr(ws, r0 + 1, cm(g)[1], m_[4] + " - Plan")
         for t, c0 in groups:
             hdr(ws, r0, c0, t, GREY_HDR)
             ws.merge_cells(start_row=r0, start_column=c0, end_row=r0, end_column=c0 + GW - 1)
@@ -2884,8 +2897,9 @@ def build_cmp(wb):
                     "year's Diwali-aligned shape (before Diwali only Kolkata keeps it, for Durga Puja); November recruitment = Lakshya's month "
                     "average; w/c 2 Nov attrition keeps part of last year's jump (Inputs A3b P). Lakshya = Lakshya v4 week by week (EIP: a "
                     "straight line to its December EIP, Inputs A4). Red = plan more than 10% away from Lakshya. The last 8 weeks box = "
-                    "section 3. Last row: averages; cars added / sold and EIP = the 13 weeks' total. Thick lines = month ends by the "
-                    "week's Monday (Inputs A8, column Q). "
+                    "section 3. Month by month box: each month's weekly average (cars added / sold and EIP: the month's total), by the "
+                    "week's Monday (Oct = w/c 28 Sep - 26 Oct, Nov = 2 - 30 Nov, Dec = 7 - 21 Dec; Inputs A8, column Q); red = the plan's "
+                    "month more than 2% away from Lakshya's. Last row: averages; cars added / sold and EIP = the 13 weeks' total. "
                     f"Seasonality check ({sc}): weeks where last year, lined up on Diwali, saw hiring fall 15%+ or attrition rise 15%+ and "
                     f"the plan does not - take the action, or expect the plan to miss by about that much. How attrition is calculated ({cc}): "
                     "Lakshya = its Churn tab rate x the month's opening L+DTO book, / the weeks in the month, + Own Now churn and rollover / "
