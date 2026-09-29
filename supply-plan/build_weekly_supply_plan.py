@@ -754,7 +754,7 @@ def build_inputs(wb):
         ("Actuals used up to", dt.date(2026, 9, 26), DATE, True,
          "The plan is based on actuals up to this day (Sat 26 Sep): opening numbers, the run rate and the last actual week "
          "(w/c 21 Sep, 6 of 7 days, scaled to a week). Move it on only when newer days are loaded in raw_performance."),
-        ("December target", "Capacity" if MODE == "actual" else "Lakshya", None, True,
+        ("December target", "Capacity" if MODE == "actual" else "Run rate", None, True,
          "Lakshya (used) = a steady hiring ramp so every city's util on 27 Dec equals Lakshya's util (Lakshya on road / Lakshya fleet, "
          "times our fleet); weeks above the city's best (proven capacity) show red. Capacity = the same ramp, never above proven "
          "capacity (lands lower). Run rate = no extra hiring."),
@@ -905,8 +905,9 @@ def build_inputs(wb):
                        "EIP follows its 8-week trend (O). Columns Q-AB are for reference. "
                        if MODE == "actual" else
                        "Base recruitment and net attrition follow Lakshya month by month: each month's weeks average to Z-AB and T-V "
-                       "(default = Lakshya's month averages, W-Y and Q-S), keeping the festival shape within the month; a steady catch-up "
-                       "on top brings 27 Dec util to Lakshya's (Inputs A1). M and N (the last 8 weeks) are for reference. "
+                       "(default = Lakshya's month averages, W-Y and Q-S), keeping the festival shape within the month, so every month "
+                       "matches Lakshya. Inputs A1 'Lakshya' adds a steady catch-up so 27 Dec util equals Lakshya's (recruitment then runs "
+                       "above Lakshya's). M and N (the last 8 weeks) are for reference. "
                        "EIP grows on a straight line to Lakshya's December EIP (A4). Festival dips on top (Seasonality Check, section 1)."))
 
     # ---- A4. Lakshya month-end targets
@@ -1034,7 +1035,9 @@ def build_inputs(wb):
     note(ws, R_FUT0 + n + 1, "FLAG: cars in this table are not bought yet. A car ordered now takes the 'RTO process not started' "
                              "window above to reach the road, so Lakshya's months only hold if orders go in by the dates shown.")
     # weekly deliveries
-    ws.cell(R_ADD_H - 1, 1, "Cars reaching the fleet each plan week (drivers are hired for them the following week)").font = F_BOLD
+    ws.cell(R_ADD_H - 1, 1, "Cars reaching the fleet each plan week (drivers are hired for them the following week)" +
+            ("" if MODE == "actual" else " - Lakshya's weekly schedule (cream: change to the real delivery weeks); the bought cars "
+                                         "by RTO status above are part of it")).font = F_BOLD
     hdr(ws, R_ADD_H, 1, "City")
     for w in range(N_WEEKS):
         c = hdr(ws, R_ADD_H, 2 + w, f"=B{R_CAL0 + w}")
@@ -1045,6 +1048,9 @@ def build_inputs(wb):
         r = R_ADD0 + i
         put(ws, r, 1, city, bold=True)
         for w in range(N_WEEKS):
+            if MODE != "actual":                     # Lakshya-based plan: cars land on Lakshya's weekly schedule
+                inp(ws, r, 2 + w, round(LK_CMP[city]["added"][w + 1], 2), NUM)
+                continue
             terms = [f"IF(AND({w + 1}>=$B${R_WIN0 + s},{w + 1}<=$C${R_WIN0 + s}),{L(2 + s)}{R_STK0 + i}/($C${R_WIN0 + s}-$B${R_WIN0 + s}+1),0)"
                      for s in range(len(DELIVERY_WINDOWS))]
             m = PLAN_MONTHS.index(WEEK_MONTH[w])
@@ -1091,7 +1097,7 @@ def build_inputs(wb):
             parts_ = [x for x in (EVENTS_ALL.get(w + 1), EVENTS_CITY.get((city, w + 1))) if x]
             inp(ws, r, 7 + k, "; ".join(parts_) if parts_ else "")
         inp(ws, r, 14, WEEK_MONTH[w])
-        inp(ws, r, 15, "" if MODE == "actual" else HIRE_CAP.get(w + 1, ""), NUM)
+        inp(ws, r, 15, "", NUM)                   # hiring cap (e.g. 200 in w/c 16 and 23 Nov); blank = none
         inp(ws, r, 16, "" if MODE == "actual" or w + 1 not in MOVE_TO_WEEKS else "Yes")
         inp(ws, r, 17, MATCH_MONTH[w])
     r = R_CAL0 + N_WEEKS
