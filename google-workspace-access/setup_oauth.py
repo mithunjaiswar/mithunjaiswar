@@ -27,12 +27,12 @@ TOKEN_PATH = os.path.join(SCRIPT_DIR, "token.json")
 # MCP servers). Extend further (and enable the matching APIs in Cloud
 # Console) for Docs/Slides/Calendar, e.g.:
 #   "https://www.googleapis.com/auth/documents"
-#   "https://www.googleapis.com/auth/presentations"
 #   "https://www.googleapis.com/auth/calendar"
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/presentations",
 ]
 
 
