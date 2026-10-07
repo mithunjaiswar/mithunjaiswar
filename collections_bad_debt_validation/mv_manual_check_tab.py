@@ -1,13 +1,17 @@
 """ADD (never replace/delete) a tab with an MV sample for manual checking.
 
-Layout: Week | City | Employee/Agent | then for every other MV column: <col> (MV) | <col> (Manual) | <col> Matched? (formula)
-        | Final Status (formula). Row 2 = match % per column over the rows where Manual is filled.
-Usage: python3 mv_manual_check_tab.py <D> <token.json> <tab title>
-<D>/mv_sample.json = list of rows in MV column order (53 columns)."""
-import sys, json, time
+Layout: Week | City | Employee/Agent | then for every MV column (except id, driven_week):
+        <col> (MV) | <col> (Sheet) | <col> (Manual) | <col> Matched? (formula) | ... | Final Status (formula).
+Matched? compares MV with Manual when Manual is filled, otherwise MV with Sheet.
+Row 2 = match % per column.
+Usage: python3 mv_manual_check_tab.py <D> <token.json> <tab title> [--replace]
+<D>/mv_sample.json = rows in MV column order (53 columns); <D>/sheet.csv = Raw_Data rows; <D>/specs.pkl = column map.
+--replace only replaces THIS tab (refuses if any Manual cell is already filled)."""
+import sys, json, time, csv, pickle
 import requests
 
 D, TOKEN, TAB = sys.argv[1], sys.argv[2], sys.argv[3]
+REPLACE = '--replace' in sys.argv
 SID = '1Vn58kq_-i8ywbaT_zBx8P7fgahqxKeoNX_RD6o8Vjfo'
 API = 'https://sheets.googleapis.com/v4/spreadsheets'
 COLS = ('id, driven_week, hissab_week, partner_etm, lead_id, city, eip_tag, fuel_type, product_type, revshare_days_working, '
@@ -21,7 +25,31 @@ COLS = ('id, driven_week, hissab_week, partner_etm, lead_id, city, eip_tag, fuel
         'cars_under_recovery_hissab_week, recovery_tat, active_fleet_cash_blocked, location, revenue_type, '
         'total_collected_100_pct').split(', ')
 KEYS = ['hissab_week', 'city', 'partner_etm']
-REST = [c for c in COLS if c not in KEYS]
+REST = [c for c in COLS if c not in KEYS + ['id', 'driven_week']]
+SPECS = {s['pg']: s for s in pickle.load(open(f'{D}/specs.pkl', 'rb'))['specs']}
+SPECS['total_collected_100_pct'] = {'pg': 'total_collected_100_pct', 'sheet': 'till_sun_100pct', 'kind': 'num'}
+SPECS['eip_tag'] = {'pg': 'eip_tag', 'sheet': 'eip_filter', 'kind': 'eip'}
+SHEET = {}
+for r in csv.DictReader(open(f'{D}/sheet.csv')):
+    SHEET[(r['hisaab_week'], r['partner_et_id'].strip().upper())] = r
+
+def sheet_value(c, v):
+    sp = SPECS.get(c)
+    if c == 'for_collections':
+        return 1 if (v['hissab_week'], v['partner_etm'].upper()) in SHEET else 0
+    if not sp or sp['kind'] not in ('num', 'txt', 'eip', 'bool') or sp.get('sheet') not in next(iter(SHEET.values())):
+        return 'N/A (not in Sheet)'
+    row = SHEET.get((v['hissab_week'], v['partner_etm'].upper()))
+    if row is None:
+        return 'Not in Sheet'
+    x = row[sp['sheet']]
+    if sp['kind'] == 'eip':
+        return {'EIP': 1, 'SINGLE': 0}.get(x, x)
+    if sp['kind'] == 'bool':
+        return {'Yes': 'true', 'No': 'false'}.get(x, x)
+    if sp['kind'] == 'num':
+        x = x.replace(',', '').replace('%', '')
+    return x
 
 def col_letter(i):  # 0-based -> A1 letters
     s = ''
@@ -39,17 +67,17 @@ last = FIRST + n - 1
 
 hdr = ['Week', 'City', 'Employee/Agent']
 for c in REST:
-    hdr += [f'{c} (MV)', f'{c} (Manual)', f'{c} Matched?']
+    hdr += [f'{c} (MV)', f'{c} (Sheet)', f'{c} (Manual)', f'{c} Matched?']
 hdr.append('Final Status')
 ncol = len(hdr)
 fin = col_letter(ncol - 1)
 first_m, last_m = col_letter(3), col_letter(ncol - 2)
 
-pct = ['', '', 'Match % (rows where Manual filled) ->']
+pct = ['', '', 'Match % ->  (Matched? = MV vs Manual if Manual filled, else MV vs Sheet)']
 for j, c in enumerate(REST):
-    m = col_letter(3 + 3 * j + 2)
+    m = col_letter(3 + 4 * j + 3)
     rng = f'{m}{FIRST}:{m}{last}'
-    pct += ['', '', f'=IFERROR(COUNTIF({rng},"Matched")/(COUNTIF({rng},"Matched")+COUNTIF({rng},"Not Matched")),"")']
+    pct += ['', '', '', f'=IFERROR(COUNTIF({rng},"Matched")/(COUNTIF({rng},"Matched")+COUNTIF({rng},"Not Matched")),"")']
 pct.append(f'=IFERROR(COUNTIF({fin}{FIRST}:{fin}{last},"Matched")/(COUNTIF({fin}{FIRST}:{fin}{last},"Matched")+COUNTIF({fin}{FIRST}:{fin}{last},"Not Matched")),"")')
 
 data = []
@@ -58,10 +86,12 @@ for k, r in enumerate(rows):
     v = dict(zip(COLS, r))
     line = [v['hissab_week'], v['city'], v['partner_etm']]
     for j, c in enumerate(REST):
-        mv, man = col_letter(3 + 3 * j) + str(rn), col_letter(3 + 3 * j + 1) + str(rn)
-        line += [v[c], '',
-                 f'=IF({man}="","",IF(AND(ISNUMBER({mv}),ISNUMBER({man})),IF(ABS({mv}-{man})<=1,"Matched","Not Matched"),'
-                 f'IF(LOWER(TRIM(TO_TEXT({mv})))=LOWER(TRIM(TO_TEXT({man}))),"Matched","Not Matched")))']
+        mv, sh, man = (col_letter(3 + 4 * j + o) + str(rn) for o in range(3))
+        ref = f'IF({man}<>"",{man},{sh})'
+        line += [v[c], sheet_value(c, v), '',
+                 f'=IF(OR({ref}="",{ref}="N/A (not in Sheet)",{ref}="Not in Sheet"),"",'
+                 f'IF(AND(OR(ISNUMBER({mv}),{mv}=""),ISNUMBER({ref})),IF(ABS(N({mv})-{ref})<=1,"Matched","Not Matched"),'
+                 f'IF(LOWER(TRIM(TO_TEXT({mv})))=LOWER(TRIM(TO_TEXT({ref}))),"Matched","Not Matched")))']
     line.append(f'=IF(COUNTIF({first_m}{rn}:{last_m}{rn},"Not Matched")>0,"Not Matched",'
                 f'IF(COUNTIF({first_m}{rn}:{last_m}{rn},"Matched")>0,"Matched","Pending"))')
     data.append(line)
@@ -81,11 +111,19 @@ def call(method, url, **kw):
         return resp.json()
 
 meta = call('GET', f'{API}/{SID}', params={'fields': 'sheets.properties'})
-if any(s['properties']['title'] == TAB for s in meta['sheets']):
-    raise SystemExit(f'Tab "{TAB}" already exists - not touching it. Choose another name.')
-resp = call('POST', f'{API}/{SID}:batchUpdate', json={'requests': [{'addSheet': {'properties': {
+old = [s['properties'] for s in meta['sheets'] if s['properties']['title'] == TAB]
+pre = []
+if old:
+    if not REPLACE:
+        raise SystemExit(f'Tab "{TAB}" already exists - not touching it. Use --replace or another name.')
+    cur = call('GET', f"{API}/{SID}/values/'{TAB}'!1:{old[0]['gridProperties']['rowCount']}").get('values', [])
+    mi = [i for i, h in enumerate(cur[0]) if h.endswith('(Manual)')] if cur else []
+    if any(i < len(r) and r[i] != '' for r in cur[2:] for i in mi):
+        raise SystemExit('Manual values already entered in this tab - not replacing it.')
+    pre = [{'deleteSheet': {'sheetId': old[0]['sheetId']}}]
+resp = call('POST', f'{API}/{SID}:batchUpdate', json={'requests': pre + [{'addSheet': {'properties': {
     'title': TAB, 'gridProperties': {'rowCount': last + 2, 'columnCount': ncol, 'frozenRowCount': 2, 'frozenColumnCount': 3}}}}]})
-tid = resp['replies'][0]['addSheet']['properties']['sheetId']
+tid = resp['replies'][-1]['addSheet']['properties']['sheetId']
 
 call('PUT', f"{API}/{SID}/values/'{TAB}'!A1", params={'valueInputOption': 'RAW'}, json={'values': [hdr]})
 call('PUT', f"{API}/{SID}/values/'{TAB}'!A2", params={'valueInputOption': 'USER_ENTERED'}, json={'values': [pct]})
@@ -104,7 +142,7 @@ reqs = [{'repeatCell': {'range': {'sheetId': tid, 'startRowIndex': 0, 'endRowInd
                                                  'startColumnIndex': 0, 'endColumnIndex': ncol}}}}]
 for j in range(len(REST)):  # yellow = cells to fill manually
     reqs.append({'repeatCell': {'range': {'sheetId': tid, 'startRowIndex': FIRST - 1, 'endRowIndex': last,
-                                          'startColumnIndex': 3 + 3 * j + 1, 'endColumnIndex': 3 + 3 * j + 2},
+                                          'startColumnIndex': 3 + 4 * j + 2, 'endColumnIndex': 3 + 4 * j + 3},
                                 'cell': {'userEnteredFormat': {'backgroundColor': yellow}}, 'fields': 'userEnteredFormat.backgroundColor'}})
 rng = {'sheetId': tid, 'startRowIndex': FIRST - 1, 'endRowIndex': last, 'startColumnIndex': 3, 'endColumnIndex': ncol}
 for txt, colr in (('Not Matched', {'red': 0.98, 'green': 0.85, 'blue': 0.85}), ('Matched', {'red': 0.85, 'green': 0.94, 'blue': 0.85})):
