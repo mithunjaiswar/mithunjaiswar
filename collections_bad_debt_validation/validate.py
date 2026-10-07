@@ -99,14 +99,15 @@ def r_city(mask):
 
 def r_eip(mask):
     out = np.full(len(b), DD, dtype=object)
-    out[blank('pg_eip_tag')] = 'PG eip_tag is NULL (is_eip = 0 for same row)'
+    out[blank('pg_eip_tag')] = 'PG eip_tag is NULL (product_type not EIP)'
+    out[(T('pg_eip_tag').eq('1') & T('sh_eip_filter').eq('SINGLE')).values] = 'PG issue (07-Oct refresh): PG eip_tag = 1 (EIP) although the driven-week hisaab leasing_type is SINGLE; Sheet SINGLE is correct'
     return out
 
 def r_product(mask):
     out = np.full(len(b), DD + ' - product classification differs', dtype=object)
     pt, st, rv, rs = T('pg_product_type'), T('sh_product_type'), T('pg_revenue_type'), T('sh_revenue_type')
     out[(rv.eq('') & pt.eq('SINGLE')).values] = 'PG revenue_type is NULL so PG product_type defaults to SINGLE; Sheet classifies as D2O / Own Now'
-    out[(pt.eq('EIP') & T('pg_is_eip').eq('0')).values] = 'PG internal inconsistency: product_type = EIP but is_eip = 0 / eip_tag = 0; Sheet (eip_filter SINGLE) correct'
+    out[(pt.eq('EIP') & T('pg_eip_tag').isin(['0',''])).values] = 'PG internal inconsistency: product_type = EIP but eip_tag = 0; Sheet (eip_filter SINGLE) correct'
     lv = (rv.str.lower() != rs.str.lower()) & rv.ne('')
     out[(lv & ~(pt.eq('EIP'))).values] = 'Revenue type differs between PG and Sheet (Leasing vs D2O / Own Now) so product_type differs - ' + DD + ' on contract mapping'
     return out
@@ -154,6 +155,13 @@ def r_tillwed(mask):
     capped = np.minimum(a, np.abs(np.minimum(tos, 0)))
     out[np.abs(capped - c) <= 1] = 'Definition difference: Sheet till_wed_100pct caps collection at 100% of OS; PG collection_till_wed is the actual (uncapped) amount'
     out[cur.values & (out == DD)] = R['INPROG'] + ' Mon-Wed collections still being posted.'
+    return out
+
+def r_coll100(mask):
+    out = np.full(len(b), DD, dtype=object)
+    a, c, tos = N('pg_total_collected_100_pct'), N('sh_till_sun_100pct'), N('pg_total_os')
+    out[cur.values] = R['INPROG'] + ' Collections of the running week still being posted.'
+    out[(np.abs(np.minimum(N('pg_total_collected_amount_in_week'), np.abs(np.minimum(tos, 0))) - c) <= 1) & (out == DD)] = 'Definition difference: Sheet caps at 100% of OS differently from PG total_collected_100_pct'
     return out
 
 def r_bd(mask):
@@ -328,7 +336,7 @@ spec('recovery_tat', 'car_recovery_pending_tat', 'num', rfn=r_tat)
 spec('active_fleet_cash_blocked', None, 'none')
 spec('location', 'allocation_location', 'txt', rfn=r_loc)
 spec('revenue_type', 'revenue_type', 'txt', rfn=r_revenue)
-spec('is_eip', 'eip_filter', 'eip', rfn=r_eip)
+spec('total_collected_100_pct', 'till_sun_100pct', 'num', rfn=r_coll100)
 
 assert [x['pg'] for x in specs] == [c[3:] for c in p.columns if c.startswith('pg_')], 'every PG column must be specified'
 

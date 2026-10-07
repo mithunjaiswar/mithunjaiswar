@@ -37,7 +37,7 @@ def call(method, url, **kw):
 ag = pd.read_pickle(f'{OUT}/agent.pkl').sort_values(['week', 'city', 'employee']).reset_index(drop=True)
 specs = pickle.load(open(f'{OUT}/specs.pkl', 'rb'))['specs']
 sheet_order = next(csv.reader(open(f'{D}/sheet.csv')))
-pairs = [s for s in specs if s['kind'] in ('num', 'txt', 'eip', 'bool') and s['pg'] != 'eip_tag']   # is_eip covers eip_filter
+pairs = [s for s in specs if s['kind'] in ('num', 'txt', 'eip', 'bool') ]
 pairs.sort(key=lambda s: sheet_order.index(s['sheet']))
 
 def num(x):
@@ -80,7 +80,7 @@ sid = json.load(open(f'{OUT}/new_gsheet.json'))['spreadsheetId']
 meta = call('GET', f'{API}/{sid}', params={'fields': 'sheets.properties'})
 reqs = [{'addSheet': {'properties': {'title': TAB + '_tmp', 'gridProperties': {
     'rowCount': len(rows) + 5, 'columnCount': len(rows[0]), 'frozenRowCount': 1, 'frozenColumnCount': 3}}}}]
-reqs += [{'deleteSheet': {'sheetId': s['properties']['sheetId']}} for s in meta['sheets']]
+reqs += [{'deleteSheet': {'sheetId': s['properties']['sheetId']}} for s in meta['sheets'] if s['properties']['title'] in (TAB, TAB + '_tmp')]
 resp = call('POST', f'{API}/{sid}:batchUpdate', json={'requests': reqs})
 new_id = resp['replies'][0]['addSheet']['properties']['sheetId']
 call('POST', f'{API}/{sid}:batchUpdate', json={'requests': [
