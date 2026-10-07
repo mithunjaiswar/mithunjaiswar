@@ -61,7 +61,7 @@ def col_letter(i):  # 0-based -> A1 letters
 
 rows = json.load(open(f'{D}/mv_sample.json'))
 rows.sort(key=lambda r: (r[COLS.index('hissab_week')], r[COLS.index('city')], r[COLS.index('partner_etm')]))
-FIRST = 3  # first data row (row 1 header, row 2 match %)
+FIRST = 5  # rows 1-2 = Matched / Not Matched counts, row 3 blank, row 4 header
 n = len(rows)
 last = FIRST + n - 1
 
@@ -73,12 +73,18 @@ ncol = len(hdr)
 fin = col_letter(ncol - 1)
 first_m, last_m = col_letter(3), col_letter(ncol - 2)
 
-pct = ['', '', 'Match % ->  (Matched? = MV vs Manual if Manual filled, else MV vs Sheet)']
-for j, c in enumerate(REST):
-    m = col_letter(3 + 4 * j + 3)
+WEEK = rows[0][COLS.index('hissab_week')] if rows else ''
+top = [['', '', 'Matched? = MV vs Manual if Manual filled, else MV vs Sheet'], [WEEK, '', f'{len(rows)} employees']]
+for j, c in enumerate(list(REST) + ['__final__']):
+    m = fin if c == '__final__' else col_letter(3 + 4 * j + 3)
     rng = f'{m}{FIRST}:{m}{last}'
-    pct += ['', '', '', f'=IFERROR(COUNTIF({rng},"Matched")/(COUNTIF({rng},"Matched")+COUNTIF({rng},"Not Matched")),"")']
-pct.append(f'=IFERROR(COUNTIF({fin}{FIRST}:{fin}{last},"Matched")/(COUNTIF({fin}{FIRST}:{fin}{last},"Matched")+COUNTIF({fin}{FIRST}:{fin}{last},"Not Matched")),"")')
+    for k, lab in enumerate(('Matched', 'Not Matched')):
+        cnt = f'COUNTIF({rng},"{lab}")'
+        cell = [lab, f'={cnt}', f'=IFERROR({cnt}/(COUNTIF({rng},"Matched")+COUNTIF({rng},"Not Matched")),"")']
+        if c == '__final__':
+            top[k] += cell
+        else:
+            top[k] += cell + ['']
 
 data = []
 for k, r in enumerate(rows):
@@ -117,29 +123,33 @@ if old:
     if not REPLACE:
         raise SystemExit(f'Tab "{TAB}" already exists - not touching it. Use --replace or another name.')
     cur = call('GET', f"{API}/{SID}/values/'{TAB}'!1:{old[0]['gridProperties']['rowCount']}").get('values', [])
-    mi = [i for i, h in enumerate(cur[0]) if h.endswith('(Manual)')] if cur else []
-    if any(i < len(r) and r[i] != '' for r in cur[2:] for i in mi):
+    hi = next((k for k, r in enumerate(cur) if any(str(h).endswith('(Manual)') for h in r)), 0)
+    mi = [i for i, h in enumerate(cur[hi]) if str(h).endswith('(Manual)')] if cur else []
+    if any(i < len(r) and r[i] != '' for r in cur[hi + 1:] for i in mi):
         raise SystemExit('Manual values already entered in this tab - not replacing it.')
     pre = [{'deleteSheet': {'sheetId': old[0]['sheetId']}}]
 resp = call('POST', f'{API}/{SID}:batchUpdate', json={'requests': pre + [{'addSheet': {'properties': {
-    'title': TAB, 'gridProperties': {'rowCount': last + 2, 'columnCount': ncol, 'frozenRowCount': 2, 'frozenColumnCount': 3}}}}]})
+    'title': TAB, 'gridProperties': {'rowCount': last + 2, 'columnCount': ncol + 2, 'frozenRowCount': 4, 'frozenColumnCount': 3}}}}]})
 tid = resp['replies'][-1]['addSheet']['properties']['sheetId']
 
-call('PUT', f"{API}/{SID}/values/'{TAB}'!A1", params={'valueInputOption': 'RAW'}, json={'values': [hdr]})
-call('PUT', f"{API}/{SID}/values/'{TAB}'!A2", params={'valueInputOption': 'USER_ENTERED'}, json={'values': [pct]})
+call('PUT', f"{API}/{SID}/values/'{TAB}'!A1", params={'valueInputOption': 'USER_ENTERED'}, json={'values': top})
+call('PUT', f"{API}/{SID}/values/'{TAB}'!A4", params={'valueInputOption': 'RAW'}, json={'values': [hdr]})
 for i in range(0, n, 400):
     call('PUT', f"{API}/{SID}/values/'{TAB}'!A{FIRST + i}", params={'valueInputOption': 'USER_ENTERED'}, json={'values': data[i:i + 400]})
 
 blue = {'red': 0.85, 'green': 0.9, 'blue': 0.97}
 yellow = {'red': 1, 'green': 0.97, 'blue': 0.8}
-reqs = [{'repeatCell': {'range': {'sheetId': tid, 'startRowIndex': 0, 'endRowIndex': 2},
+reqs = [{'repeatCell': {'range': {'sheetId': tid, 'startRowIndex': 0, 'endRowIndex': 4},
                         'cell': {'userEnteredFormat': {'textFormat': {'bold': True}, 'backgroundColor': blue, 'wrapStrategy': 'WRAP'}},
                         'fields': 'userEnteredFormat(textFormat,backgroundColor,wrapStrategy)'}},
-        {'repeatCell': {'range': {'sheetId': tid, 'startRowIndex': 1, 'endRowIndex': 2, 'startColumnIndex': 3, 'endColumnIndex': ncol},
-                        'cell': {'userEnteredFormat': {'numberFormat': {'type': 'PERCENT', 'pattern': '0.0%'}}},
-                        'fields': 'userEnteredFormat.numberFormat'}},
-        {'setBasicFilter': {'filter': {'range': {'sheetId': tid, 'startRowIndex': 0, 'endRowIndex': last,
+
+        {'setBasicFilter': {'filter': {'range': {'sheetId': tid, 'startRowIndex': FIRST - 2, 'endRowIndex': last,
                                                  'startColumnIndex': 0, 'endColumnIndex': ncol}}}}]
+for j in range(len(REST) + 1):  # % cells in the top block
+    cidx = 3 + 4 * j + 2 if j < len(REST) else ncol + 1
+    reqs.append({'repeatCell': {'range': {'sheetId': tid, 'startRowIndex': 0, 'endRowIndex': 2, 'startColumnIndex': cidx, 'endColumnIndex': cidx + 1},
+                                'cell': {'userEnteredFormat': {'numberFormat': {'type': 'PERCENT', 'pattern': '0.00%'}}},
+                                'fields': 'userEnteredFormat.numberFormat'}})
 for j in range(len(REST)):  # yellow = cells to fill manually
     reqs.append({'repeatCell': {'range': {'sheetId': tid, 'startRowIndex': FIRST - 1, 'endRowIndex': last,
                                           'startColumnIndex': 3 + 4 * j + 2, 'endColumnIndex': 3 + 4 * j + 3},
