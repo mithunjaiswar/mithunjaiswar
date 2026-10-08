@@ -10,11 +10,9 @@ python3 build_weekly_supply_plan.py out_v2.xlsx raw.json --v2  # v2: Lakshya as 
 python3 build_weekly_supply_plan.py out_act.xlsx raw.json --actual  # actuals-based view
 ```
 
-Three sheets come out of it. The plan runs 14 weeks, w/c 28 Sep to w/c 28 Dec; the last week has 4 days, to Thu 31 Dec
-(Lakshya's December month-end). Lakshya v4's own weekly plan stops at w/e 31 Dec with a light last week, so its December
-after w/e 6 Dec is re-split by days over w/c 7, 14, 21 Dec (7 days each) and 28 Dec (4 days); December's total is
-unchanged (`DEC_SPLIT_*`, shown as formulas on the Lakshya Source tab). Month averages of attrition and recruitment are
-per full 7-day week.
+Three sheets come out of it. The plan runs 14 full weeks, w/c 28 Sep to w/c 28 Dec (to Sun 3 Jan). Lakshya v4's own weekly
+plan stops at w/e 27 Dec with a light last week, so its December after w/e 6 Dec is re-split evenly over w/c 7, 14, 21 and
+28 Dec; December's total is unchanged (`DEC_SPLIT_*`, shown as formulas on the Lakshya Source tab).
 
 - **Lakshya-based plan** (default): base recruitment and net attrition follow Lakshya month by month (each month's weeks
   average to Lakshya's month average; a week counts in the month of its Monday, w/c 28 Sep in Oct), plus monthly
@@ -57,13 +55,13 @@ A realistic path from the current run rate to the December target, with an opera
    recruitment, a flat amount a week within each month (x the festival shape), solved month by month so the month's
    average util equals Lakshya's month average, allowing for the earlier months' catch-up still driving (city tab
    columns CO-CU). Other options: a steady extra hiring ramp on top of the run rate (hiring starts at today's level and rises in a
-   straight line, never up and down) — the same extra each week, solved so 31 Dec
+   straight line, never up and down) — the same extra each week, solved so 3 Jan
    lands on Lakshya — flagged wherever driver acquisition exceeds the city's proven capacity (best 4 weeks since
-   Sep 2025). Inputs A1 picks the plan: `Lakshya` (the default: the ramp that makes every city's util on 31 Dec equal
+   Sep 2025). Inputs A1 picks the plan: `Lakshya` (the default: the ramp that makes every city's util on 3 Jan equal
    Lakshya's util — Lakshya on road / Lakshya fleet × our fleet), `Capacity` (same ramp, never above the city's best
    week, lands lower) or `Run rate`.
    **Hiring cap by week** (Inputs A8, columns O-P): w/c 16 and 23 Nov are capped at 200 drivers a city; the hires cut
-   move to w/c 28 Sep - 12 Oct, split evenly and grossed up for attrition so 31 Dec (and util) is unchanged.
+   move to w/c 28 Sep - 12 Oct, split evenly and grossed up for attrition so 3 Jan (and util) is unchanged.
    All three paths are always shown, next to AOP and Lakshya.
 
 ## Tabs
