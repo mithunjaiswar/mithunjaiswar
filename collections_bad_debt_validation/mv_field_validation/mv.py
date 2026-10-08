@@ -1,0 +1,6 @@
+import json, pandas as pd
+COLS=('id, driven_week, hissab_week, partner_etm, lead_id, city, eip_tag, fuel_type, product_type, revshare_days_working, total_os, weekly_os, prev_carryforward_os, os_to_deposit, kuber_amount, total_allocated_days, uber_active_days, rental_days, total_rent_amount, total_collected_amount_in_week, last_payment_date_till_hissab_week, last_jama_date, last_car_number, week_start_deposit, week_end_deposit, last_week_payment_habit, last_week_nd_count, current_week_nd_count, hissab_week_active_days, tenure_days, d2o_leave_days, active_inactive_flag, bad_debt_amount, next_weekly_os, next_total_os, next_week_end_deposit, next_join_date, in_car_recovery_driven_week, in_car_recovery_hissab_week, for_collections, last_updated, collection_till_wed, bad_debt_collected, last_week_collection, previous_week_collection, partners_not_paid_2_weeks, cars_under_recovery_driven_week, cars_under_recovery_hissab_week, recovery_tat, active_fleet_cash_blocked, location, revenue_type, total_collected_100_pct').split(', ')
+def mv():
+    d=pd.DataFrame(json.load(open('../run4/mv_sample.json')),columns=COLS)
+    return d.set_index('partner_etm',drop=False)
+def num(s): return pd.to_numeric(s,errors='coerce')
