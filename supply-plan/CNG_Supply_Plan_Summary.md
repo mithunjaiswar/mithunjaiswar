@@ -63,7 +63,7 @@ How the util match works:
 - **November:** that lead means hiring falls to **−252 a week**, against Lakshya's 1,082.
 - **December:** hiring rises again, to **+223 a week**.
 - **Overall:** recruitment over 14 weeks is 15,434, which is **619 above Lakshya**.
-- **Capacity:** Bangalore, Hyderabad and Chennai go above their best week so far in October and December. These weeks are flagged on the city tabs.
+- **Capacity:** Bangalore (9 weeks), Hyderabad (9) and Chennai (5) go above their best week so far in October and December. These weeks are flagged on the city tabs.
 
 On-road cars are about 100 below Lakshya each month even with util matched. Our fleet is slightly smaller than Lakshya's, so the same util gives fewer cars on road.
 
