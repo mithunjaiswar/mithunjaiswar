@@ -1,0 +1,162 @@
+Subject: Collections Bad Debt table =?utf-8?b?4oCT?= tenure_days fix needed in
+ DAG (analytics.collections_bad_debt_mv)
+To:
+X-Unsent: 1
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============5977738073976714790=="
+
+--===============5977738073976714790==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Suraj Sir,
+
+I validated analytics.collections_bad_debt_mv against the Collections Raw_Dat=
+a Sheet. tenure_days does not follow the business rule, so it does not match.=
+ Could you please pick this up and update the DAG?
+
+SUMMARY OF THE PROBLEM
+- Rule: tenure should be counted only up to the driven week end (hissab_week =
+- 1).
+- The DAG today counts up to the Sunday of the hisaab week (hissab_week + 6).=
+ For active partners, tenure comes out about 7 days too high.
+- Only 11.3% of rows match the rule today, across 9 weeks (10 Aug - 5 Oct, 10=
+2,909 partners).
+- If the 7-day gap is ignored, 92.2% match. The remaining misses are in older=
+ weeks, where driver_profile changed after those weeks were built. Those week=
+s need a backfill.
+
+WHAT NEEDS TO CHANGE IN THE DAG
+Replace the current tenure_days logic with the CTE below and join it on (hiss=
+ab_week, partner_etm). <mv base rows> stands for the per-week, per-partner ba=
+se CTE the DAG already builds.
+
+tenure_fix as (
+  select m.hissab_week, m.partner_etm,
+         coalesce(sum(least(coalesce(dp.end_date::date, m.hissab_week - 1), m=
+.hissab_week - 1)
+                      - dp.start_date::date + 1)
+                  filter (where dp.start_date::date <=3D m.hissab_week - 1), =
+0) as tenure_days
+  from <mv base rows> m
+  left join fleet_driver   fd on fd.employee_id =3D m.partner_etm
+  left join driver_profile dp on dp.driver_id  =3D fd.id
+  group by m.hissab_week, m.partner_etm
+)
+-- final select: tenure_fix.tenure_days as tenure_days
+
+Tenure is the sum of all driver_profile stints (end - start + 1). The running=
+ stint is cut at the driven week end, and stints that start later are not cou=
+nted. fleet_driver.employee_id is unique, so the join does not double count.
+
+STEPS
+1. Make the change on a branch in EverestFleetOrg/scripts and raise a PR.
+2. Test on week 2026-09-28 first. I expect about 10,504 of 12,594 rows to cha=
+nge, by -5.4 days on average.
+3. Merge, publish, and trigger the DAG in Airflow.
+4. Backfill older weeks if the DAG only rebuilds recent ones.
+5. Run the check query below. "different" should be 0 for every week.
+
+with t as (
+  select m.hissab_week, m.id, m.tenure_days,
+         coalesce(sum(least(coalesce(dp.end_date::date, m.hissab_week - 1), m=
+.hissab_week - 1) - dp.start_date::date + 1)
+                  filter (where dp.start_date::date <=3D m.hissab_week - 1), =
+0) as logic
+  from analytics.collections_bad_debt_mv m
+  left join fleet_driver   fd on fd.employee_id =3D m.partner_etm
+  left join driver_profile dp on dp.driver_id  =3D fd.id
+  where m.hissab_week >=3D '2026-08-10'
+  group by m.hissab_week, m.id, m.tenure_days
+)
+select hissab_week, count(*) as rows,
+       count(*) filter (where tenure_days is distinct from logic) as different
+from t group by 1 order by 1;
+
+The full details and week-wise numbers are in this doc: https://claude.ai/cod=
+e/artifact/25af8393-1df4-482b-8729-cee1062d5622
+
+Once the DAG has run, I will re-validate against the Sheet and confirm.
+
+Thanks,
+Mithun
+
+--===============5977738073976714790==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<div style=3D"font-family:Arial,sans-serif;font-size:14px">
+<p>Hi Suraj Sir,</p>
+<p>I validated <code>analytics.collections_bad_debt_mv</code> against the Col=
+lections Raw_Data Sheet. <b>tenure_days</b> does not follow the business rule=
+, so it does not match. Could you please pick this up and update the DAG?</p>
+<p><b>Summary of the problem</b></p>
+<ul>
+<li>Rule: tenure should be counted only up to the <b>driven week end (hissab_=
+week &minus; 1)</b>.</li>
+<li>The DAG today counts up to the <b>Sunday of the hisaab week (hissab_week =
++ 6)</b>. For active partners, tenure comes out about 7 days too high.</li>
+<li>Only <b>11.3%</b> of rows match the rule today, across 9 weeks (10 Aug &n=
+dash; 5 Oct, 102,909 partners).</li>
+<li>If the 7-day gap is ignored, 92.2% match. The remaining misses are in old=
+er weeks, where <code>driver_profile</code> changed after those weeks were bu=
+ilt. Those weeks need a backfill.</li>
+</ul>
+<p><b>What needs to change in the DAG</b><br>Replace the current <code>tenure=
+_days</code> logic with the CTE below and join it on (hissab_week, partner_et=
+m). <code>&lt;mv base rows&gt;</code> stands for the per-week, per-partner ba=
+se CTE the DAG already builds.</p>
+<pre style=3D"background:#f4f4f4;padding:10px;font-family:Consolas,monospace;=
+font-size:12px;white-space:pre">tenure_fix as (
+  select m.hissab_week, m.partner_etm,
+         coalesce(sum(least(coalesce(dp.end_date::date, m.hissab_week - 1), m=
+.hissab_week - 1)
+                      - dp.start_date::date + 1)
+                  filter (where dp.start_date::date &lt;=3D m.hissab_week - 1=
+), 0) as tenure_days
+  from &lt;mv base rows&gt; m
+  left join fleet_driver   fd on fd.employee_id =3D m.partner_etm
+  left join driver_profile dp on dp.driver_id  =3D fd.id
+  group by m.hissab_week, m.partner_etm
+)
+-- final select: tenure_fix.tenure_days as tenure_days</pre>
+<p>Tenure is the sum of all <code>driver_profile</code> stints (end &minus; s=
+tart + 1). The running stint is cut at the driven week end, and stints that s=
+tart later are not counted. <code>fleet_driver.employee_id</code> is unique, =
+so the join does not double count.</p>
+<p><b>Steps</b></p>
+<ol>
+<li>Make the change on a branch in <code>EverestFleetOrg/scripts</code> and r=
+aise a PR.</li>
+<li>Test on week 2026-09-28 first. I expect about 10,504 of 12,594 rows to ch=
+ange, by &minus;5.4 days on average.</li>
+<li>Merge, publish, and trigger the DAG in Airflow.</li>
+<li>Backfill older weeks if the DAG only rebuilds recent ones.</li>
+<li>Run the check query below. <code>different</code> should be 0 for every w=
+eek.</li>
+</ol>
+<pre style=3D"background:#f4f4f4;padding:10px;font-family:Consolas,monospace;=
+font-size:12px;white-space:pre">with t as (
+  select m.hissab_week, m.id, m.tenure_days,
+         coalesce(sum(least(coalesce(dp.end_date::date, m.hissab_week - 1), m=
+.hissab_week - 1) - dp.start_date::date + 1)
+                  filter (where dp.start_date::date &lt;=3D m.hissab_week - 1=
+), 0) as logic
+  from analytics.collections_bad_debt_mv m
+  left join fleet_driver   fd on fd.employee_id =3D m.partner_etm
+  left join driver_profile dp on dp.driver_id  =3D fd.id
+  where m.hissab_week &gt;=3D &#x27;2026-08-10&#x27;
+  group by m.hissab_week, m.id, m.tenure_days
+)
+select hissab_week, count(*) as rows,
+       count(*) filter (where tenure_days is distinct from logic) as different
+from t group by 1 order by 1;</pre>
+<p>The full details and week-wise numbers are in this doc: <a href=3D"https:/=
+/claude.ai/code/artifact/25af8393-1df4-482b-8729-cee1062d5622">Tenure Days DA=
+G Fix</a></p>
+<p>Once the DAG has run, I will re-validate against the Sheet and confirm.</p>
+<p>Thanks,<br>Mithun</p></div>
+
+--===============5977738073976714790==--
