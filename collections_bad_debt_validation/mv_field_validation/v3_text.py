@@ -1,0 +1,32 @@
+exec(open('write_tab.py').read().split('MAN,REM=pickle.load')[0])
+V2='MV_Raw_Data_Manual_Check_v2'
+hdr=call('GET',f"{API}/{SID}/values/'{V2}'!A5:ZZ5")['values'][0]
+n=len(call('GET',f"{API}/{SID}/values/'{V2}'!C6:C20000")['values']); last=5+n
+data=[]
+for f in ['last_week_nd_count','current_week_nd_count','hissab_week_active_days','uber_active_days']:
+    j=hdr.index(f+' Matched?'); mvc,sh,mn=col(j-3),col(j-2),col(j-1)
+    data.append({'range':f"'{V2}'!{col(j)}6:{col(j)}{last}",'values':[[f'=IF({mn}{r}="","",IF(N({mvc}{r})=N({mn}{r}),"Matched","Not Matched"))'] for r in range(6,last+1)]})
+call('POST',f'{API}/{SID}/values:batchUpdate',json={'valueInputOption':'USER_ENTERED','data':data})
+r2=call('GET',f"{API}/{SID}/values/'{V2}'!A2:ZZ2")['values'][0]
+p=lambda f: r2[hdr.index(f+' Matched?')]
+T={
+'weekly_os':(f'RULE (agreed): sum of weekly_os of ALL fleet_leasing_weeklydata rows in the driven week (incl. adjustment-only rows) + fleet_weeklydata for rev-share. Match {p("weekly_os")}. Gap: 471 partners – MV drops adjustment-only rows (0 rent, 0 days). Ex: ETB059697 MV -6,785, all rows -7,285 (-500 fine on old car). 2 rev-share partners (ETK17093, ETN23357) have no leasing row.','DAG: remove the "rent > 0 / active_days > 0" filter only for weekly_os. Check rows in tab weekly_os_detail.','1) Remove filter for weekly_os in DAG. 2) Re-run. Expected 95.6% → 100% (2 rev-share rows to check).'),
+'prev_carryforward_os':(f'RULE (agreed): partner\'s LAST hisaab week (not always 21-Sep) total_os + collected; credit (overpaid) carries forward as positive. Match {p("prev_carryforward_os")}. Gaps: 1,223 overpaid but MV 0 (ETB04273 net +175 → MV 0); 641 MV carries part of credit (ETB059697 net 4,722 → MV 4,222); 320 fine added (ETB060370 net 569 → MV -431, = -1,000 fine row MV dropped from weekly_os); 218 no earlier row; 633 other.','DAG: prev_cf = last available hisaab week (total_os + total_collected); keep positive credit; fines go to weekly_os (rule 1), not here.','1) Fix weekly_os rule first (removes "fine" gaps). 2) Keep credit positive. 3) Use last available week. Expected 72% → 95%+; 633 "other" to validate.'),
+'last_jama_date':(f'RULE (agreed): if car allocated at hisaab week end → blank; else last jama (attrition) date. Match {p("last_jama_date")}. Gaps: 7,927 allocated → MV placeholder 21-Oct (ETB00514); 238 rejoined by week end → MV shows old jama (ETB060103 29-Sep); 109 not allocated → MV 21-Oct instead of real date (ETB060105 should be 01-Oct).','DAG: blank when allocated at hisaab week end, else max(jama_date) <= hisaab week end. Remove placeholder.','1) Change DAG. 2) Re-run. Expected 23.5% → ~100%.'),
+'week_start_deposit':(f'RULE (agreed = MV logic): mv_deposits_raw before hisaab week start, EXCLUDING SD_TO_OWNNOW / OWNNOW_TO_OWNNOW. Match {p("week_start_deposit")}.','No action – 100% match.','—'),
+'week_end_deposit':(f'RULE (agreed = MV logic): mv_deposits_raw till hisaab week end, EXCLUDING SD_TO_OWNNOW / OWNNOW_TO_OWNNOW. Match {p("week_end_deposit")}.','No action – 100% match.','—'),
+'last_week_nd_count':(f'RULE (agreed): allocation days (SSOT) − Uber active days (fleet_dailytrip, trips > 0) in driven week. fleet_dailytrip is Uber only. Exact match {p("last_week_nd_count")}. Ex: ETB01547 allocated 7, 0 trips → ND 7, MV 0; ETB02803 allocated 7, 0 trips → 7, MV 1.','DAG: compute ND only from ssot_alloc_dealloc_base + fleet_dailytrip as per rule.','1) Change DAG ND logic. 2) Re-run. Expected → 100%.'),
+'current_week_nd_count':(f'Same rule for hisaab week. Exact match {p("current_week_nd_count")}. Ex: ETB01547 allocated 5, 0 trips → ND 5, MV 1.','Same as last_week_nd_count.','Same as last_week_nd_count.'),
+'hissab_week_active_days':(f'RULE (agreed): Uber active days in hisaab week (fleet_dailytrip, trips > 0). Exact match {p("hissab_week_active_days")}. MV holds allocated days of 2 weeks (14). Ex: ETB00514 MV 14, car ran 7 days.','DAG: count distinct fleet_dailytrip dates with trips > 0 in hisaab week.','1) Change DAG. 2) Re-run. Expected → 100%.'),
+'active_inactive_flag':(f'RULE (agreed): allocated on min(hisaab week end, today). Match 28-Sep {p("active_inactive_flag")}; 21-Sep 89.8%; 05-Oct 17.9%. Closed weeks: MV Active if allocated ANY day – ETB04516 returned 26-Sep → MV Active (21-Sep wk); ETB01090 returned 03-Oct → MV Active (28-Sep wk). Current week: MV Inactive although allocated today – ETB00514, ETB00839 (05-Oct wk).','DAG: flag = allocated on min(hisaab_week_end, today) for every week.','1) Change DAG. 2) Re-run all weeks. Expected → ~99.9%.'),
+'next_join_date':(f'RULE (agreed): only for partners who attrited in driven/hisaab week and not allocated at hisaab week end = first allocation after that jama (blank if not rejoined). Match {p("next_join_date")}. Gaps: 6,595 never left → MV 21-Oct (ETB00514); 365 not attrited → MV has a date; 173 rejoined after refresh → MV blank (ETB01090 rejoined 08-Oct).','DAG: blank for non-attrited; first allocation after jama for attrited; refresh after week close.','1) Change DAG. 2) Re-run. Expected 34% → 95%+.'),
+'bad_debt_collected':(f'RULE (agreed): 0 if never left; else collections between jama date and next join (or hisaab week end). Match {p("bad_debt_collected")}. Gaps to validate: 3,867 never left but MV = whole week collection (ETB00839 9,425 → 0; ETB00514 2,999 → 0); 765 left but MV includes money paid BEFORE leaving (ETB01090 left 03-Oct, MV 4,282 = whole week).','DAG: change to leave-to-rejoin window; 0 for never left.','1) Validate samples (Remark column). 2) Change DAG. Expected 57% → 95%+.'),
+'previous_week_collection':('NOT REQUIRED – partners_not_paid_2_weeks can be calculated with lag in Python. New column collection_pct (next to this group) added instead.','Drop from MV / Sheet; use collection_pct.','—'),
+'active_fleet_cash_blocked':(f'RULE (agreed): driver_cashblock_details_logs entries on min(today, hisaab week end) = 04-Oct only; 1 if any BLOCK entry that day. Match {p("active_fleet_cash_blocked")}. MV = 1 whenever a log entry exists that day (91.6%). Ex: ETB00514 – 4 entries on 04-Oct, all UNBLOCK → should be 0, MV 1.','DAG: flag = 1 only if a BLOCK entry exists on that date.','1) Change DAG. 2) Re-run. Expected 50% → 100%.'),
+}
+data=[]
+for f,(i,a,s) in T.items():
+    c=col([k for k,h in enumerate(hdr) if h.startswith(f+' (MV)')][0])
+    data.append({'range':f"'{V2}'!{c}1:{c}3",'values':[[i],[a],[s]]})
+call('POST',f'{API}/{SID}/values:batchUpdate',json={'valueInputOption':'USER_ENTERED','data':data})
+print({f:p(f) for f in T})
