@@ -29,7 +29,8 @@ RA={}
 def ra(rows,rec,reason):
     for r in rows: RA[r]=(rec,reason)
 ra([9],'No change','Same City_Targets tab in both sheets')
-ra([10,11,12,18],'Admin: rerun MV for 05-Oct, then refresh Raw_Data','Aug-Sep within 0.2%. Oct-05 New = 0: MV week 05-Oct has total_collected_100_pct empty (old DAG run)')
+ra([10,12,18],'Admin: rerun MV for 05-Oct, then refresh Raw_Data','Aug-Sep within 0.2%. Oct-05 New = 0: MV week 05-Oct has total_collected_100_pct empty (old DAG run)')
+ra([11],'Admin: rerun MV for 05-Oct, then refresh Raw_Data','Aug-Sep within 0.2%. Oct-05 -5792K vs -5992K: 05-Oct collections missing in MV, so OS not netted')
 ra([24],'Admin: rerun MV for 05-Oct','Aug-Sep diff 1-4 pilots (DAG fix on weekly_os). Oct-05 645 vs 668: no 05-Oct collections in MV')
 ra([13,19],'Fix Adjustments first - Razorpay will auto-correct','Old Razorpay = Total - Adjustments - DP to Rent. New Adjustments ~45K/week higher, so Razorpay ~2% lower (Sep-14: 2947.9K vs 3002.7K)')
 ra([14,15,20,21],'No change (fixed)','Now split from mv_daily_recovery other_positive_recovery / phonepe_recovery - matches old (Sep-28 Other 18.0K both)')
