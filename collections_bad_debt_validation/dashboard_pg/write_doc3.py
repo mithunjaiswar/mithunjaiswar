@@ -102,6 +102,13 @@ req=[]
 if 'Metric_Summary' in P: req.append({'deleteSheet':{'sheetId':P['Metric_Summary']}})
 req.append({'addSheet':{'properties':{'title':'Metric_Summary','index':0,'gridProperties':{'rowCount':len(V)+5,'columnCount':NC,'frozenRowCount':3,'frozenColumnCount':1}}}})
 sid=call('POST',f'{API}/{DS}:batchUpdate',json={'requests':req})['replies'][-1]['addSheet']['properties']['sheetId']
+NAMEMAP={c[0]:c[1] for c in C}
+def deid(x):
+    if not isinstance(x,str): return x
+    return re.sub(r'\b([SW]\d\d)\b',lambda mo: "'"+NAMEMAP.get(mo.group(1),mo.group(1))+"'",x)
+V=[[deid(c) for c in r] for r in V]
+left=[c for r in V for c in r if isinstance(c,str) and re.search(r'\b[SW]\d\d\b',c)]
+print('codes left:',len(left))
 call('PUT',f"{API}/{DS}/values/'Metric_Summary'!A1",params={'valueInputOption':'USER_ENTERED'},json={'values':[[('' if x is None else x) for x in r] for r in V]})
 def rng(r0,r1,c0,c1): return {'sheetId':sid,'startRowIndex':r0,'endRowIndex':r1,'startColumnIndex':c0,'endColumnIndex':c1}
 def fmt(r0,r1,c0,c1,f,fields): return {'repeatCell':{'range':rng(r0,r1,c0,c1),'cell':{'userEnteredFormat':f},'fields':fields}}
