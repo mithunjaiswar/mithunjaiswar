@@ -100,14 +100,12 @@ select
   m.total_os, m.weekly_os, m.prev_carryforward_os,
   -- collections (MV)
   coalesce(m.total_collected_amount_in_week, 0) as total_collected_amount_in_week,  -- 0 for non-payers (Not-paid count)
-  m.total_collected_100_pct, m.collection_till_wed, m.os_to_deposit,
-  -- collection split (mv_daily_recovery); razorpay = 100% total minus the other parts
-  coalesce(m.total_collected_100_pct, 0) - coalesce(r.other_amt, 0) - coalesce(r.phonepe_amt, 0)
-    - coalesce(r.adjustment_amt, 0) - coalesce(r.deposit_to_os_amt, 0)                       as razorpay_100pct,
-  coalesce(r.other_amt, 0)                                                                   as other_100pct,
-  coalesce(r.phonepe_amt, 0)                                                                 as phonepe_100pct,
-  coalesce(r.adjustment_amt, 0)                                                              as adjustment_100pct,
-  coalesce(r.deposit_to_os_amt, 0)                                                           as deposit_to_rent_100pct,
+  m.total_collected_100_pct,
+  least(coalesce(m.collection_till_wed, 0), abs(coalesce(m.total_os, 0)))                    as till_wed_100pct,  -- capped at OS (Sheet col O)
+  m.os_to_deposit,
+  -- collection split (mv_daily_recovery), Sheet waterfall: each mode capped at OS still unpaid,
+  -- order razorpay -> other -> phonepe -> adjustment -> deposit-to-rent (Sheet cols P..T)
+  sp.razorpay_100pct, sp.other_100pct, sp.phonepe_100pct, sp.adjustment_100pct, sp.deposit_to_rent_100pct,
   -- behaviour (MV)
   m.partners_not_paid_2_weeks, m.last_week_payment_habit, m.total_allocated_days,
   case when m.total_allocated_days >= 7 then 1 else 0 end                                    as entire_week_active,
@@ -138,7 +136,7 @@ select
   coalesce(m.current_week_nd_count, 0) as nd_count_hw,
   y.gps_inactive, coalesce(ml.conn_total, 0) as connects,
   -- advance collection (old advance_payment_data tab): paid above the week OS, excluding deposit-to-OS
-  greatest(coalesce(m.total_collected_amount_in_week, 0) - coalesce(r.deposit_to_os_amt, 0) - abs(coalesce(m.total_os, 0)), 0) as advance_amount,
+  greatest(coalesce(m.total_collected_amount_in_week, 0) - abs(coalesce(m.total_os, 0)), 0) as advance_amount,  -- paid above OS (Sheet col AU)
   -- WBR CarryForward (OS bifurcation) counts only OS carried forward (negative), not credits
   least(coalesce(m.prev_carryforward_os, 0), 0) as carry_forward_os_neg
 from m
@@ -148,6 +146,17 @@ left join dep_alloc da on da.partner_etm  = m.partner_etm and da.hissab_week = m
 left join rc          on rc.employee_id   = m.partner_etm and rc.hw         = m.hissab_week
 left join bd          on bd.partner_etm   = m.partner_etm
 left join np          on np.partner_etm   = m.partner_etm and np.hissab_week = m.hissab_week
+cross join lateral (  -- collection split waterfall (os = |total_os|)
+  select least(coalesce(r.razorpay_amt, 0), abs(coalesce(m.total_os, 0))) as razorpay_100pct,
+         greatest(0, least(coalesce(r.other_amt, 0), abs(coalesce(m.total_os, 0)) - coalesce(r.razorpay_amt, 0))) as other_100pct,
+         greatest(0, least(coalesce(r.phonepe_amt, 0), abs(coalesce(m.total_os, 0)) - coalesce(r.razorpay_amt, 0)
+                                                        - coalesce(r.other_amt, 0))) as phonepe_100pct,
+         greatest(0, least(coalesce(r.adjustment_amt, 0), abs(coalesce(m.total_os, 0)) - coalesce(r.razorpay_amt, 0)
+                                                        - coalesce(r.other_amt, 0) - coalesce(r.phonepe_amt, 0))) as adjustment_100pct,
+         greatest(0, least(coalesce(r.deposit_to_os_amt, 0), abs(coalesce(m.total_os, 0)) - coalesce(r.razorpay_amt, 0)
+                                                        - coalesce(r.other_amt, 0) - coalesce(r.phonepe_amt, 0)
+                                                        - coalesce(r.adjustment_amt, 0))) as deposit_to_rent_100pct
+) sp
 cross join lateral (  -- Sheet formulas: payment_habit (col AF) and recovery_recommended_vehicle (col AH)
   select case when coalesce(m.total_os, 0) = 0 then 'Excellent'
               when coalesce(m.collection_till_wed, 0) >= abs(m.total_os) then 'Very Good'

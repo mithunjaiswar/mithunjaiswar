@@ -1,6 +1,6 @@
 import json,re
 exec(open('write_tab.py').read().split('MAN,REM=pickle.load')[0])
-exec(open('doc_catalog.py').read())
+exec(open('doc_catalog.py').read()); exec(open('doc_detail.py').read())
 DS=open('../dash/dash_sid.txt').read().strip()
 D=json.load(open('../dash/doc_data.json')); OLD=json.load(open('../dash/summary_cmp.json'))['old']
 SN=D['sum_new']; WN=D['wbr_new']; WR=D['wbr_ref']; FM=D['field_match']; N14=D['n14']
@@ -47,6 +47,6 @@ for (iid,met,req,what,rc,src,st,calc,flt,jn,corr,ref) in C:
             while t>0 and not (g(WR,t,2)=='*' and g(WR,t,1) not in ('*','')): t-=1
             name=g(WR,t,1)
         rows.append([iid if k==0 else '',name,req,st,INMV[st],what if k==0 else '',rc,src,calc if k==0 else '',flt if k==0 else '',jn if k==0 else '',
-                     so,sm,d,dp,wm,lab,rec,corr if k==0 else '',pc])
+                     so,sm,d,dp,wm,lab,rec,(DET.get(iid,(corr,''))[0] if k==0 else ''),(DET.get(iid,('',''))[1] if k==0 else ''),pc])
 print('rows',len(rows))
 json.dump(rows,open('../dash/doc_rows.json','w'))

@@ -8,13 +8,13 @@ cnt={}
 for r in rows:
     if r[0]: cnt[r[3]]=cnt.get(r[3],0)+1
 H1=['ID','Metric','Required For','MV Status','Available in MV?','What it represents','Raw_Data column','Source table.column','Calculation logic','Filters & date range','Joins (key + condition)',
-    'Sheet value','MV value','Difference (MV - Sheet)','Difference %','Weeks matched','Compared on','Incorrect % (record level, 14-Sep MV vs source)','Mismatch reason / Correction required']
+    'Sheet value','MV value','Difference (MV - Sheet)','Difference %','Weeks matched','Compared on','Incorrect % (record level, 14-Sep MV vs source)','Mismatch reason (detail) + Correction required','Example (partner / week: Sheet vs MV)']
 TOP=[['METRIC SUMMARY - every metric used in Summary + WBR: source, MV availability, logic, Sheet vs MV difference, correction'],
  ['How to read: col D = status. GREEN = MV correct | RED = available in MV but data incorrect (see Section 2) | ORANGE = MV logic / definition to confirm | BLUE = missing in MV, added in final query by join (see Section 3) | GREY = derived / business input.'],
  ['Sheet value = old reference dashboard; MV value = this dashboard (built only from final SQL). Summary metrics compared for Delhi NCR / Own Now, Aug-17..Sep-28 (7 weeks, total; average for %). WBR metrics compared all India, Sep-14..Oct-05.'],
  ['Metric groups by status:  '+'  |  '.join(f'{k}: {v}' for k,v in sorted(cnt.items()))],
  [],['SECTION 1 - METRIC CATALOG (all Summary + WBR metrics)'],H1]
-body=[r[:19] for r in rows]
+body=[r[:20] for r in rows]
 S2H=['MV column','Metrics affected','Required For','MV value','Sheet value','Amount / Count difference','Incorrect % (records)','Mismatch reason','Correction required (in MV)']
 S2=[['SECTION 2 - AVAILABLE IN MV BUT DATA INCORRECT (fix in MV, not in sheet)'],S2H,
  ['partners_not_paid_2_weeks','Not paid > 2 weeks (S14)','Summary','450 partners (Delhi NCR / Own Now, 7 weeks)','238','+212 (+89%)','11.2% (1,272 of 11,375)','MV previous_week_collection is 0 for every partner, so the flag checks only 1 week (unpaid in 31Aug-06Sep counts even if paid in 07-13Sep)','Fill previous_week_collection = positive payments 2 weeks back; flag = 1 only if BOTH previous weeks unpaid'],
@@ -43,7 +43,7 @@ m=call('GET',f'{API}/{DS}',params={'fields':'sheets.properties'})
 P={s['properties']['title']:s['properties']['sheetId'] for s in m['sheets']}
 req=[]
 if TAB in P: req.append({'deleteSheet':{'sheetId':P[TAB]}})
-req.append({'addSheet':{'properties':{'title':TAB,'index':0,'gridProperties':{'rowCount':len(V)+10,'columnCount':19,'frozenRowCount':7,'frozenColumnCount':2}}}})
+req.append({'addSheet':{'properties':{'title':TAB,'index':0,'gridProperties':{'rowCount':len(V)+10,'columnCount':20,'frozenRowCount':7,'frozenColumnCount':2}}}})
 sid=call('POST',f'{API}/{DS}:batchUpdate',json={'requests':req})['replies'][-1]['addSheet']['properties']['sheetId']
 call('PUT',f"{API}/{DS}/values/'{TAB}'!A1",params={'valueInputOption':'RAW'},json={'values':[[('' if x is None else x) for x in r] for r in V]})
 def rng(r0,r1,c0,c1): return {'sheetId':sid,'startRowIndex':r0,'endRowIndex':r1,'startColumnIndex':c0,'endColumnIndex':c1}
@@ -52,26 +52,26 @@ DK={'red':0.2,'green':0.25,'blue':0.4}; WH={'red':1,'green':1,'blue':1}
 CL={OK:{'red':0.78,'green':0.92,'blue':0.79},BAD:{'red':0.96,'green':0.74,'blue':0.74},LOGIC:{'red':1,'green':0.85,'blue':0.6},ADD:{'red':0.8,'green':0.87,'blue':0.98},DER:{'red':0.9,'green':0.9,'blue':0.9},BIZ:{'red':0.9,'green':0.9,'blue':0.9},NOSRC:{'red':0.9,'green':0.9,'blue':0.9}}
 YL={'red':1,'green':0.95,'blue':0.75}
 b0=len(TOP); b1=b0+len(body)
-R=[fmt(0,len(V),0,19,{'wrapStrategy':'WRAP','verticalAlignment':'TOP','textFormat':{'fontSize':9}},'userEnteredFormat(wrapStrategy,verticalAlignment,textFormat)'),
+R=[fmt(0,len(V),0,20,{'wrapStrategy':'WRAP','verticalAlignment':'TOP','textFormat':{'fontSize':9}},'userEnteredFormat(wrapStrategy,verticalAlignment,textFormat)'),
    fmt(0,1,0,19,{'textFormat':{'bold':True,'fontSize':13}},'userEnteredFormat.textFormat'),
    fmt(1,4,0,19,{'backgroundColor':YL},'userEnteredFormat.backgroundColor')]
 R.append(fmt(0,6,0,1,{'wrapStrategy':'OVERFLOW_CELL'},'userEnteredFormat.wrapStrategy'))
 def sec(r,n):
     return [fmt(r,r+1,0,n,{'backgroundColor':YL,'textFormat':{'bold':True,'fontSize':11}},'userEnteredFormat(backgroundColor,textFormat)'),
             fmt(r+1,r+2,0,n,{'backgroundColor':DK,'textFormat':{'bold':True,'foregroundColor':WH,'fontSize':9},'wrapStrategy':'WRAP'},'userEnteredFormat(backgroundColor,textFormat,wrapStrategy)')]
-R+=sec(b0-2,19)
+R+=sec(b0-2,20)
 s2=b1+2; R+=sec(s2,9); s3=s2+len(S2)+2; R+=sec(s3,6); s4=s3+len(S3)+2
 R.append(fmt(s4,s4+1,0,19,{'backgroundColor':YL,'textFormat':{'bold':True,'fontSize':11}},'userEnteredFormat(backgroundColor,textFormat)'))
 R.append(fmt(s4+2,s4+len(S4),0,1,{'textFormat':{'fontFamily':'Roboto Mono','fontSize':9},'wrapStrategy':'OVERFLOW_CELL'},'userEnteredFormat(textFormat,wrapStrategy)'))
 for k,r in enumerate(rows):
-    rr=b0+k; pc=r[19]
+    rr=b0+k; pc=r[20]
     R.append(fmt(rr,rr+1,3,4,{'backgroundColor':CL.get(r[3],WH),'textFormat':{'bold':True,'fontSize':9}},'userEnteredFormat(backgroundColor,textFormat)'))
     R.append(fmt(rr,rr+1,11,14,{'numberFormat':{'type':'NUMBER','pattern':'0.0%' if pc else '#,##0'}},'userEnteredFormat.numberFormat'))
     R.append(fmt(rr,rr+1,14,15,{'numberFormat':{'type':'NUMBER','pattern':'0.0%'}},'userEnteredFormat.numberFormat'))
-    if r[0]: R.append({'updateBorders':{'range':rng(rr,rr+1,0,19),'top':{'style':'SOLID','color':{'red':0.5,'green':0.5,'blue':0.5}}}})
+    if r[0]: R.append({'updateBorders':{'range':rng(rr,rr+1,0,20),'top':{'style':'SOLID','color':{'red':0.5,'green':0.5,'blue':0.5}}}})
 R.append(fmt(s2+2,s2+7,0,1,{'backgroundColor':CL[BAD],'textFormat':{'bold':True,'fontSize':9}},'userEnteredFormat(backgroundColor,textFormat)'))
 R.append(fmt(s3+2,s3+len(S3),0,1,{'backgroundColor':CL[ADD],'textFormat':{'bold':True,'fontSize':9}},'userEnteredFormat(backgroundColor,textFormat)'))
-for c0,c1,px in [(0,1,45),(1,2,200),(2,3,70),(3,4,130),(4,5,110),(5,6,170),(6,7,150),(7,8,190),(8,9,280),(9,10,200),(10,11,220),(11,14,95),(14,15,70),(15,16,60),(16,17,110),(17,18,110),(18,19,320)]:
+for c0,c1,px in [(0,1,45),(1,2,200),(2,3,70),(3,4,130),(4,5,110),(5,6,170),(6,7,150),(7,8,190),(8,9,280),(9,10,200),(10,11,220),(11,14,95),(14,15,70),(15,16,60),(16,17,110),(17,18,110),(18,19,380),(19,20,330)]:
     R.append({'updateDimensionProperties':{'range':{'sheetId':sid,'dimension':'COLUMNS','startIndex':c0,'endIndex':c1},'properties':{'pixelSize':px},'fields':'pixelSize'}})
 call('POST',f'{API}/{DS}:batchUpdate',json={'requests':R})
 m=call('GET',f'{API}/{DS}',params={'fields':'sheets.properties'})
