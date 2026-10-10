@@ -138,7 +138,9 @@ select
   coalesce(m.current_week_nd_count, 0) as nd_count_hw,
   y.gps_inactive, coalesce(ml.conn_total, 0) as connects,
   -- advance collection (old advance_payment_data tab): paid above the week OS, excluding deposit-to-OS
-  greatest(coalesce(m.total_collected_amount_in_week, 0) - coalesce(r.deposit_to_os_amt, 0) - abs(coalesce(m.total_os, 0)), 0) as advance_amount
+  greatest(coalesce(m.total_collected_amount_in_week, 0) - coalesce(r.deposit_to_os_amt, 0) - abs(coalesce(m.total_os, 0)), 0) as advance_amount,
+  -- WBR CarryForward (OS bifurcation) counts only OS carried forward (negative), not credits
+  least(coalesce(m.prev_carryforward_os, 0), 0) as carry_forward_os_neg
 from m
 left join rec r       on r.employee_id    = m.partner_etm and r.hw          = m.hissab_week
 left join ml          on ml.partner_et_id = m.partner_etm and ml.week       = m.hissab_week
