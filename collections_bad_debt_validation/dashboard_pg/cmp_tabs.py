@@ -26,30 +26,31 @@ def diff(i,R,cols):
 W7=list(range(2,9)); W8=list(range(2,10))
 # reason, action per row (1-based)
 RA={}
-def ra(rows,reason,action):
-    for r in rows: RA[r]=(reason,action)
-ra([9],'Same City_Targets tab copied','None')
-ra([10,11,12,18,24],'Aug-Sep same (small gap = admin DAG fix of weekly_os/carry-forward). Oct-05 = 0 in New: PG MV week 05-Oct collections not loaded yet','Admin: run MV refresh for 05-Oct, then refresh Raw_Data')
-ra([13,19],'Old Razorpay = Total - Adjustments - DP to Rent. Adjustments differ (see Adjustments), so Razorpay 2-3% lower','Fix Adjustments rule; Razorpay corrects itself')
-ra([14,15,20,21],'Split now from mv_daily_recovery (other_positive / phonepe)','None (fixed)')
-ra([16,22],'New = positive_adjustment from mv_daily_recovery. Old uses a smaller adjustment amount (approx 50-60% of it; old rule not documented)','Get old sheet adjustment logic from owner; apply same filter in Raw_Data S')
-ra([17,23],'Fixed: deposit_to_os from mv_daily_recovery. Aug-31 / Sep-07 higher: deposit_to_os entries posted after old sheet snapshot','None (late postings) - accept New')
-ra([25],'Same Aug-Sep (Sep-21: 92 vs 95 after DAG fix). Oct-05 high because 05-Oct collections not loaded','Admin: refresh MV for 05-Oct')
-ra([26],'Fixed: old counts 2 PREVIOUS weeks unpaid (w-7, w-14); MV flag was 0/1. Aug-17: Aug-03 week missing in MV, used daily recovery','None (fixed)')
-ra([27],'MV collection_till_wed includes all Mon-Wed recovery types; old used razorpay-only till Wed (+1-2 pp)','Accept MV rule or filter till-Wed to razorpay only')
-ra([28],'Fixed after DP-to-Rent split','None (fixed)')
-ra([29,30,31],'Active definition differs: old AC = entire week Uber active; New AC = allocated 7 days (wider)','Change Raw_Data AC to uber_active_days >= 7 (add field to Raw_Data)')
-ra(range(32,40),'Both 0 (OS_Surpass tab same)','None')
-ra([40,46],'Same source tab','None')
-ra([41,42,43,44,45,49,50],'Sep-21 / Sep-28: admin DAG fix moved bad debt dates (Old -32.7K in Sep-28 now split Sep-21 -18.3K / Sep-28 -5.7K)','None - New is corrected logic; confirm with admin')
-ra([47,48],'Fixed: MV bad_debt_collected is Non-Funnel (rejoin) amount, removed from Funnel column','None (fixed)')
-ra([51],'Deposit source: New = MV week_start_deposit (validated); old = older sd_week_start snapshot (+1-3%)','Accept MV deposit (validated) or use same deposit snapshot')
-ra([52],'Aug-Sep +-2 cars (OS changed after DAG fix). Oct-05: week incomplete (old mid-week snapshot 172, New no collections)','Recheck after 05-Oct MV refresh')
-ra(range(53,64),'Both 0 / blank','None')
-ra(range(64,70),'Aug-Sep same (+-2). Oct-05 differs: no 05-Oct collections, so OS/risk bucket shifts','Recheck after 05-Oct MV refresh')
-ra(range(70,75),'Old = week snapshot of payment habit; MV = last habit entry before Hissab week (agreed rule #14)','Accept MV rule (agreed) - or confirm with owner')
-ra(range(75,81),'sd_bucket rebuilt from MV week_start_deposit, only MV partners (20000+: ~620 vs ~660); old from deposit raw incl. more partners','Rebuild sd_bucket from deposit raw table with same partner list as old')
-ra(range(81,87),'No "deposit at allocation" field in PG MV; sd_bucket_V2 filled with week-start deposit','Add deposit_at_allocation field to MV (deposit raw on allocation start date), then rebuild sd_bucket_V2')
+def ra(rows,rec,reason):
+    for r in rows: RA[r]=(rec,reason)
+ra([9],'No change','Same City_Targets tab in both sheets')
+ra([10,11,12,18],'Admin: rerun MV for 05-Oct, then refresh Raw_Data','Aug-Sep within 0.2%. Oct-05 New = 0: MV week 05-Oct has total_collected_100_pct empty (old DAG run)')
+ra([24],'Admin: rerun MV for 05-Oct','Aug-Sep diff 1-4 pilots (DAG fix on weekly_os). Oct-05 645 vs 668: no 05-Oct collections in MV')
+ra([13,19],'Fix Adjustments first - Razorpay will auto-correct','Old Razorpay = Total - Adjustments - DP to Rent. New Adjustments ~45K/week higher, so Razorpay ~2% lower (Sep-14: 2947.9K vs 3002.7K)')
+ra([14,15,20,21],'No change (fixed)','Now split from mv_daily_recovery other_positive_recovery / phonepe_recovery - matches old (Sep-28 Other 18.0K both)')
+ra([16,22],'Ask old sheet owner which adjustment types count; apply same filter on Raw_Data col S','New = all positive_adjustment in mv_daily_recovery (Sep-14: 128.9K). Old = 84.0K, about 55-65% of it - old rule not documented')
+ra([17,23],'No change - accept New','Fixed from mv_daily_recovery deposit_to_os. Only Aug-31 (653.7K vs 590.0K) and Sep-07 (364.4K vs 358.4K) higher: entries synced after old snapshot')
+ra([25],'Admin: rerun MV for 05-Oct','Aug-Sep match (Sep-21 92 vs 95 after DAG fix). Oct-05 464 vs 176: MV 05-Oct has no collections so all show unpaid')
+ra([26],'No change (fixed)','Old counts unpaid in 2 PREVIOUS weeks (w-7, w-14). MV partners_not_paid_2_weeks is 0/1 flag. Recomputed - now 37/47/36/30/32 same as old. Aug-17 21 vs 18: week 03-Aug not in MV')
+ra([27],'Decide rule: keep MV (all types) or filter Till-Wed to razorpay only','MV collection_till_wed sums all Mon-Wed recovery types; old used razorpay only. New 1-2 pp higher every week')
+ra([28],'No change (fixed)','Matches after DP to Rent split (T column)')
+ra([29,30,31],'Add uber_active_days to Raw_Data; set AC = 1 only if uber_active_days >= 7','Old AC = Uber active full week. New AC = allocated 7 days (wider) - so 4-14 drivers/week counted vs old 0-3')
+ra(range(32,40),'No change','Both 0 - OS_Surpass tab same')
+ra([40,46],'No change','Same source tab')
+ra([41,42,43,44,45,49,50],'No change - New is corrected DAG logic; confirm with admin','Only Sep-21 / Sep-28 differ: DAG fix moved bad debt dates. Old Sep-28 -32.7K (7 partners) is now Sep-21 -18.3K (4) + Sep-28 -5.7K (1)')
+ra([47,48],'No change (fixed)','MV bad_debt_collected = Non-Funnel rejoin amount; was wrongly in Funnel column (702K vs 0). Removed - now 0 same as old')
+ra([51],'Accept MV deposit (validated) or use same deposit snapshot as old','New = MV week_start_deposit; old = older sd_week_start snapshot. New 1-3% higher (Sep-14 59.8K vs 57.5K)')
+ra([52],'Recheck after 05-Oct MV rerun','Aug-Sep diff 0-2 cars (OS change from DAG fix). Oct-05 7 vs 172: old was mid-week snapshot, New has no 05-Oct collections')
+ra(range(53,64),'No change','Both 0 / blank')
+ra(range(64,70),'Recheck after 05-Oct MV rerun','Aug-Sep match (diff 0-2). Oct-05 differs: no 05-Oct collections in MV so risk buckets shift')
+ra(range(70,75),'Accept MV rule (agreed rule #14) or confirm with owner','Old = payment habit snapshot of that week. MV last_week_payment_habit = last entry before Hissab week. Diff 8-34% per bucket')
+ra(range(75,81),'Rebuild sd_bucket from deposit raw table with same partner list as old','New sd_bucket counts only MV partners with week_start_deposit (20000+: 615-658). Old has more partners (650-694)')
+ra(range(81,87),'Admin: add deposit_at_allocation to MV (deposit on allocation start date); rebuild sd_bucket_V2','PG MV has no deposit-at-allocation field. sd_bucket_V2 currently = week-start deposit, so ~99% in 20000+ vs old 29%')
 rows=[]; tot_ok=tot_c=0; tot_ok1=0; tot_c7=tot_ok7=0
 sec=''
 for i in range(8,86):
@@ -59,8 +60,8 @@ for i in range(8,86):
     tot_ok+=ok8; tot_c+=c8; tot_ok1+=diff(i,N1,W8)[1]; tot_c7+=c2; tot_ok7+=ok2
     st='MATCH' if ok2==c2 else ('PARTIAL' if ok2>=c2*0.5 else 'MISMATCH')
     o5,n5=g(O,i,9),g(N2,i,9)
-    reason,act=RA.get(i+1,('',''))
-    rows.append([sec,O[i][1].strip(),st,f'{p1}%',f'{p2}%',f'{ok2}/{c2}',o5,n5,reason,act]+[f'{g(O,i,j)} | {g(N2,i,j)}' for j in W7])
+    rec,reason=RA.get(i+1,('',''))
+    rows.append([sec,O[i][1].strip(),st,f'{p1}%',f'{p2}%',f'{ok2}/{c2}',o5,n5,rec,reason]+[f'{g(O,i,j)} | {g(N2,i,j)}' for j in W7])
 fin_before=round(100-tot_ok1/tot_c*100,1); fin_after=round(100-tot_ok/tot_c*100,1); fin7=round(100-tot_ok7/tot_c7*100,1)
 nm=sum(r[2]=='MATCH' for r in rows); npart=sum(r[2]=='PARTIAL' for r in rows); nmis=sum(r[2]=='MISMATCH' for r in rows)
 top=[['Old vs New Summary - Delhi NCR / Own Now / all filters *  |  Old = reference sheet, New = PG raw'],
@@ -68,7 +69,7 @@ top=[['Old vs New Summary - Delhi NCR / Own Now / all filters *  |  Old = refere
  ['Metrics', f'MATCH: {nm}', f'PARTIAL: {npart}', f'MISMATCH: {nmis}', f'Total: {len(rows)}'],
  ['Main open items','1) Admin: refresh MV for 05-Oct week','2) Adjustments rule from old owner','3) AC = Uber active 7 days','4) Deposit at allocation field + sd_bucket from deposit raw'],
  [],
- ['Section','Metric','Status (after fix)','Diff % before fix (Aug17-Sep28)','Diff % after fix (Aug17-Sep28)','Weeks matched (of 7)','Oct-05 Old','Oct-05 New','Reason','Correction step']+[f'{w} Old | New' for w in WK[:7]]]
+ ['Section','Metric','Status (after fix)','Diff % before fix (Aug17-Sep28)','Diff % after fix (Aug17-Sep28)','Weeks matched (of 7)','Oct-05 Old','Oct-05 New','Your Recommendation','Reason']+[f'{w} Old | New' for w in WK[:7]]]
 out=top+rows
 json.dump({'out':out,'fin':[fin_before,fin_after,fin7],'cnt':[nm,npart,nmis]},open('../dash/cmp_out.json','w'))
 for r in rows: print(r[2],r[1],r[3],r[4],r[5])
