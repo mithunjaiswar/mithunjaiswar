@@ -16,7 +16,7 @@ SL={
 'S15':'SUM(till_wed_100pct = MIN(till-Wed collection, |OS|)) / ABS(SUM(OS))',
 'S16':'(Razorpay + Other + Adjustments) / ABS(OS)',
 'S17':'SUM / COUNT of dp_to_os_100pct where entire_week_active > 0 (upload) and dp_to_os > 0; % = / ABS(OS)',
-'S18':'OS_Surpass tab (separate upload) - was empty (0)','S19':'OS_Surpass tab (separate upload) - was empty (0)',
+'S18':'SUMIFS on OS_Surpass tab (upload) by week/city/product/fuel. Tab holds only 13-Oct-2025 (3 rows, week as text) -> 0 for all 2026 weeks','S19':'SUMIFS on OS_Surpass tab bucket columns (F..L) - same stale tab -> 0',
 'S20':'City_Targets: ABS(Target Bad Debt) / ABS(Total OS)',
 'S21':'SUM(bad_debt) (uploaded col AW); % = / SUM(OS)',
 'S22':'COUNT partners with bad_debt < 0; % = / pilots in negative; per partner = amount / count',
