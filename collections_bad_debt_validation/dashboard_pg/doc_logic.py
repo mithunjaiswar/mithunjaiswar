@@ -12,7 +12,7 @@ SL={
 'S11':'Each mode (P..T) / Total Actual Collections',
 'S12':'COUNTUNIQUE(partner) where negative_os < 0',
 'S13':'COUNT partners where OS < 0 AND total_recovery = 0',
-'S14':'COUNT where not_paid_last_2_weeks > 1; col AA = no. of own rows in previous 2 weeks with total_recovery = 0',
+'S14':'COUNT where not_paid_last_2_weeks > 1; col AA = COUNTIFS(own rows with week in [week-14, week) AND total_recovery = 0) -> 0, 1 or 2',
 'S15':'SUM(till_wed_100pct = MIN(till-Wed collection, |OS|)) / ABS(SUM(OS))',
 'S16':'(Razorpay + Other + Adjustments) / ABS(OS)',
 'S17':'SUM / COUNT of dp_to_os_100pct where entire_week_active > 0 (upload) and dp_to_os > 0; % = / ABS(OS)',

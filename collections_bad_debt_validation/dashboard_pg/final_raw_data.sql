@@ -72,7 +72,11 @@ rc as (
            and (r.recovery_status not in ('complete', 'cancelled') or r.updated_at >= w.hw)
   group by 1, 2
 ),
--- [MISSING 6] asset-risk input: no. of the 2 previous hisaab weeks with 0 collection (Sheet col AA logic)
+-- [MISSING 6] NOT PAID > 2 WEEKS (+ asset-risk input). Replaces wrong MV flag partners_not_paid_2_weeks.
+--   For each partner + hisaab week: look at the 2 PREVIOUS hisaab weeks (hissab_week-14 .. hissab_week-7)
+--   and count weeks with 0 collection (total_collected_amount_in_week = 0 or blank) -> 0, 1 or 2.
+--   Summary "Not paid > 2 weeks" = partners with not_paid_prev_2w = 2 (both previous weeks unpaid).
+--   (Sheet col AA logic: COUNTIFS of own rows in previous 14 days with total_recovery = 0)
 np as (
   select partner_etm, hissab_week,
          count(*) filter (where coalesce(total_collected_amount_in_week, 0) = 0)
