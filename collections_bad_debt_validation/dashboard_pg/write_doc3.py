@@ -18,11 +18,18 @@ def num(s):
     if not m_: return None
     v=float(m_.group(1)); return v*1000 if m_.group(2)=='K' else (v/100 if m_.group(2)=='%' else v)
 g=lambda R,i,j: (R[i][j] if i<len(R) and j<len(R[i]) else '')
+TW=['Sep-14','Sep-21','Sep-28','Oct-05']
+def colmap(R,hr,lo,hi): return {g(R,hr,j):j for j in range(lo,hi)}
+SMa,SMb=colmap(SR,7,2,10),colmap(SN,7,2,10)
+WMa,WMb=colmap(WR,5,2,6),colmap(WN,5,2,6)
 def cmpw(src,row):
-    A,B,cols=(SR,SN,range(6,10)) if src=='S' else (WR,WN,range(2,6))
-    i=row-1; pc=any('%' in g(A,i,j) for j in cols); out=[]
-    for j in cols:
-        a,b=g(A,i,j),g(B,i,j); x,y=num(a),num(b)
+    A,B,ma,mb=(SR,SN,SMa,SMb) if src=='S' else (WR,WN,WMa,WMb)
+    i=row-1; pc=any('%' in g(A,i,ma.get(w,99)) for w in TW); out=[]
+    for w in TW:
+        ja,jb=ma.get(w),mb.get(w)
+        if ja is None or jb is None:
+            out.append(('' if ja is None else g(A,i,ja),'(week not in current WBR view)' if jb is None else g(B,i,jb),'','',False)); continue
+        a,b=g(A,i,ja),g(B,i,jb); x,y=num(a),num(b)
         if x is None or y is None:
             same=str(a).strip()==str(b).strip()
             out.append((a,b,'','',not same)); continue
