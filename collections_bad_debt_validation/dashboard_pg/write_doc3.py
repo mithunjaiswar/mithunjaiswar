@@ -9,6 +9,37 @@ time.sleep(20)
 SN=call('GET',f"{API}/{DS}/values/'Summary'!A1:J86")['values']
 call('POST',f'{API}/{DS}/values:batchUpdate',json={'valueInputOption':'RAW','data':[{'range':"'Summary'!B2",'values':[['*']]}]})
 WR=call('GET',f"{API}/{REF}/values/'WBR View'!A1:H486")['values']
+# Car recovery rows (Summary 53-61) are compared with the Central Car Recovery Dash, all products, Delhi NCR.
+# Values are computed from the Recovery Dash RawData with its Weekly_Summary formulas, so a filter set on
+# the Recovery Dash sheet (e.g. Product = D2O) does not change the comparison.
+import datetime as _dt
+_cr=json.load(open('../cr/rawdata.json')); _h=_cr[0]
+_C=[dict(zip(_h,r)) for r in _cr[1:] if r and r[0]!='' and r[_h.index('city')]=='Delhi NCR']
+_D=lambda x: _dt.date.fromisoformat(str(x)[:10])
+def _pct(a,p):
+    a=sorted(a); k=(len(a)-1)*p; f=int(k); return a[f]+(a[min(f+1,len(a)-1)]-a[f])*(k-f)
+def _crv(row,w):
+    W=_dt.datetime.strptime(w+'-2026','%b-%d-%Y').date(); E=W+_dt.timedelta(6)
+    cl=[c for c in _C if _D(c['week_start'])<=E and W<=_D(c['close_week'])<=E]
+    team=[c for c in cl if c['final_status']=='Completed' and (c['finalstatus_reason']=='' or W<_dt.date(2026,9,7))]
+    tat=[float(c['tat_seconds'])/3600 for c in cl if c['final_status']=='Completed' and c['finalstatus_reason']=='']
+    hrs=lambda x: f"{x:.1f} hrs" if tat else '-'
+    return {53:lambda: len([c for c in _C if _D(c['week_start'])==W and _D(c['close_week'])>=W]),
+            54:lambda: len([c for c in _C if _D(c['week_start'])<W and _D(c['close_week'])>=W]),
+            55:lambda: len([c for c in cl if c['final_status']=='Cancelled' and ((c['finalstatus_reason']=='Driver Dropped Vehicle' and c['checkin_dt']=='') or (c['finalstatus_reason']=='' and c['checkin_dt']!=''))]),
+            56:lambda: len(team),
+            57:lambda: len([c for c in _C if _D(c['week_start'])<=E and _D(c['close_week'])>E]),
+            58:lambda: hrs(sum(tat)/len(tat)) if tat else '-',
+            59:lambda: hrs(_pct(tat,0.9)) if tat else '-',
+            60:lambda: hrs(_pct(tat,0.5)) if tat else '-',
+            61:lambda: hrs(_pct(tat,0.25)) if tat else '-'}[row]()
+for row in range(53,62):
+    for j in range(6,10):
+        w=SR[7][j] if j<len(SR[7]) else ''
+        if w:
+            while len(SR[row-1])<=j: SR[row-1].append('')
+            SR[row-1][j]=str(_crv(row,w))
+
 WN=call('GET',f"{API}/{DS}/values/'WBR'!A1:H486")['values']
 print('weeks', SR[7][6:10], SN[7][6:10], WR[5][2:6], WN[5][2:6])
 DD=json.load(open('../dash/doc_data.json')); FM=DD['field_match']; N14=DD['n14']
