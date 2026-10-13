@@ -8,7 +8,8 @@ is the short version.
 python3 build_weekly_supply_plan.py out.xlsx raw.json         # raw.json = {"hdr": [...], "data": [[...]]} from the SSOT query
 python3 build_weekly_supply_plan.py out_v2.xlsx raw.json --v2  # v2: Lakshya as given
 python3 build_weekly_supply_plan.py out_exact.xlsx raw.json --exact  # Lakshya exact, week by week + Monthly Summary
-python3 build_simple_plan.py out_simple.xlsx raw.json plan_values.json  # simple format (the team's own layout), Lakshya-based plan
+python3 build_simple_plan.py out_simple.xlsx raw.json plan_values_exact.json --exact  # simple format, = Lakshya week by week (live)
+python3 build_simple_plan.py out_simple.xlsx raw.json plan_values.json             # simple format, Lakshya-based plan
 python3 build_weekly_supply_plan.py out_act.xlsx raw.json --actual  # actuals-based view
 ```
 
@@ -32,7 +33,8 @@ after w/e 6 Dec by days, for a longer horizon).
   and the attrition working; its Summary View has a colour scale on every row.
   Same cars as the Lakshya-based plan, so util compares like for like.
 - **v2** (`--v2`): every Own Now and L+DTO number is Lakshya v4's.
-- **Simple format** (`build_simple_plan.py`, its own sheet): the Lakshya-based plan in the team's own supply-plan layout.
+- **Simple format** (`build_simple_plan.py`, its own sheet): the plan in the team's own supply-plan layout. The live sheet
+  uses `--exact`: every plan week = Lakshya v4, starting from Lakshya's own 27 Sep position (typed G and H in w/c 28 Sep).
   One tab per city, one row per week (actual w/c 3 Aug - 21 Sep from raw_performance, plan w/c 28 Sep - 21 Dec). Plan inputs
   are typed (yellow: total cars, recruitment by channel, EIP add, net attrition %, Own Now cars); on-road rolls forward
   with short formulas (U = -(H + K) x V, I = K + P + U, H = prev H + K + U, G = prev Y, Y = G + I, Z = Y / E). Lakshya and

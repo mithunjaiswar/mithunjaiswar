@@ -31,6 +31,7 @@ from build_weekly_supply_plan import (CITIES, LK_CMP, EVENTS_ALL, EVENTS_CITY, W
                                       CENTER, NUM, PCT, RED_FONT, rc)
 
 YELLOW_IN = "FFFFF2CC"           # typed plan inputs
+EXACT = False                    # --exact: the plan = Lakshya v4 week by week, from Lakshya's own 27 Sep position
 ACT_W = [dt.date(2026, 8, 3) + dt.timedelta(days=7 * k) for k in range(8)]       # w/c 3 Aug - 21 Sep (actual)
 PLAN_W = [dt.date(2026, 9, 28) + dt.timedelta(days=7 * k) for k in range(13)]    # w/c 28 Sep - 21 Dec (plan)
 WEEKS = ACT_W + PLAN_W
@@ -104,6 +105,8 @@ def build_city(wb, city, pv, rawix):
     K = sum(acc.get(a, 0) + acc.get(b_, 0) for _, a, b_ in CHANNELS)
     U = -(acc.get("attrition_cnt", 0) + acc.get("temp_attrition_cnt", 0) - acc.get("rejoin_cnt", 0) - acc.get("temp_rejoin_cnt", 0))
     H = H + K + U
+    if EXACT:                                          # Lakshya's own drivers at the start (27 Sep)
+        H = v["H"][1]
     V = []
     for t in range(13):
         k_ = sum(v[x][t + 1] for x in ("L", "M", "N", "O"))
@@ -142,8 +145,8 @@ def build_city(wb, city, pv, rawix):
             row.update({
                 "Total Cars [week ending]": round(v["E"][t + 1], 1),
                 "nULP (change in cars)": f"=E{r}-E{r - 1}",
-                "cars on Road - WB": f"=Y{r - 1}",
-                "active partners - WB": f"=H{r - 1}+K{r - 1}+U{r - 1}",
+                "cars on Road - WB": (round(v["G"][1], 1) if EXACT and t == 0 else f"=Y{r - 1}"),
+                "active partners - WB": (round(v["H"][1], 1) if EXACT and t == 0 else f"=H{r - 1}+K{r - 1}+U{r - 1}"),
                 "EIP Net add-on": round(v["AG"][t + 1], 1),
                 "EIP cars": f"=R{r - 1}+P{r}",
                 "Net Attrition (Abs)": f"=-(H{r}+K{r})*V{r}",
@@ -198,7 +201,7 @@ def build_city(wb, city, pv, rawix):
                 fmt = "0.0%"
             elif h in ("City", "Fuel Type", "Events / seasonality", "Row type"):
                 fmt = None
-            typed = plan and h in ("Total Cars [week ending]", "Field Sales Executive", "Vendor", "Referrals",
+            typed = (plan and EXACT and t == 0 and h in ("cars on Road - WB", "active partners - WB")) or plan and h in ("Total Cars [week ending]", "Field Sales Executive", "Vendor", "Referrals",
                                    "Performance marketing", "EIP Net add-on", "Net Attrition %", "Own Now cars on Road - WE")
             bg = YELLOW_IN if typed else (ACTUAL if not plan and j <= 26 else (HIST if h.startswith("LY") else
                                                                               (LIGHT if h.startswith(("Lakshya", "Plan -")) else None)))
@@ -220,7 +223,9 @@ def build_city(wb, city, pv, rawix):
     for h, src in (("Week-ending cars on Road", "Y"), ("Week ending Util", "Z"), ("Lakshya: cars on road", "AA"),
                    ("Lakshya: util", "AB"), ("Plan - Lakshya: cars on road", "AF"), ("Plan - Lakshya: util", "AG")):
         put(ws, r, HEAD.index(h) + 1, f"={src}{RL}", "0.0%" if "util" in h.lower() else NUM, bold=True, bg=LIGHT).alignment = CENTER
-    note(ws, r + 1, "Yellow = plan inputs you can change (cars, recruitment by channel, EIP add, net attrition %, Own Now cars). "
+    note(ws, r + 1, ("Plan weeks = Lakshya v4 week by week, starting from Lakshya's own 27 Sep position (yellow G and H in w/c 28 Sep; "
+                     "the actual 27 Sep is the row above). " if EXACT else "") +
+                    "Yellow = plan inputs you can change (cars, recruitment by channel, EIP add, net attrition %, Own Now cars). "
                     "Grey-blue = actual (raw_performance). Everything else is a formula: I = K + P + U, U = -(H + K) x V, H = previous H + "
                     "previous K + previous U, G = previous Y, Y = G + I, Z = Y / E, W = Y - R - X. Lakshya = Lakshya v4, same week (net "
                     "attrition on the same basis as V). LY = the same week 364 days earlier. Last actual week (w/c 21 Sep) has 6 days loaded.")
@@ -450,7 +455,14 @@ def build_howto(wb):
         ("Next to each week: Lakshya v4's numbers for the same week (AA-AE), Plan - Lakshya (AF-AH, red when below), and last year (AI-AN).", None),
         ("Summary View (weekly) and Summary View (Monthly) read the city tabs through Combined All; pick a city or India in B1.", None),
         ("", None),
-        ("Where the plan numbers come from (the Lakshya-based plan):", F_BOLD),
+        *((("Where the plan numbers come from: Lakshya v4, week by week (every plan week equals Lakshya):", F_BOLD),
+           ("  - Recruitment = Lakshya's weekly placements (L+DTO + Own Now), split into channels by the AOP mix.", None),
+           ("  - Net attrition % = Lakshya's drivers leaving (monthly churn + rollover spread over the month's weeks), on this sheet's basis.", None),
+           ("  - Total cars = Lakshya's fleet (2,300 new cars, 721 sold); EIP = a straight line to Lakshya's December EIP; Own Now = Lakshya's.", None),
+           ("  - The first plan week (w/c 28 Sep) starts from LAKSHYA'S own 27 Sep position (yellow G and H): Lakshya's on road and drivers,", None),
+           ("    not the actual. Actual on 27 Sep was 11,733 cars on road against Lakshya's 12,281 (India), a start gap of 548.", None),
+           ("", None)) if EXACT else ()),
+        ("Where the plan numbers come from (the Lakshya-based plan):" if not EXACT else "For reference, the Lakshya-based plan (main sheet):", F_BOLD),
         ("  - Starts from the actual on Sun 27 Sep (actuals loaded to Sat 26 Sep).", None),
         ("  - Recruitment: Lakshya's month average a week, x the Diwali / Durga Puja (Kolkata) shape, + catch-up hiring each month so each", None),
         ("    city's average util in Oct, Nov and Dec equals Lakshya's month average. Split into channels by the AOP mix.", None),
@@ -488,4 +500,5 @@ def main(out, raw_path, pv_path):
 
 
 if __name__ == "__main__":
+    EXACT = "--exact" in sys.argv[4:]
     main(sys.argv[1], sys.argv[2], sys.argv[3])
