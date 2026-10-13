@@ -18,7 +18,7 @@ def num(s):
     if not m_: return None
     v=float(m_.group(1)); return v*1000 if m_.group(2)=='K' else (v/100 if m_.group(2)=='%' else v)
 g=lambda R,i,j: (R[i][j] if i<len(R) and j<len(R[i]) else '')
-TW=['Sep-14','Sep-21','Sep-28','Oct-05']
+TW=[w for w in SR[7][6:10] if w]  # latest 4 weeks shown on the reference Summary
 def colmap(R,hr,lo,hi): return {g(R,hr,j):j for j in range(lo,hi)}
 SMa,SMb=colmap(SR,7,2,10),colmap(SN,7,2,10)
 WMa,WMb=colmap(WR,5,2,6),colmap(WN,5,2,6)
@@ -28,7 +28,7 @@ def cmpw(src,row):
     for w in TW:
         ja,jb=ma.get(w),mb.get(w)
         if ja is None or jb is None:
-            out.append(('' if ja is None else g(A,i,ja),'(week not in current WBR view)' if jb is None else g(B,i,jb),'','',False)); continue
+            out.append(('(Sheet not updated for this week)' if ja is None else g(A,i,ja),'(week not in current WBR view)' if jb is None else g(B,i,jb),'','',False)); continue
         a,b=g(A,i,ja),g(B,i,jb); x,y=num(a),num(b)
         if x is None or y is None:
             same=str(a).strip()==str(b).strip()
@@ -93,7 +93,7 @@ else:
 if not x.ok: raise SystemExit(x.text[:300])
 did=open(docf).read().strip(); DOC=f'https://docs.google.com/document/d/{did}/edit'
 print('doc',DOC)
-WEEKS=['Week 1 - 14-Sep-2026','Week 2 - 21-Sep-2026','Week 3 - 28-Sep-2026','Week 4 - 05-Oct-2026']
+WEEKS=[f"Week {i+1} - {w.split('-')[1]}-{w.split('-')[0]}-2026" for i,w in enumerate(TW)]
 BH=['Sheet value','MV value','Difference (MV - Sheet)','Difference %','Mismatch reason (detail) + Correction required','Example (partner / week: Sheet vs MV)']
 NC=8+6*4
 WROW=['','','','','','','','']+sum([[w,'','','','',''] for w in WEEKS],[])
