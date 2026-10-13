@@ -73,7 +73,7 @@ rcase as (
          then date_trunc('week', coalesce(ls.close_date, a.updated_at at time zone 'Asia/Kolkata'))::date
          else date '2099-12-28' end as close_week,
     case when a.rec_tags_id = 111 then 'Completed' when a.rec_tags_id in (112, 113) then 'Cancelled' else 'Pending' end as final_status,
-    coalesce(a.cancel_reason, '') as reason,
+    case when a.rec_tags_id = 111 then coalesce(a.payment_reason, '') else coalesce(a.cancel_reason, '') end as reason,  -- Recovery Dash finalstatus_reason
     cc.id is not null as has_checkin,
     extract(epoch from (coalesce(ls.close_date, now()) - a.activation_date)) / 3600.0 as tat_hrs,
     coalesce(fd.employee_id, fd2.employee_id) as employee_id,
@@ -95,6 +95,7 @@ rcase as (
   left join lateral (
     select fct.team_id from fleet_car_team fct
     where fct.car_id = a.car_id and fct.start_date <= a.activation_date
+      and fct.start_date <= coalesce(fct.end_date, current_date)   -- skip bad team rows (end before start), as Recovery Dash
     order by fct.start_date desc limit 1
   ) tm on true
   left join fleet_team ft on ft.id = tm.team_id
@@ -109,15 +110,18 @@ rcase as (
   ) al on a.driver_id is null
   left join fleet_driver fd2 on fd2.id = al.driver_id
   where a.activation_date < (select max(hw) from wk) + 7
-    and (a.rec_tags_id not in (111, 112, 113) or coalesce(ls.close_date, a.updated_at) >= (select min(hw) from wk))
+    and (coalesce(a.rec_tags_id, 0) not in (111, 112, 113) or  -- open cases have rec_tags_id NULL
+         coalesce(ls.close_date, a.updated_at) >= (select min(hw) from wk))
 ),
 rc as (
   select c.employee_id, w.hw,
     count(*) filter (where c.week_start = w.hw)                                                   as recovery_initiated,
     count(*) filter (where c.week_start < w.hw)                                                   as recovery_brought_fwd,
-    count(*) filter (where c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '') as recovered_team,
+    count(*) filter (where c.close_week = w.hw and c.final_status = 'Completed'
+                       and (c.reason = '' or w.hw < date '2026-09-07'))                         as recovered_team,
     count(*) filter (where c.close_week = w.hw and c.final_status = 'Cancelled'
-                       and (c.reason = 'Driver Dropped Vehicle' or (c.reason = '' and c.has_checkin))) as recovered_organic,
+                       and ((c.reason = 'Driver Dropped Vehicle' and not c.has_checkin)
+                            or (c.reason = '' and c.has_checkin)))                              as recovered_organic,
     count(*) filter (where c.close_week > w.hw)                                                   as recovery_pending,
     round(avg(c.tat_hrs) filter (where c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '')::numeric, 1) as recovery_tat_hrs,
     min(c.agent_name) filter (where c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '') as recovery_agent
@@ -351,7 +355,7 @@ rcase as (
          then date_trunc('week', coalesce(ls.close_date, a.updated_at at time zone 'Asia/Kolkata'))::date
          else date '2099-12-28' end as close_week,
     case when a.rec_tags_id = 111 then 'Completed' when a.rec_tags_id in (112, 113) then 'Cancelled' else 'Pending' end as final_status,
-    coalesce(a.cancel_reason, '') as reason,
+    case when a.rec_tags_id = 111 then coalesce(a.payment_reason, '') else coalesce(a.cancel_reason, '') end as reason,  -- Recovery Dash finalstatus_reason
     cc.id is not null as has_checkin,
     extract(epoch from (coalesce(ls.close_date, now()) - a.activation_date)) / 3600.0 as tat_hrs,
     coalesce(fd.employee_id, fd2.employee_id) as employee_id,
@@ -373,6 +377,7 @@ rcase as (
   left join lateral (
     select fct.team_id from fleet_car_team fct
     where fct.car_id = a.car_id and fct.start_date <= a.activation_date
+      and fct.start_date <= coalesce(fct.end_date, current_date)   -- skip bad team rows (end before start), as Recovery Dash
     order by fct.start_date desc limit 1
   ) tm on true
   left join fleet_team ft on ft.id = tm.team_id
@@ -387,7 +392,8 @@ rcase as (
   ) al on a.driver_id is null
   left join fleet_driver fd2 on fd2.id = al.driver_id
   where a.activation_date < (select max(hw) from wk) + 7
-    and (a.rec_tags_id not in (111, 112, 113) or coalesce(ls.close_date, a.updated_at) >= (select min(hw) from wk))
+    and (coalesce(a.rec_tags_id, 0) not in (111, 112, 113) or  -- open cases have rec_tags_id NULL
+         coalesce(ls.close_date, a.updated_at) >= (select min(hw) from wk))
 )
 select
   w.hw as rec_week,
