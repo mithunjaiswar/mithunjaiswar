@@ -6,6 +6,7 @@ DS = open('../dash/dash_sid.txt').read().strip(); TAB = 'Deposit_Raw'
 P = json.load(open('../dash/deposit_pilots.json'))
 N = json.load(open('../dash/raw_refresh.json')); h = N[0]; ix = {c: i for i, c in enumerate(h)}
 mv = {(r[0], r[1]): (r[ix['city']], r[ix['fuel_type']], r[ix['product_type']]) for r in N[1:] if r[60] == 'MV'}
+PR = json.load(open('../dash/deposit_product.json'))   # old Sheet product rule (Fixed Pay > EIP > D2O > Own Now > EV > Rev Share > SINGLE)
 def prod(p, fuel):
     p = (p or '').strip()
     if p == 'leasing': return 'EV' if fuel == 'EV' else 'SINGLE'
@@ -15,6 +16,7 @@ rows = []
 for w, e, city, fuel, pt, ad, dwe, dal in P:
     m = mv.get((w, e))
     c, f, p = m if m else (city, fuel, prod(pt, fuel))
+    p = PR.get(f'{w}|{e}', p)   # product: old Sheet rule for deposit rows
     rows.append([w, e, c, f, p, ad, round(float(dwe)), round(float(dal)), 'Yes' if m else 'No'])
 rows.sort(key=lambda r: (r[0], r[2], r[1]))
 meta = call('GET', f'{API}/{DS}', params={'fields': 'sheets.properties'})

@@ -320,8 +320,8 @@ order by 1, 4, 2;
 --   push the Google Sheet over its 10M cell limit, so they load into the small Deposit_Raw tab.
 -- deposit_week_end          = deposit balance till hisaab week end (today for the running week)
 -- deposit_at_alloc_week_end = deposit balance till the end of the week of the pilot's LAST allocation
--- (both exclude SD_TO_OWNNOW / OWNNOW_TO_OWNNOW). City / fuel / product: MV row of that week if present,
--- else allocation table (leasing -> SINGLE or EV, DTO -> D2O).
+-- (both exclude SD_TO_OWNNOW / OWNNOW_TO_OWNNOW). City / fuel: MV row of that week if present, else allocation table.
+-- Product: old Sheet SD Bucket rule (see rk / eip below).
 -- =====================================================================================
 with wk as (
   select generate_series((date_trunc('week', current_date) - interval '63 days')::timestamp,
@@ -334,6 +334,23 @@ alloc as (
   join wk w on s.allocation_date <= w.hw + 6 and (s.jama_date is null or s.jama_date >= w.hw)
 ),
 p as (select * from alloc where rn = 1),
+-- product = old Sheet (SD Bucket) rule: highest priority over the pilot's allocations in the week
+--   Fixed Pay (pm 3) > EIP (EIP leasing row in the 4 weeks before, or pm 7/8) > D2O (pm 6) > Own Now (pm 9)
+--   > EV (EV model) > Revenue Share (pm 1) > SINGLE
+rk as (
+  select w.hw, s.employee_id,
+         max(case when s.payment_model_id = 3 then 99 when s.payment_model_id in (7, 8) then 6 when s.payment_model_id = 6 then 5
+                  when s.payment_model_id = 9 then 4 when s.model_id in ('8','16','20','52','53','54','55','40','41','42','43') then 3
+                  when s.payment_model_id = 1 then 2 else 1 end) as rk
+  from analytics.ssot_alloc_dealloc_base s
+  join wk w on s.allocation_date <= w.hw + 6 and (s.jama_date is null or s.jama_date >= w.hw)
+  group by 1, 2
+),
+eip as (
+  select distinct w.hw, f.partner_etm
+  from fleet_leasing_weeklydata f join wk w on f.start_date between w.hw - 28 and w.hw - 1
+  where f.leasing_type = 'EIP'
+),
 dep as (
   select employee_id, date::date as dt, sum(amount) as amt
   from mv_deposits_raw
@@ -351,12 +368,8 @@ select
   p.employee_id                                                                as partner_etm,
   coalesce(m.city, p.city)                                                     as city,
   coalesce(m.fuel_type, p.fuel_type)                                           as fuel_type,
-  coalesce(m.product_type,
-           case when p.product_type = 'leasing' then case when p.fuel_type = 'EV' then 'EV' else 'SINGLE' end
-                when p.product_type = 'DTO' then 'D2O'
-                when p.product_type = 'Rev_share' then 'Revenue Share'
-                when p.product_type = 'New_team' then 'SINGLE'
-                else p.product_type end)                                       as product_type,
+  case when rk.rk = 99 then 'Fixed Pay' when eip.partner_etm is not null or rk.rk = 6 then 'EIP' when rk.rk = 5 then 'D2O'
+       when rk.rk = 4 then 'Own Now' when rk.rk = 3 then 'EV' when rk.rk = 2 then 'Revenue Share' else 'SINGLE' end as product_type,
   p.allocation_date                                                            as last_alloc_date,
   round(coalesce(sum(d.amt) filter (where d.dt <= least(p.hw + 6, current_date)), 0))                                     as deposit_week_end,
   round(coalesce(sum(d.amt) filter (where d.dt <= least(date_trunc('week', p.allocation_date)::date + 6, current_date)), 0)) as deposit_at_alloc_week_end,
@@ -364,5 +377,7 @@ select
 from p
 left join dep d on d.employee_id = p.employee_id
 left join m on m.partner_etm = p.employee_id and m.hissab_week = p.hw
+left join rk on rk.employee_id = p.employee_id and rk.hw = p.hw
+left join eip on eip.partner_etm = p.employee_id and eip.hw = p.hw
 group by 1, 2, 3, 4, 5, 6, m.partner_etm
 order by 1, 3, 2;
