@@ -44,4 +44,5 @@ finally:
     call('POST', f'{API}/{DS}/values:batchUpdate', json={'valueInputOption': 'RAW', 'data': [{'range': "'Summary'!B2:B7", 'values': USER}]})
 json.dump(RES, open('../dash/city_product.json', 'w'))
 # ---- write tab (with week-on-week splitter)
+exec(open('deposit_sheet_values.py').read())   # deposit rows: Sheet values from original sd_bucket tabs
 exec(open('city_product_tab.py').read())
