@@ -211,3 +211,79 @@ cross join lateral (  -- risk score = number of risk signals
        + (coalesce(ml.conn_total, 0) <= 0)::int as risk_score
 ) y
 order by m.hissab_week, m.city, m.partner_etm;
+
+
+-- =====================================================================================
+-- QUERY 2 - Recovery_Raw (car recovery metrics in Summary)
+-- Grain : 1 row per recovery case (same logic as Central Car Recovery Dash "RawData")
+-- Why   : case level, so all recovery cases count (also partners not in the MV) and
+--         TAT is per case -> numbers match the Car Recovery Dash exactly.
+-- Load  : overwrite Recovery_Raw!A:P
+-- =====================================================================================
+select
+  date_trunc('week', a.activation_date)::date                                   as week_start,
+  case when a.rec_tags_id in (111, 112, 113)
+       then date_trunc('week', coalesce(ls.close_date, a.updated_at at time zone 'Asia/Kolkata'))::date
+       else (date_trunc('week', current_date)::date + 7) end                    as close_week,
+  a.activation_date::date                                                       as start_date,
+  case when a.rec_tags_id in (111, 112, 113)
+       then coalesce(ls.close_date::date, (a.updated_at at time zone 'Asia/Kolkata')::date) end as close_date,
+  round((extract(epoch from (coalesce(ls.close_date, now()) - a.activation_date)) / 3600.0)::numeric, 1) as tat_hrs,
+  fcity.name                                                                    as city,
+  coalesce(fcl.location, '')                                                    as location,
+  case when fcar.model_id in (8,16,20,40,41,42,43,52,53,54,55) then 'EV' else 'CNG' end as fuel_type,
+  case when ft.bv_pm_map_id in (11,12,13,19) then 'EV'
+       when ft.bv_pm_map_id in (14,6) then 'EIP'
+       when ft.bv_pm_map_id = 7  then 'D2O'
+       when ft.bv_pm_map_id = 18 then 'Own Now'
+       when ft.bv_pm_map_id = 1  then 'Revenue Share'
+       when ft.bv_pm_map_id = 3  then 'Fixed Pay'
+       when ft.bv_pm_map_id = 8  then 'ETS'
+       when ft.bv_pm_map_id = 9  then 'Intercity'
+       when ft.bv_pm_map_id = 10 then 'Last Mile Delivery'
+       else 'SINGLE' end                                                        as product_type,
+  coalesce(fd.employee_id, fd2.employee_id)                                     as partner_etid,
+  fcar.car_number,
+  coalesce(ee.name, '')                                                         as agent_name,
+  case when a.rec_tags_id = 111 then 'Completed'
+       when a.rec_tags_id in (112, 113) then 'Cancelled' else 'Pending' end     as final_status,
+  coalesce(a.cancel_reason, '')                                                 as final_reason,
+  coalesce(to_char(cc.activation_date::timestamp, 'YYYY-MM-DD HH24:MI:SS'), '') as checkin_dt,
+  a.id                                                                          as recovery_id
+from recovery_cars a
+left join lateral (
+  select b.datetime as close_date from recovery_status_logs b
+  where b.recovery_id = a.id and b.recovery_status in ('complete', 'failed', 'cancelled')
+  order by b.id desc limit 1
+) ls on true
+left join fleet_car fcar on fcar.id = a.car_id
+left join fleet_driver fd on fd.id = a.driver_id
+left join lateral (
+  select fct.team_id from fleet_car_team fct
+  where fct.car_id = a.car_id and fct.start_date <= a.activation_date
+  order by fct.start_date desc limit 1
+) team on true
+left join fleet_team ft on ft.id = team.team_id
+left join fleet_company_loc fcl on fcl.id = ft.loc_id
+left join fleet_city fcity on fcity.id = ft.city_id
+left join everest_employee ee on ee.id = a.recovery_agent_id
+left join car_checkin cc on cc.id = a.checkin_id
+left join lateral (
+  select ca.driver_id from car_allocation ca
+  where ca.deactivation_date is null and ca.driver_id is not null
+    and ca.car_id = a.car_id and ca.allocation_date <= a.activation_date
+  order by ca.id desc limit 1
+) al on true
+left join fleet_driver fd2 on fd2.id = al.driver_id
+where ls.close_date::date >= date_trunc('week', current_date)::date - 84
+   or ls.close_date is null
+order by 1, 6;
+
+-- Summary formulas on Recovery_Raw (W = column week, filters City / Fuel / Product):
+--   Initiated        : week_start = W and close_week >= W
+--   Brought Forward  : week_start < W and close_week >= W
+--   Organic          : close_week = W, Cancelled, reason = 'Driver Dropped Vehicle' (or no reason + check-in)
+--   Recovery Team    : close_week = W, Completed, no reason
+--   Pending          : week_start <= W and close_week > W
+--   Avg / P90 / P50 / P25 TAT : tat_hrs of Recovery Team cases closed in W
+--   Recovery / Agent : Recovery Team / unique agent_name of those cases
