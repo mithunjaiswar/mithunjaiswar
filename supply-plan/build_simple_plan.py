@@ -144,11 +144,11 @@ def build_city(wb, city, pv, rawix):
         else:          # plan week: typed inputs + short formulas
             row.update({
                 "Total Cars [week ending]": round(v["E"][t + 1], 1),
-                "nULP (change in cars)": f"=E{r}-E{r - 1}",
+                "nULP (change in cars)": (f"=E{r}-{round(v['E'][1] - v['AD'][1] + v['AE'][1], 1)}" if r == R0 else f"=E{r}-E{r - 1}"),
                 "cars on Road - WB": (round(v["G"][1], 1) if EXACT and t == 0 else f"=Y{r - 1}"),
                 "active partners - WB": (round(v["H"][1], 1) if EXACT and t == 0 else f"=H{r - 1}+K{r - 1}+U{r - 1}"),
                 "EIP Net add-on": round(v["AG"][t + 1], 1),
-                "EIP cars": f"=R{r - 1}+P{r}",
+                "EIP cars": (f"={round(v['R'][0], 1)}+P{r}" if r == R0 else f"=R{r - 1}+P{r}"),
                 "Net Attrition (Abs)": f"=-(H{r}+K{r})*V{r}",
                 "Net Attrition %": round(V[t], 5),
                 "Own Now cars on Road - WE": round(v["X"][t + 1], 1),
@@ -223,12 +223,11 @@ def build_city(wb, city, pv, rawix):
     for h, src in (("Week-ending cars on Road", "Y"), ("Week ending Util", "Z"), ("Lakshya: cars on road", "AA"),
                    ("Lakshya: util", "AB"), ("Plan - Lakshya: cars on road", "AF"), ("Plan - Lakshya: util", "AG")):
         put(ws, r, HEAD.index(h) + 1, f"={src}{RL}", "0.0%" if "util" in h.lower() else NUM, bold=True, bg=LIGHT).alignment = CENTER
-    note(ws, r + 1, ("Plan weeks = Lakshya v4 week by week, starting from Lakshya's own 27 Sep position (yellow G and H in w/c 28 Sep; "
-                     "the actual 27 Sep is the row above). " if EXACT else "") +
-                    "Yellow = plan inputs you can change (cars, recruitment by channel, EIP add, net attrition %, Own Now cars). "
-                    "Grey-blue = actual (raw_performance). Everything else is a formula: I = K + P + U, U = -(H + K) x V, H = previous H + "
+    note(ws, r + 1, ("Every week = Lakshya v4, starting from Lakshya's own 27 Sep position (yellow G and H in w/c 28 Sep). " if EXACT else "") +
+                    "Yellow = plan inputs you can change (cars, recruitment by channel, EIP add, net attrition %, Own Now cars). " +
+                    ("" if EXACT else "Grey-blue = actual (raw_performance). ") + "Everything else is a formula: I = K + P + U, U = -(H + K) x V, H = previous H + "
                     "previous K + previous U, G = previous Y, Y = G + I, Z = Y / E, W = Y - R - X. Lakshya = Lakshya v4, same week (net "
-                    "attrition on the same basis as V). LY = the same week 364 days earlier. Last actual week (w/c 21 Sep) has 6 days loaded.")
+                    "attrition on the same basis as V). LY = the same week 364 days earlier.")
     red = Font(name="Calibri", size=10, bold=True, color="FFC00000")
     ws.conditional_formatting.add(f"AF{RP}:AH{RL}", FormulaRule(formula=[f"AF{RP}<0"], font=red))
     ws.freeze_panes = "E2"
@@ -273,6 +272,7 @@ def build_combined(wb):
 
 
 CA = "'Combined All'"
+MAIN_LABEL = lambda: "2026 (actual, then plan)" if ACT_W else "Plan (= Lakshya)"
 
 
 def ca(col, crit):   # SUMIFS on Combined All for the pick (B1 city or *, B2 fuel)
@@ -372,7 +372,7 @@ def block_rows(ws, r, title, kind, pf, lf, yf, fmt, cols, crit_of, label_main, a
 def build_summary_weekly(wb):
     ws = wb.create_sheet("Summary View", 0)
     ws.sheet_view.showGridLines = False
-    picker(ws, "SUMMARY VIEW (weekly)  -  actual to w/c 21 Sep, then the plan")
+    picker(ws, "SUMMARY VIEW (weekly)  -  " + ("actual to w/c 21 Sep, then the plan" if ACT_W else "Lakshya plan, w/c 28 Sep - 21 Dec"))
     ws.column_dimensions["A"].width = 34
     for j in range(2, 2 + len(WEEKS)):
         ws.column_dimensions[L(j)].width = 9
@@ -387,9 +387,10 @@ def build_summary_weekly(wb):
     crit_of = lambda col: (f"{CA}!$D:$D,{col}$4", f"{CA}!$D:$D,{col}$4")
     r = 8
     for title, kind, pf, lf, yf, fmt in METRICS:
-        r = block_rows(ws, r, title, kind, pf, lf, yf, fmt, cols, crit_of, "2026 (actual, then plan)",
+        r = block_rows(ws, r, title, kind, pf, lf, yf, fmt, cols, crit_of, MAIN_LABEL(),
                        actual_keys={L(j) for j in range(2, 2 + len(ACT_W))})
-    note(ws, r, "Pick a city (or India) in B1. 2026 = the city tabs (actual weeks from raw_performance, then the plan). Lakshya v4 = the same "
+    note(ws, r, "Pick a city (or India) in B1. " + ("Plan = the city tabs (= Lakshya v4 week by week). " if EXACT else
+                "2026 = the city tabs (actual weeks from raw_performance, then the plan). ") + "Lakshya v4 = the same "
                 "week in Lakshya's model. Last year = the same week 364 days earlier. Plan - Lakshya is red when below Lakshya.")
     ws.freeze_panes = "B7"
 
@@ -397,23 +398,27 @@ def build_summary_weekly(wb):
 def build_summary_monthly(wb):
     ws = wb.create_sheet("Summary View (Monthly)", 1)
     ws.sheet_view.showGridLines = False
-    picker(ws, "SUMMARY VIEW (Monthly)  -  Aug and Sep actual, Oct to Dec plan")
+    months = ([dt.date(2026, 8, 1), dt.date(2026, 9, 1)] if ACT_W else []) + [dt.date(2026, 10, 1), dt.date(2026, 11, 1), dt.date(2026, 12, 1)]
+    na = 2 if ACT_W else 0                              # actual months shown first
+    picker(ws, "SUMMARY VIEW (Monthly)  -  " + ("Aug and Sep actual, Oct to Dec plan" if ACT_W else "Lakshya plan, Oct to Dec"))
     ws.column_dimensions["A"].width = 34
-    months = [dt.date(2026, 8, 1), dt.date(2026, 9, 1), dt.date(2026, 10, 1), dt.date(2026, 11, 1), dt.date(2026, 12, 1)]
-    for j in range(2, 8):
+    TC = 2 + len(months)                                # the Oct - Dec total column
+    for j in range(2, TC + 1):
         ws.column_dimensions[L(j)].width = 13
     put(ws, 4, 1, "Month", bold=True)
     for j, m in enumerate(months, start=2):
         put(ws, 4, j, m, "mmm-yy", bold=True).alignment = CENTER
         put(ws, 5, j, "Actual" if m < dt.date(2026, 10, 1) else "Plan", bold=True,
             bg=ACTUAL if m < dt.date(2026, 10, 1) else None).alignment = CENTER
-    put(ws, 4, 7, "Oct - Dec plan", bold=True).alignment = CENTER
+    put(ws, 4, TC, "Oct - Dec plan", bold=True).alignment = CENTER
+    first_plan, last_m = L(2 + na), L(TC - 1)
     # last week of each month (for month-end figures): the latest week whose Month is the month
-    cols = [(f"={L(j)}$4", L(j)) for j in range(2, 7)] + [("Oct - Dec", "G")]
+    cols = [(f"={L(j)}$4", L(j)) for j in range(2, TC)] + [("Oct - Dec", L(TC))]
 
     def crit_of(col):
-        if col == "G":
-            return (f"{CA}!$C:$C,\">=\"&$D$4,{CA}!$C:$C,\"<=\"&$F$4", f"{CA}!$D:$D,MAXIFS({CA}!$D:$D,{CA}!$C:$C,$F$4)")
+        if col == L(TC):
+            return (f"{CA}!$C:$C,\">=\"&${first_plan}$4,{CA}!$C:$C,\"<=\"&${last_m}$4",
+                    f"{CA}!$D:$D,MAXIFS({CA}!$D:$D,{CA}!$C:$C,${last_m}$4)")
         return (f"{CA}!$C:$C,{col}$4", f"{CA}!$D:$D,MAXIFS({CA}!$D:$D,{CA}!$C:$C,{col}$4)")
     r = 8
     for title, kind, pf, lf, yf, fmt in METRICS:
@@ -422,7 +427,7 @@ def build_summary_monthly(wb):
             t += "  (month total)"
         elif kind == "ratio":
             t += "  (month: total on road / total cars over the weeks)"
-        r = block_rows(ws, r, t, kind, pf, lf, yf, fmt, cols, crit_of, "2026 (actual, then plan)", actual_keys={"B", "C"})
+        r = block_rows(ws, r, t, kind, pf, lf, yf, fmt, cols, crit_of, MAIN_LABEL(), actual_keys={L(2 + k) for k in range(na)})
     note(ws, r, "Months follow column C of the city tabs (the week's Monday; w/c 28 Sep counts in October as the plan starts there). "
                 "Totals for flows; month-end for cars on road, total cars and the on-road split; util = the month's total on road / total "
                 "cars over its weeks; net attrition % = -net attrition / (active partners + recruitment) over the month.")
@@ -434,7 +439,8 @@ def build_howto(wb):
     ws.column_dimensions["A"].width = 120
     lines = [
         ("HOW THIS SHEET WORKS", F_TITLE),
-        ("One tab per city, one row per week. Rows w/c 3 Aug - 21 Sep are ACTUAL (grey-blue, from raw_performance). Rows w/c 28 Sep - 21 Dec are the PLAN.", None),
+        (("One tab per city, one row per week, w/c 28 Sep - 21 Dec: the PLAN, equal to Lakshya v4 week by week (no actual weeks)." if EXACT else
+          "One tab per city, one row per week. Rows w/c 3 Aug - 21 Sep are ACTUAL (grey-blue, from raw_performance). Rows w/c 28 Sep - 21 Dec are the PLAN."), None),
         ("", None),
         ("Change the plan only in the YELLOW cells of a city tab:", F_BOLD),
         ("  E  Total Cars [week ending]      - fleet at the end of the week (new cars in, cars sold out)", None),
@@ -459,10 +465,10 @@ def build_howto(wb):
            ("  - Recruitment = Lakshya's weekly placements (L+DTO + Own Now), split into channels by the AOP mix.", None),
            ("  - Net attrition % = Lakshya's drivers leaving (monthly churn + rollover spread over the month's weeks), on this sheet's basis.", None),
            ("  - Total cars = Lakshya's fleet (2,300 new cars, 721 sold); EIP = a straight line to Lakshya's December EIP; Own Now = Lakshya's.", None),
-           ("  - The first plan week (w/c 28 Sep) starts from LAKSHYA'S own 27 Sep position (yellow G and H): Lakshya's on road and drivers,", None),
-           ("    not the actual. Actual on 27 Sep was 11,733 cars on road against Lakshya's 12,281 (India), a start gap of 548.", None),
+           ("  - The first week (w/c 28 Sep) starts from LAKSHYA'S own 27 Sep position (yellow G and H): Lakshya's cars on road and drivers.", None),
            ("", None)) if EXACT else ()),
-        ("Where the plan numbers come from (the Lakshya-based plan):" if not EXACT else "For reference, the Lakshya-based plan (main sheet):", F_BOLD),
+        *(() if EXACT else (
+        ("Where the plan numbers come from (the Lakshya-based plan):", F_BOLD),
         ("  - Starts from the actual on Sun 27 Sep (actuals loaded to Sat 26 Sep).", None),
         ("  - Recruitment: Lakshya's month average a week, x the Diwali / Durga Puja (Kolkata) shape, + catch-up hiring each month so each", None),
         ("    city's average util in Oct, Nov and Dec equals Lakshya's month average. Split into channels by the AOP mix.", None),
@@ -471,7 +477,7 @@ def build_howto(wb):
         ("  - EIP: a straight line to Lakshya's December EIP. Own Now: drivers for new cars + the existing-car trend.", None),
         ("", None),
         ("To refresh actuals: paste a new SSOT query output into raw_performance. Actual rows update; when a plan week becomes actual, copy an", None),
-        ("actual row's formulas over it (or ask for a rebuild).", None),
+        ("actual row's formulas over it (or ask for a rebuild).", None))),
     ]
     for i, (t, font) in enumerate(lines, start=1):
         c = ws.cell(i, 1, t)
@@ -479,6 +485,12 @@ def build_howto(wb):
 
 
 def main(out, raw_path, pv_path):
+    global ACT_W, WEEKS, RP, RL
+    if EXACT:                                          # Lakshya only: no actual weeks
+        ACT_W = []
+        WEEKS = PLAN_W
+        RP = R0
+        RL = R0 + len(WEEKS) - 1
     raw = json.load(open(raw_path))
     base.RAW_HDR[:] = raw["hdr"]
     pv = json.load(open(pv_path))
