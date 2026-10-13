@@ -185,7 +185,8 @@ select
   -- order razorpay -> other -> phonepe -> adjustment -> deposit-to-rent (Sheet cols P..T)
   sp.razorpay_100pct, sp.other_100pct, sp.phonepe_100pct, sp.adjustment_100pct, sp.deposit_to_rent_100pct,
   -- behaviour (MV)
-  m.partners_not_paid_2_weeks, m.last_week_payment_habit, m.total_allocated_days,
+  case when coalesce(np.not_paid_prev_2w, 0) >= 2 then 1 else 0 end as partners_not_paid_2_weeks,  -- MV column dropped; = not paid both previous 2 weeks
+  m.last_week_payment_habit, m.total_allocated_days,
   case when fw.full_week then 1 else 0 end                                    as entire_week_active,
   m.last_payment_date_till_hissab_week, m.last_jama_date, m.tenure_days,
   -- deposit (MV + deposit at allocation)
