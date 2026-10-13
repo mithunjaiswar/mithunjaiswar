@@ -5,7 +5,10 @@ DS=open('../dash/dash_sid.txt').read().strip()
 REF='1wkebsPPLwXnRYAuvRV_fhMGQLRxv6JwH-cYlaIEBjRw'
 SR=call('GET',f"{API}/{REF}/values/'Summary'!A1:J86")['values']
 _FILT=call('GET',f"{API}/{DS}/values/'Summary'!B2:B7")['values']  # user's filters, restored below
-call('POST',f'{API}/{DS}/values:batchUpdate',json={'valueInputOption':'RAW','data':[{'range':"'Summary'!B2:B7",'values':[['Delhi NCR'],[''],['*'],['*'],['*'],['*']]}]})
+REFF=call('GET',f"{API}/{REF}/values/'Summary'!B2:B7")['values']   # compare with the SAME filters the Sheet uses
+REFF=[(r or [''])[:1] for r in REFF]+[['']]*(6-len(REFF))
+call('POST',f'{API}/{DS}/values:batchUpdate',json={'valueInputOption':'RAW','data':[{'range':"'Summary'!B2:B7",'values':REFF}]})
+FCITY,FFUEL,FPROD=REFF[0][0] or '*',REFF[2][0] or '*',REFF[3][0] or '*'
 time.sleep(20)
 SN=call('GET',f"{API}/{DS}/values/'Summary'!A1:J86")['values']
 call('POST',f'{API}/{DS}/values:batchUpdate',json={'valueInputOption':'RAW','data':[{'range':"'Summary'!B2:B7",'values':[(r or [''])[:1] for r in _FILT]+[['']]*(6-len(_FILT))}]})
@@ -15,7 +18,7 @@ WR=call('GET',f"{API}/{REF}/values/'WBR View'!A1:H486")['values']
 # the Recovery Dash sheet (e.g. Product = D2O) does not change the comparison.
 import datetime as _dt
 _cr=json.load(open('../cr/rawdata.json')); _h=_cr[0]
-_C=[dict(zip(_h,r)) for r in _cr[1:] if r and r[0]!='' and r[_h.index('city')]=='Delhi NCR']
+_C=[c for c in (dict(zip(_h,r)) for r in _cr[1:] if r and r[0]!='') if FCITY in ('*',c['city']) and FFUEL in ('*',c['fuel_type']) and FPROD in ('*',c['product_type'])]
 _D=lambda x: _dt.date.fromisoformat(str(x)[:10])
 def _pct(a,p):
     a=sorted(a); k=(len(a)-1)*p; f=int(k); return a[f]+(a[min(f+1,len(a)-1)]-a[f])*(k-f)
@@ -140,7 +143,7 @@ BH=['Sheet value','MV value','Difference (MV - Sheet)','Difference %','Mismatch 
 NC=8+6*4
 WROW=['','','','','','','','']+sum([[w,'','','','',''] for w in WEEKS],[])
 HDR=['Metric','MV Status','Available in MV?','Raw_Data column','Source table.column','Logic (Sheet)','Logic (MV / final query)','Joins (key + condition)']+BH*4
-V=[['SECTION 1 - SUMMARY  (Summary tab metrics | Sheet vs MV compared on Delhi NCR / all products)'],WROW,HDR]+[r[:NC] for r in sec['S']]+[[],
+V=[['SECTION 1 - SUMMARY  (Summary tab metrics | Sheet vs MV compared with the same filters: City '+FCITY+', Fuel '+FFUEL+', Product '+FPROD+')'],WROW,HDR]+[r[:NC] for r in sec['S']]+[[],
    ['SECTION 2 - WBR  (WBR tab metrics | Sheet vs MV compared on All India)'],WROW,HDR]+[r[:NC] for r in sec['W']]+[[],
    ['SECTION 3 - FINAL QUERY'],['Google Doc (full SQL that populates Raw_Data):',DOC],
    ['Repo file:','collections_bad_debt_validation/dashboard_pg/final_raw_data.sql'],

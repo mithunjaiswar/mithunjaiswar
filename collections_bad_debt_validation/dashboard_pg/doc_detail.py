@@ -114,7 +114,7 @@ DET={
        B('Partner: ETN78958','Week: 07-Sep','OS: -54,313 | Paid: 40,000 | Gap: 14,313',
          'Sheet deposit: 40,000 -> No','MV week-end deposit: 0 -> Yes')),
 'S28':(B('Status: BUILT IN QUERY from Recovery Dash logic',
-         'Compared here: Sheet value = Car Recovery Dash, Delhi NCR, all products (Recovery Dash sheet currently filtered to D2O - not used)',
+         'Compared here: Sheet value = Car Recovery Dash with the same City / Fuel / Product filters as the Summary',
          'Old Sheet car_recovery_data tab is missing (#REF) so Sheet shows 0',
          'Rule = Central Car Recovery Dash Weekly_Summary (same COUNTIFS on RawData)',
          'Status from rec_tags_id: 111 Completed, 112/113 Cancelled, else Pending',
