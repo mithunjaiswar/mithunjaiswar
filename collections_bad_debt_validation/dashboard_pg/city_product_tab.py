@@ -5,16 +5,10 @@ DS = open('../dash/dash_sid.txt').read().strip(); TAB = 'Summary_City_Product'
 RES = json.load(open('../dash/city_product.json'))
 WEEKS = [('Sep-14', '14-Sep-2026'), ('Sep-21', '21-Sep-2026'), ('Sep-28', '28-Sep-2026'), ('Oct-05', '05-Oct-2026')]
 FILT = list(dict.fromkeys(r[0] for r in RES))
-summ = [['Filter (City | Product)', 'Metrics compared', 'Matched (all 4 weeks within 2%)', 'Not matched', 'Match %']]
-for f in FILT:
-    rs = [r for r in RES if r[0] == f]; ok = sum(1 for r in rs if r[-1].split('/')[0] == r[-1].split('/')[1])
-    summ.append([f, len(rs), ok, len(rs) - ok, round(ok / len(rs), 4)])
 NC = 3 + 4 * len(WEEKS) + 1
 wk_row = ['', '', ''] + sum([[f'Week {k + 1} - {d}', '', '', ''] for k, (_, d) in enumerate(WEEKS)], []) + ['']
 hdr = ['Filter (City | Product)', 'Section', 'Metric'] + ['Sheet', 'MV', 'Diff (MV-Sheet)', 'Diff %'] * len(WEEKS) + ['Weeks matched']
-title = [['Summary check by City / Product – old Sheet vs our dashboard (MV), week on week. Old Sheet values come from an editable copy '
-          'with the same filter. "*" = all. SINGLE = Leasing. Matched = within 2%. Red = difference above 2%.']]
-V = title + [[]] + summ + [[]] + [wk_row, hdr] + RES
+V = [wk_row, hdr] + RES   # detail table only (no title / summary block)
 meta = call('GET', f'{API}/{DS}', params={'fields': 'sheets.properties'})
 P = {s['properties']['title']: s['properties'] for s in meta['sheets']}
 idx = P[TAB]['index'] if TAB in P else 1
@@ -22,17 +16,14 @@ req = [{'deleteSheet': {'sheetId': P[TAB]['sheetId']}}] if TAB in P else []
 req.append({'addSheet': {'properties': {'title': TAB, 'index': idx, 'gridProperties': {'rowCount': len(V) + 10, 'columnCount': NC}}}})
 sid = call('POST', f'{API}/{DS}:batchUpdate', json={'requests': req})['replies'][-1]['addSheet']['properties']['sheetId']
 call('PUT', f"{API}/{DS}/values/'{TAB}'!A1", params={'valueInputOption': 'USER_ENTERED'}, json={'values': V})
-w0 = 2 + len(summ) + 1; h0 = w0 + 1; r0, r1 = h0 + 1, h0 + 1 + len(RES)      # 0-based rows
+w0 = 0; h0 = 1; r0, r1 = h0 + 1, h0 + 1 + len(RES)      # 0-based rows
 rng = lambda a, b, c, d: {'sheetId': sid, 'startRowIndex': a, 'endRowIndex': b, 'startColumnIndex': c, 'endColumnIndex': d}
 DK = {'red': 0.2, 'green': 0.25, 'blue': 0.4}; WH = {'red': 1, 'green': 1, 'blue': 1}; RED = {'red': 0.85, 'green': 0, 'blue': 0}
 WB = [{'red': 0.27, 'green': 0.45, 'blue': 0.62}, {'red': 0.36, 'green': 0.55, 'blue': 0.42}]
 WL = [{'red': 0.93, 'green': 0.96, 'blue': 0.99}, {'red': 0.94, 'green': 0.98, 'blue': 0.94}]
 fmt = lambda R, f, fields: {'repeatCell': {'range': R, 'cell': {'userEnteredFormat': f}, 'fields': f'userEnteredFormat({fields})'}}
 L = lambda st, c: {'style': st, 'color': c}
-R = [fmt(rng(0, 1, 0, 8), {'textFormat': {'bold': True, 'fontSize': 11}}, 'textFormat'),
-     fmt(rng(2, 3, 0, 5), {'backgroundColor': DK, 'textFormat': {'bold': True, 'foregroundColor': WH}}, 'backgroundColor,textFormat'),
-     fmt(rng(3, 3 + len(summ) - 1, 4, 5), {'numberFormat': {'type': 'PERCENT', 'pattern': '0.0%'}}, 'numberFormat'),
-     fmt(rng(w0, h0 + 1, 0, 3), {'backgroundColor': DK, 'textFormat': {'bold': True, 'foregroundColor': WH}, 'wrapStrategy': 'WRAP', 'verticalAlignment': 'MIDDLE'}, 'backgroundColor,textFormat,wrapStrategy,verticalAlignment'),
+R = [     fmt(rng(w0, h0 + 1, 0, 3), {'backgroundColor': DK, 'textFormat': {'bold': True, 'foregroundColor': WH}, 'wrapStrategy': 'WRAP', 'verticalAlignment': 'MIDDLE'}, 'backgroundColor,textFormat,wrapStrategy,verticalAlignment'),
      fmt(rng(w0, h0 + 1, NC - 1, NC), {'backgroundColor': DK, 'textFormat': {'bold': True, 'foregroundColor': WH}, 'wrapStrategy': 'WRAP'}, 'backgroundColor,textFormat,wrapStrategy'),
      {'updateSheetProperties': {'properties': {'sheetId': sid, 'gridProperties': {'frozenRowCount': h0 + 1, 'frozenColumnCount': 3}}, 'fields': 'gridProperties(frozenRowCount,frozenColumnCount)'}},
      {'setBasicFilter': {'filter': {'range': rng(h0, r1, 0, NC)}}},
@@ -58,7 +49,5 @@ for f in FILT:
     R.append({'updateBorders': {'range': rng(row, row + 1, 0, NC), 'top': L('SOLID_MEDIUM', DK)}})
     R.append(fmt(rng(row, row + n, 0, 1), {'textFormat': {'bold': True}}, 'textFormat'))
     row += n
-R.append({'addConditionalFormatRule': {'index': 0, 'rule': {'ranges': [rng(3, 3 + len(summ) - 1, 4, 5)], 'booleanRule': {
-    'condition': {'type': 'NUMBER_LESS', 'values': [{'userEnteredValue': '0.9'}]}, 'format': {'textFormat': {'foregroundColor': RED, 'bold': True}}}}}})
 call('POST', f'{API}/{DS}:batchUpdate', json={'requests': R})
 print('tab rewritten', len(RES), 'rows')
