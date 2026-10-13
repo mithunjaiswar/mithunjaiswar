@@ -55,9 +55,21 @@ for f in FILT:
     R.append({'updateBorders': {'range': rng(row, row + 1, 0, NC), 'top': L('SOLID_MEDIUM', DK)}})
     R.append(fmt(rng(row, row + n, 0, 1), {'textFormat': {'bold': True}}, 'textFormat'))
     row += n
-for c, px in ((3, 260), (4, 260), (NC - 2, 300), (NC - 1, 380)):
+for c, px in ((0, 92), (1, 210), (2, 210), (3, 260), (4, 260), (NC - 2, 330), (NC - 1, 330)):
     R.append({'updateDimensionProperties': {'range': {'sheetId': sid, 'dimension': 'COLUMNS', 'startIndex': c, 'endIndex': c + 1}, 'properties': {'pixelSize': px}, 'fields': 'pixelSize'}})
 R.append(fmt(rng(r0, r1, 3, 5), {'wrapStrategy': 'WRAP', 'verticalAlignment': 'TOP', 'backgroundColor': {'red': 1, 'green': 0.98, 'blue': 0.9}}, 'wrapStrategy,verticalAlignment,backgroundColor'))
+R.append(fmt(rng(w0, r1, 5, NC - 2), {'horizontalAlignment': 'CENTER'}, 'horizontalAlignment'))
+# colour the words "Old Sheet:" (red) and "New:" (green) in the reason / example cells
+OLDC, NEWC = {'red': 0.8, 'green': 0, 'blue': 0}, {'red': 0, 'green': 0.5, 'blue': 0.15}
+def rich(txt):
+    runs = [{'startIndex': 0, 'format': {}}]
+    for key, c in (('Old Sheet:', OLDC), ('New:', NEWC)):
+        i = txt.find(key)
+        if i >= 0: runs += [{'startIndex': i, 'format': {'bold': True, 'foregroundColor': c}}, {'startIndex': i + len(key), 'format': {}}]
+    runs = sorted({r['startIndex']: r for r in runs}.values(), key=lambda r: r['startIndex'])
+    return {'userEnteredValue': {'stringValue': txt}, 'textFormatRuns': [r for r in runs if r['startIndex'] < len(txt)]}
+R.append({'updateCells': {'range': rng(r0, r1, NC - 2, NC), 'fields': 'userEnteredValue,textFormatRuns',
+                          'rows': [{'values': [rich(r[-2]), rich(r[-1])]} for r in RES]}})
 R.append(fmt(rng(r0, r1, NC - 2, NC), {'wrapStrategy': 'WRAP', 'verticalAlignment': 'TOP', 'backgroundColor': {'red': 0.99, 'green': 0.94, 'blue': 0.92}}, 'wrapStrategy,verticalAlignment,backgroundColor'))
 call('POST', f'{API}/{DS}:batchUpdate', json={'requests': R})
 print('tab rewritten', len(RES), 'rows')

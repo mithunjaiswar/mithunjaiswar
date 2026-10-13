@@ -1,25 +1,27 @@
 # Short logic, easy example, difference reason and real employee example for every
 # Summary_City_Product metric. Key = metric name (deposit rows keyed by section too).
-COLL_R = 'Same OS and same amount for every pilot. Small gap only from product tag: old Sheet saved product on its run day, MV has today\'s product. MV also has a few new pilots.'
-COLL_X = 'ETB060954 (28-Sep): OS -2,12,914 in both. Old Sheet product = EV_D2O, MV product = EV, so it falls in a different product filter. ETB064372: in MV (EIP, OS -19,627), missing in old Sheet.'
-DP_R = 'Amount per pilot is same. Gap = "active full week" check. Old Sheet flag looks taken on its run day. New logic: car allocated all 7 days of the hisaab week.'
-DP_X = 'ETB08329 (14-Sep): car with pilot all 7 days. Old logic: not full week -> not counted. New logic: full week -> counted. ETB08127: jama on Mon 21-Sep. Old logic: full week -> counted. New logic: not full week -> not counted.'
-LIVE_R = 'Old Sheet shows 0 for all buckets: its live OS column is not filled (stale). MV fills it.'
-LIVE_X = 'All India, 14-Sep: old Sheet 0, MV 8,005 pilots not surpassing deposit.'
-BD_R = 'MV bad debt amount differs for few pilots (MV calc vs old Sheet value). Most pilots same.'
-BD_X = 'ETB04516: old Sheet bad debt -4,640, MV blank (no bad debt). ETB061509: old Sheet -16,725, MV -17,934.'
-FUN_R = 'Old Sheet did not refresh next-week payments. MV takes payment made in next week, capped at bad debt.'
-FUN_X = 'ETB39050: paid 2,250 in next week. Old Sheet 0, MV 2,250. ETB062035: bad debt -358, paid 5,917 on 22-Sep -> MV counts only 358.'
-REC_R = 'Old Sheet recovery tab is missing, so it shows 0. MV numbers = Central Car Recovery Dash.'
-REC_X = 'All India, 14-Sep: old Sheet 0, MV 1,110 initiated (same as Recovery Dash).'
-RISK_R = 'Risk score uses payment habit, OS vs deposit, ND count, GPS, connects. MV values differ for some pilots, so the bucket moves.'
-RISK_X = 'ETB01849 (28-Sep): old Sheet Low Risk, MV Minimal Risk. ETB02245: old Sheet Minimal Risk, MV No risk.'
-PB_R = 'Summary uses MV last_week_payment_habit (col Z). It is different from the old Sheet habit. Our own habit col (BA) matches old Sheet 100%.'
-PB_X = 'ETB00839 (28-Sep): old Sheet Average, MV Defaulter. Fix: count on col BA (payment_habit_week) -> matches.'
-DT_R = 'Same deposit for each pilot. Small gap: old Sheet saved product on its run day; 92-98% pilots have same product.'
-DT_X = 'Pilot moved product after old Sheet run (e.g. Own Now -> D2O). Old Sheet counts in old product, MV in current product.'
-DA_R = 'Cannot match. Old Sheet deposit-at-allocation col (N) is pasted and shuffled, values jump week to week.'
-DA_X = 'ETH050004: old Sheet col N = 50,000 / 15,000 / 2,500 / 1,50,000 in different weeks. Real deposit = 50,000 (MV).'
+COLL_R = 'Old Sheet: product saved on its run day.\nNew: current product from MV. OS and amount same per pilot.'
+COLL_X = 'ETB060954 (28-Sep), OS -2,12,914 in both\nOld Sheet: product EV_D2O\nNew: product EV'
+DP_R = 'Old Sheet: car swap cases not considered (swap = not full week).\nNew: swap cases considered. Pilot with a car all 7 days of hisaab week = full week.'
+DP_X = 'ETB08329 (14-Sep), car with pilot all 7 days\nOld Sheet: not full week -> not counted\nNew: full week -> counted'
+LIVE_R = 'Old Sheet: live OS column empty, shows 0.\nNew: active pilot OS minus week-end deposit, put in buckets.'
+LIVE_X = 'All India, 14-Sep\nOld Sheet: 0\nNew: 8,005 pilots not surpass deposit'
+BD_R = 'Old Sheet: bad debt value from its run day.\nNew: MV bad debt calc (few pilots differ).'
+BD_X = 'ETB061509\nOld Sheet: bad debt -16,725\nNew: bad debt -17,934'
+FUN_R = 'Old Sheet: next-week payments not refreshed.\nNew: next-week payment taken, max = bad debt amount.'
+FUN_X = 'ETB39050, paid 2,250 in next week\nOld Sheet: 0\nNew: 2,250'
+REC_R = 'Old Sheet: recovery tab missing, shows 0.\nNew: cases from Central Car Recovery Dash rules.'
+REC_X = 'All India, 14-Sep\nOld Sheet: 0 initiated\nNew: 1,110 initiated (same as Recovery Dash)'
+RISK_R = 'Old Sheet: risk from its own habit / OS values.\nNew: risk score from MV values (habit, OS vs deposit, ND, GPS, connects).'
+RISK_X = 'ETB01849 (28-Sep)\nOld Sheet: Low Risk\nNew: Minimal Risk'
+PB_R = 'Old Sheet: its own payment habit calc.\nNew: MV last_week_payment_habit (col Z).'
+PB_X = 'ETB00839 (28-Sep)\nOld Sheet: Average\nNew: Defaulter'
+DT_R = 'Old Sheet: product saved on its run day.\nNew: product from car current team. Deposit same per pilot.'
+DT_X = 'Pilot moved Own Now -> D2O after old Sheet ran (sample)\nOld Sheet: counted in Own Now\nNew: counted in D2O'
+DA_R = 'Old Sheet: deposit col (N) pasted and shuffled, changes every week.\nNew: deposit at week end of pilot last allocation week.'
+DA_X = 'ETH050004, real deposit 50,000\nOld Sheet: 50,000 / 15,000 / 2,500 / 1,50,000 in different weeks\nNew: 50,000'
+CR_R = 'Old Sheet: deposit taken on its run day.\nNew: week-end deposit of hisaab week.'
+CR_X = 'Pilot OS gap 5,200, week-end deposit 5,000 (sample)\nOld Sheet: run-day deposit 6,000 -> No\nNew: 5,000 -> Yes'
 
 COLL = 'Collection'
 N = {
@@ -62,9 +64,9 @@ N = {
  'Bad debt per partner': ('Total bad debt / bad debt pilot count.', '-10,000 / 2 pilots -> -5,000.', BD_R, BD_X),
  'Bad debt collected (Funnel)': ('Next-week payment by bad debt pilot, max = bad debt amount.', 'Bad debt -100, paid 50 next week -> 50. Paid 150 -> only 100.', FUN_R, FUN_X),
  '% Of OS collected': ('Bad debt collected (Funnel) / Total bad debt.', 'Bad debt 100, 50 came back -> 50%.', FUN_R, FUN_X),
- 'Net Bad Debt': ('Total bad debt + Funnel collected.', 'Bad debt -100, collected 30 -> -70.', BD_R + ' Funnel: ' + FUN_R, BD_X),
- 'Net Bad Debt %': ('Net bad debt / Total OS.', 'Net bad debt -70, OS -1,000 -> 7%.', BD_R + ' Funnel: ' + FUN_R, BD_X),
- 'Cars recomended for Recovery': ('Pilots where OS not paid is more than week-end deposit.', 'OS gap 6,000, deposit 5,000 -> Yes, recommend.', 'Small gap (~4%). Same rule; deposit / OS value of some pilots differs from old Sheet run day.', 'Pilot with OS gap 5,200, deposit 5,000 on week end -> MV Yes. If old Sheet took deposit 6,000 on its run day -> No.'),
+ 'Net Bad Debt': ('Total bad debt + Funnel collected.', 'Bad debt -100, collected 30 -> -70.', BD_R, BD_X),
+ 'Net Bad Debt %': ('Net bad debt / Total OS.', 'Net bad debt -70, OS -1,000 -> 7%.', BD_R, BD_X),
+ 'Cars recomended for Recovery': ('Pilots where OS not paid is more than week-end deposit.', 'OS gap 6,000, deposit 5,000 -> Yes, recommend.', CR_R, CR_X),
  'No of vehicles Initiated for recovery': ('Recovery cases started in the week (Recovery Dash rule).', '3 cases started Mon-Sun -> 3.', REC_R, REC_X),
  'Brought Forward Recovery': ('Cases started before the week and still open at week start.', 'Case started last week, still open -> 1.', REC_R, REC_X),
  'Vehicles Recovered - Organic': ('Cancelled cases closed in week where pilot dropped car / check-in done.', 'Pilot returned car himself -> organic 1.', REC_R, REC_X),
