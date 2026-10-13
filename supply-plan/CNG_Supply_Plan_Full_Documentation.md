@@ -1,6 +1,6 @@
 # Weekly CNG Supply Plan: Full Documentation
 
-**Plan period:** 14 weeks, w/c 28 Sep 2026 to w/c 28 Dec 2026 (the last week ends Sun 3 Jan 2027).
+**Plan period:** 13 weeks, w/c 28 Sep 2026 to w/c 21 Dec 2026 (the last week ends Sun 27 Dec 2026), the same weeks as Lakshya v4.
 **Actuals loaded up to:** Sat 26 Sep 2026. The opening position is Sun 27 Sep 2026.
 **Cities:** Mumbai, Delhi NCR, Bangalore, Hyderabad, Chennai, Kolkata, Pune. India is the sum of these seven cities.
 **Fuel:** CNG only.
@@ -63,8 +63,8 @@ The same links appear as plain text (no HYPERLINK formulas) in cells K1:P2 of ea
 | **Run rate** | The average of the last 8 actual weeks (w/c 3 Aug – w/c 21 Sep; the last week has 6 days loaded and is scaled to 7). |
 | **Proven capacity** | A city's best 4-week average of driver acquisition since Sep 2025 (Inputs A3, column K). Weeks above it are flagged "Above capacity". |
 | **Catch-up hiring** | Extra recruitment on top of Lakshya's base recruitment, so that each month's average util equals Lakshya's (Lakshya-based plan only). |
-| **Month rule ("match month")** | A week counts in the month its Monday falls in, except w/c 28 Sep, which counts as October because the plan starts there. October = w/c 28 Sep – 26 Oct (5 weeks); November = w/c 2 – 30 Nov (5 weeks); December = w/c 7 – 28 Dec (4 weeks). This rule is used for all month averages and month totals. |
-| **Lakshya month** | The month each week rolls up to in Lakshya's own model (by the Sunday it ends on). Oct = w/e 4 – 25 Oct (4 weeks); Nov = w/e 1 – 29 Nov (5 weeks); Dec = w/e 6 Dec – 3 Jan (5 weeks). It is used only to spread Lakshya's monthly churn, sales and new cars over weeks. |
+| **Month rule ("match month")** | A week counts in the month its Monday falls in, except w/c 28 Sep, which counts as October because the plan starts there. October = w/c 28 Sep – 26 Oct (5 weeks); November = w/c 2 – 30 Nov (5 weeks); December = w/c 7 – 21 Dec (3 weeks). This rule is used for all month averages and month totals. |
+| **Lakshya month** | The month each week rolls up to in Lakshya's own model (by the Sunday it ends on). Oct = w/e 4 – 25 Oct (4 weeks); Nov = w/e 1 – 29 Nov (5 weeks); Dec = w/e 6 – 27 Dec (4 weeks). It is used only to spread Lakshya's monthly churn, sales and new cars over weeks. |
 | **LY** | Last year. "Same week last year" = 364 days earlier. The **Diwali-aligned** pattern uses 385 days earlier, which lines up Bhai Dooj week (w/c 9 Nov 2026 ↔ w/c 20 Oct 2025) and Durga Puja. |
 | **Grey-blue cells** | Actual weeks. **Cream cells** are inputs you may change. **Grey cells** are history and reference. **Light-blue cells** are totals. |
 
@@ -74,30 +74,26 @@ The same links appear as plain text (no HYPERLINK formulas) in cells K1:P2 of ea
 
 - **Opening date:** Sun 27 Sep 2026, the last actual Sunday. The plan starts from the actual position on this date.
 - **First plan week:** w/c Mon 28 Sep (the current week).
-- **Plan end:** Sun 3 Jan 2027 (the end of w/c 28 Dec). Every week has the full 7 days. There are 98 days in plan.
-- **Lakshya's December targets** (its 31 Dec month-end) are compared with the plan at the end of w/c 28 Dec.
+- **Plan end:** Sun 27 Dec 2026 (the end of w/c 21 Dec), the same last week as Lakshya v4. Every week has the full 7 days. There are 91 days in plan.
+- **December:** Lakshya's December weeks are used **exactly as given** (no re-split). Lakshya's own last week (w/c 21 Dec) is light: India 779 hires against 1,487 the week before.
 
 | # | Week (w/c) | Ends | Match month | Lakshya month | Share of Lakshya's month | Festival | Events |
 |---|---|---|---|---|---|---|---|
-| 1 | 28 Sep | 4 Oct | Oct | Oct | 25.0% | – | Gandhi Jayanti (Fri 2 Oct) |
-| 2 | 5 Oct | 11 Oct | Oct | Oct | 25.0% | – | – |
-| 3 | 12 Oct | 18 Oct | Oct | Oct | 25.0% | Durga Puja (Kolkata only) | – |
-| 4 | 19 Oct | 25 Oct | Oct | Oct | 25.0% | Durga Puja (Kolkata only) | Dussehra (Tue 20 Oct) |
-| 5 | 26 Oct | 1 Nov | Oct | Nov | 20.0% | – | Bangalore: Kannada Rajyotsava (Sun 1 Nov) |
-| 6 | 2 Nov | 8 Nov | Nov | Nov | 20.0% | Diwali | Diwali (Sun 8 Nov) |
-| 7 | 9 Nov | 15 Nov | Nov | Nov | 20.0% | Diwali | Bali Pratipada, Bhai Dooj; Hyderabad: GHMC election (Sun 15 Nov) |
-| 8 | 16 Nov | 22 Nov | Nov | Nov | 20.0% | – | – |
-| 9 | 23 Nov | 29 Nov | Nov | Nov | 20.0% | – | Guru Nanak Jayanti (Tue 24 Nov) |
-| 10 | 30 Nov | 6 Dec | Nov | Dec | 25.0% | – | – |
-| 11 | 7 Dec | 13 Dec | Dec | Dec | 18.75% | – | – |
-| 12 | 14 Dec | 20 Dec | Dec | Dec | 18.75% | – | Kolkata: KMC election (Tue 15 Dec) |
-| 13 | 21 Dec | 27 Dec | Dec | Dec | 18.75% | – | Christmas (Fri 25 Dec) |
-| 14 | 28 Dec | 3 Jan | Dec | Dec | 18.75% | – | New Year (Fri 1 Jan); last plan week |
+| 1 | 28 Sep | 4 Oct | Oct | Oct | 25% | – | Gandhi Jayanti (Fri 2 Oct) |
+| 2 | 5 Oct | 11 Oct | Oct | Oct | 25% | – | – |
+| 3 | 12 Oct | 18 Oct | Oct | Oct | 25% | Durga Puja (Kolkata only) | – |
+| 4 | 19 Oct | 25 Oct | Oct | Oct | 25% | Durga Puja (Kolkata only) | Dussehra (Tue 20 Oct) |
+| 5 | 26 Oct | 1 Nov | Oct | Nov | 20% | – | Bangalore: Kannada Rajyotsava (Sun 1 Nov) |
+| 6 | 2 Nov | 8 Nov | Nov | Nov | 20% | Diwali | Diwali (Sun 8 Nov) |
+| 7 | 9 Nov | 15 Nov | Nov | Nov | 20% | Diwali | Bali Pratipada, Bhai Dooj; Hyderabad: GHMC election (Sun 15 Nov) |
+| 8 | 16 Nov | 22 Nov | Nov | Nov | 20% | – | – |
+| 9 | 23 Nov | 29 Nov | Nov | Nov | 20% | – | Guru Nanak Jayanti (Tue 24 Nov) |
+| 10 | 30 Nov | 6 Dec | Nov | Dec | 25% | – | – |
+| 11 | 7 Dec | 13 Dec | Dec | Dec | 25% | – | – |
+| 12 | 14 Dec | 20 Dec | Dec | Dec | 25% | – | Kolkata: KMC election (Tue 15 Dec) |
+| 13 | 21 Dec | 27 Dec | Dec | Dec | 25% | – | Christmas (Fri 25 Dec); last plan week, ends Sun 27 Dec as in Lakshya |
 
-- **How the "share of Lakshya's month" is set:**
-  - Lakshya spreads a month evenly over its weeks: October 1/4 each, November 1/5 each.
-  - In December, w/e 6 Dec keeps Lakshya's quarter (25%). The remaining 75% is split by days over w/c 7, 14, 21 and 28 Dec, so 18.75% each.
-  - These shares spread Lakshya's monthly churn, cars sold and cars still to buy over the weeks.
+- **Share of Lakshya's month:** Lakshya spreads a month evenly over its weeks: October 1/4, November 1/5, December 1/4. These shares spread Lakshya's monthly churn, cars sold and cars still to buy over the weeks.
 - **Hiring cap setting** (Inputs A8, columns O–P):
   - The cap column is blank, so no cap applies.
   - In the Lakshya-based plan, weeks 1–3 are marked "Yes". That means they would take any hires cut by a cap.
@@ -124,7 +120,7 @@ The same links appear as plain text (no HYPERLINK formulas) in cells K1:P2 of ea
 | **Purpose** | Follow Lakshya month by month, with **each month's average util equal to Lakshya's** | What the business can realistically do from today's run rate | Lakshya's own numbers run through the same engine (reference) |
 | **Inputs A1 "December target"** | `Lakshya monthly util` | `Capacity` | – (overridden) |
 | **Starting point** | Actual on 27 Sep | Actual on 27 Sep | Lakshya's own 27 Sep book and fleet |
-| **Base recruitment** | Lakshya's month average (per full week) × festival shape | Oct and Nov: Lakshya's month average × last year's shape; Dec: 8-week run rate × last year's shape | Lakshya's weekly placements as given (Dec re-split) |
+| **Base recruitment** | Lakshya's month average × festival shape | Oct and Nov: Lakshya's month average × last year's shape; Dec: 8-week run rate × last year's shape | Lakshya's weekly placements as given |
 | **Extra recruitment** | Monthly catch-up for util | December only: a ramp capped at each city's best week | None |
 | **Attrition** | Lakshya's month average × festival shape | Oct: Lakshya's average × an easing line; Nov–Dec: 8-week rate stepping down to the best 4 weeks × last year's shape | Lakshya's monthly churn × weekly share |
 | **EIP** | Straight line to Lakshya's December EIP | Last 4 weeks' trend | Straight line to Lakshya's December EIP |
@@ -179,16 +175,16 @@ Steps 1–9 are calculated on each city tab, one row per week. India is the sum 
 
      | City | Oct | Nov | Dec |
      |---|---|---|---|
-     | Mumbai | +37.3 | −53.0 | +45.6 |
-     | Delhi NCR | +14.6 | −30.8 | +18.9 |
-     | Bangalore | +32.9 | −62.0 | +41.4 |
-     | Hyderabad | +59.5 | −60.5 | +62.6 |
-     | Chennai | +38.0 | −35.7 | +29.7 |
-     | Kolkata | −2.5 | −8.6 | +10.9 |
-     | Pune | +16.2 | −21.1 | +14.3 |
-     | **India (net)** | **+197** | **−252** | **+223** |
+     | Mumbai | +37.3 | −53.0 | +77.2 |
+     | Delhi NCR | +14.6 | −30.8 | +43.3 |
+     | Bangalore | +32.8 | −62.0 | +69.6 |
+     | Hyderabad | +59.5 | −60.5 | +96.8 |
+     | Chennai | +38.0 | −35.7 | +53.2 |
+     | Kolkata | −2.5 | −8.6 | +18.5 |
+     | Pune | +16.2 | −21.1 | +28.3 |
+     | **India (net)** | **+196** | **−252** | **+387** |
 
-   - **Why the catch-up goes up, down, up:** we start below Lakshya, at 61.2% util against 63.5%. To average 65.1% in October, util has to end October above Lakshya. November then needs fewer hires, and December more.
+   - **Why the catch-up goes up, down, up:** we start below Lakshya, at 61.2% util against 63.5%. To average 65.2% in October, util has to end October above Lakshya. November then needs fewer hires. December needs many more, because Lakshya's December averages 71.8% over only 3 weeks.
 5. **Total recruitment** (AU) = base + catch-up. It is split into Own Now (drivers for new cars + existing-car trend) and L+DTO (the rest).
    - The channel mix (FSE, vendor, referrals, performance marketing) comes from the AOP mix in A2.
 6. **New cars** (AD), all of Lakshya's 2,300:
@@ -206,7 +202,7 @@ Steps 1–9 are calculated on each city tab, one row per week. India is the sum 
    - **Drivers for new cars:** each new car gets a driver the week after it lands. That driver comes out of the week's recruitment; it is not added on top.
    - **Flag:** a car ordered now reaches the road at least 5 weeks later. Inputs A6 shows the order-by dates for each city's cars that are not bought yet.
 7. **Cars sold** (AE): Lakshya's 721 (Oct 242, Nov 242, Dec 237), spread by the week's share of Lakshya's month. Sold cars come out of idle cars, so they lower the fleet, not cars on road.
-8. **EIP** (AG): a straight line from today's actual (2,426) to Lakshya's December EIP (3,038), spread by days. That is +43.7 a week for India and 612 over the plan.
+8. **EIP** (AG): a straight line from today's actual (2,426) to Lakshya's December EIP (3,038), spread by days. That is +47 a week for India and 612 over the plan.
 9. **Own Now existing-car trend:** each city's 8-week Own Now change (A3 column J; India +43.5 a week).
 10. **Checks shown on each city tab:**
     - **Capacity:** driver acquisition against proven capacity ("Above capacity" in red).
@@ -227,7 +223,6 @@ Steps 1–9 are calculated on each city tab, one row per week. India is the sum 
 3. **Last year's pattern** (`ly_pattern.py`):
    - **How the index is built:** for each plan week, the same week 385 days earlier (Diwali-aligned) is divided by last year's average of the 8 weeks before the plan.
    - **Index columns:** recruitment index (city tab CL) and attrition index (CM).
-   - **w/c 28 Dec** maps to w/c 8 Dec 2025.
 4. **Before Diwali (w/c 28 Sep – 26 Oct):**
    - **Kolkata** keeps its full last-year pattern (Durga Puja).
    - **Other cities:** hiring is flat except in the Durga Puja / Dussehra weeks (w/c 12 and 19 Oct) and the week before Diwali (w/c 26 Oct). Those weeks dip by the city's or India's last-year dip, whichever is bigger (India: −2%, −13%, −6%). The hires lost move into the earlier weeks; the month stays on Lakshya's average.
@@ -265,18 +260,20 @@ Steps 1–9 are calculated on each city tab, one row per week. India is the sum 
 - **Comparison tab:** the new layout.
 - **Monthly Summary tab:**
   - Its own city picker (B1).
-  - For each month (Oct, Nov, Dec) and the 14 weeks, every Summary View metric shows: Lakshya v4 (where Lakshya has the figure), Plan, **Plan − Lakshya** (0 everywhere, red if not), Actual so far (fully loaded weeks only), and Last year (same weeks, 364 days earlier).
+  - For each month (Oct, Nov, Dec) and the 13 weeks, every Summary View metric shows: Lakshya v4 (where Lakshya has the figure), Plan, **Plan − Lakshya** (0 everywhere, red if not), Actual so far (fully loaded weeks only), and Last year (same weeks, 364 days earlier).
   - Flows are month totals; util and attrition are month averages; stock figures are at the month's last week.
-- **India results:** util 65.1% / 63.9% / 70.4%; on road at month-end 13,038 / 14,229 / 15,082; recruitment 5,591 / 5,408 / 3,816 (14,815); attrition 9.8% / 8.5% / 6.8%; cars added 2,300 and sold 721; EIP +612.
+  - The title and the footnote were removed on the live sheet by the user and are kept removed.
+- **India results:** util 65.2% / 64.1% / 71.8%; on road at month-end 13,055 / 14,263 / 15,082; recruitment 5,591 / 5,408 / 3,816 (14,815); attrition 9.8% / 8.5% / 8.8%; cars added 2,300 and sold 721; EIP +612.
 
-## 9. Lakshya's December re-split
+---
 
-- **The problem:** Lakshya v4's weekly plan stops at w/e 27 Dec, and its last week is light. India has 779 placements that week against 1,487 the week before, because the week carries the tail of December.
-- **What the plan does:** it runs to w/c 28 Dec. Lakshya's December placements after w/e 6 Dec (w/e 13, 20 and 27 Dec as given: 1,550 + 1,487 + 779 = 3,816) are split evenly over w/c 7, 14, 21 and 28 Dec: **954 each**.
-- **December's total is unchanged.** Lakshya still lands on 15,082 cars on road and 72.1% util at the end.
-- **Where to see it:** the Lakshya Source tab shows Lakshya's weeks as given (grey, on the right) and the split as formulas: given total × days in plan ÷ days in w/c 7–28 Dec.
-- **Churn and cars sold** in December use the same weekly shares: w/e 6 Dec 25%, then 18.75% a week.
-- **Week length:** every week, including w/c 28 Dec, is a full 7-day week.
+## 9. Lakshya's December
+
+- **Lakshya's own weeks are used as given.** Lakshya's December weeks are w/e 6, 13, 20 and 27 Dec: India 1,358, 1,550, 1,487 and 779 placements. The plan ends with w/c 21 Dec (w/e 27 Dec), the same as Lakshya, so every weekly Lakshya figure matches its model exactly.
+- **History of this rule:**
+  - On 8 Oct the plan was extended to w/c 28 Dec, with December re-split by days (later as 4 equal weeks of 954).
+  - On 13 Oct it was changed back to end on w/c 21 Dec to match Lakshya. The re-split is switched off (`DEC_RESPLIT = False` in the builder).
+- **Churn and cars sold** in December are spread evenly over Lakshya's 4 December weeks (25% each).
 
 ---
 
@@ -290,7 +287,7 @@ Steps 1–9 are calculated on each city tab, one row per week. India is the sum 
 |---|---|---|
 | Opening date (last actual Sunday) | 27 Sep | 27 Sep |
 | First plan week starts (Monday) | 28 Sep | 28 Sep |
-| Plan ends (Sunday) | 3 Jan | 3 Jan |
+| Plan ends (Sunday) | 27 Dec | 27 Dec |
 | Weeks per month | 4.33 (= 52 ÷ 12) | 4.33 |
 | India CNG on-road goal, Dec | 15,000 (Lakshya's cities add to 15,082) | 15,000 |
 | Actuals used up to | 26 Sep | 26 Sep |
@@ -339,14 +336,14 @@ Recruitment channel mix (AOP), by share of recruitment:
 
 | City | Lakshya attrition Oct / Nov / Dec | Lakshya recruitment Oct / Nov / Dec | Best 4 weeks attrition (Actuals end point) | **Lakshya util month avg Oct / Nov / Dec** (= plan target) |
 |---|---|---|---|---|
-| Mumbai | 9.8% / 8.4% / 6.5% | 208 / 201 / 176 | 9.6% | 67.4% / 67.0% / 73.3% |
-| Delhi NCR | 8.5% / 7.7% / 6.3% | 195 / 186 / 170 | 9.2% | 55.8% / 55.8% / 60.8% |
-| Bangalore | 8.5% / 7.4% / 5.9% | 187 / 187 / 165 | 8.3% | 70.6% / 68.1% / 74.9% |
-| Hyderabad | 11.9% / 10.3% / 7.9% | 198 / 193 / 169 | 12.8% | 70.0% / 66.7% / 74.6% |
-| Chennai | 9.5% / 8.3% / 6.6% | 156 / 155 / 136 | 9.2% | 72.2% / 69.3% / 75.7% |
-| Kolkata | 10.7% / 9.0% / 7.0% | 56 / 49 / 42 | 14.3% | 51.5% / 51.5% / 56.2% |
-| Pune | 11.8% / 10.3% / 8.1% | 119 / 110 / 96 | 12.8% | 61.3% / 60.3% / 67.1% |
-| **India** | **9.8% / 8.5% / 6.8%** | **1,118 / 1,082 / 954** | 10.2% | **65.1% / 63.9% / 70.4%** |
+| Mumbai | 9.8% / 8.4% / 8.6% | 208 / 201 / 235 | 9.6% | 67.4% / 67.1% / 74.6% |
+| Delhi NCR | 8.5% / 7.7% / 8.3% | 195 / 186 / 227 | 9.2% | 55.8% / 55.8% / 62.1% |
+| Bangalore | 8.5% / 7.4% / 7.8% | 187 / 187 / 220 | 8.3% | 70.7% / 68.3% / 76.4% |
+| Hyderabad | 11.9% / 10.3% / 10.3% | 198 / 193 / 226 | 12.8% | 70.1% / 67.0% / 76.4% |
+| Chennai | 9.5% / 8.3% / 8.6% | 156 / 155 / 181 | 9.2% | 72.2% / 69.5% / 77.2% |
+| Kolkata | 10.7% / 9.0% / 9.2% | 56 / 49 / 55 | 14.3% | 51.5% / 51.6% / 57.5% |
+| Pune | 11.8% / 10.3% / 10.6% | 119 / 110 / 128 | 12.8% | 61.4% / 60.3% / 68.8% |
+| **India** | **9.8% / 8.5% / 8.8%** | **1,118 / 1,082 / 1,272** | 10.2% | **65.2% / 64.1% / 71.8%** |
 
 - **Plan columns:** E–G (attrition used) and K–M (base recruitment used) are cream and equal Lakshya by default. T–V (util target) is cream and equals Q–S (Lakshya).
 - **Actuals view, column P:** 35% of last year's Diwali attrition jump kept in w/c 2 Nov (every city).
@@ -394,7 +391,7 @@ Bought and in stock (New Car Stock Report, 27 Sep):
 | Pune | 0 | 0 | 0 | 25 | 25 | 42 | 42 | 84 | 17 / 42 | 59 |
 | **India** | 102 | 259 | 12 | 209 | **582** | 1,152 | 1,148 | **2,300** | 571 / 1,148 | **1,719** |
 
-Cars reaching the fleet each week (India): 288 a week in w/c 28 Sep – 19 Oct; 230 a week in w/c 26 Oct – 23 Nov; 0 from w/c 30 Nov. City split: Mumbai 59/47, Bangalore 79/63, Hyderabad 79/63, Chennai 61/48, Pune 11/8, Delhi and Kolkata 0.
+Cars reaching the fleet each week (India): 288 a week in w/c 28 Sep – 19 Oct; 230 a week in w/c 26 Oct – 23 Nov; 0 from w/c 30 Nov to w/c 21 Dec. City split: Mumbai 59/47, Bangalore 79/63, Hyderabad 79/63, Chennai 61/48, Pune 11/8, Delhi and Kolkata 0.
 
 ### A7 – Cars sold (Lakshya: 721)
 
@@ -419,33 +416,33 @@ Columns:
 - match month
 - share of Lakshya's month
 
-### C1 – Plan summary by city (end of w/c 28 Dec)
+### C1 – Plan summary by city (end of w/c 21 Dec, Sun 27 Dec)
 
 **Lakshya-based plan:**
 
-| City | On road at start | **On road (plan)** | Lakshya | Plan − Lakshya | AOP Dec | Fleet | **Util** | Max util | Headroom | Recruitment (14 wks) | Peak week | Capacity | Weeks above capacity |
+| City | On road at start | **On road (plan)** | Lakshya | Plan − Lakshya | AOP Dec | Fleet | **Util** | Max util | Headroom | Recruitment (13 wks) | Peak week | Capacity | Weeks above capacity |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Mumbai | 2,649 | 3,433 | 3,381 | +52 | 3,116 | 4,487 | 76.5% | 75.0% | **−1.5%** | 2,875 | 245 | 250 | 0 |
-| Delhi NCR | 2,231 | 2,489 | 2,468 | +21 | 2,845 | 3,970 | 62.7% | 62.0% | **−0.7%** | 2,609 | 210 | 246 | 0 |
-| Bangalore | 1,929 | 2,735 | 2,769 | −34 | 2,468 | 3,462 | 79.0% | 79.5% | 0.5% | 2,579 | 220 | 194 | **9** |
-| Hyderabad | 1,641 | 2,523 | 2,416 | +107 | 2,215 | 3,167 | 79.7% | 79.5% | **−0.2%** | 2,885 | 257 | 213 | **9** |
-| Chennai | 1,752 | 2,360 | 2,306 | +54 | 2,163 | 2,989 | 79.0% | 79.5% | 0.5% | 2,233 | 194 | 178 | **5** |
-| Kolkata | 546 | 610 | 599 | +11 | 815 | 1,035 | 58.9% | 60.0% | 1.1% | 682 | 60 | 96 | 0 |
-| Pune | 985 | 1,157 | 1,143 | +14 | 1,196 | 1,653 | 70.0% | 70.0% | 0.0% | 1,571 | 135 | 146 | 0 |
-| **India** | 11,733 | **15,307** | 15,082 | **+225** | 14,818 | 20,763 | **73.7%** | | | **15,434** | | 1,323 | 23 |
+| Mumbai | 2,649 | 3,491 | 3,381 | +110 | 3,116 | 4,487 | 77.8% | 75.0% | **−2.8%** | 2,925 | 312 | 250 | **3** |
+| Delhi NCR | 2,231 | 2,550 | 2,468 | +82 | 2,845 | 3,970 | 64.2% | 62.0% | **−2.2%** | 2,664 | 270 | 246 | **3** |
+| Bangalore | 1,929 | 2,785 | 2,769 | +16 | 2,468 | 3,462 | 80.5% | 79.5% | **−1.0%** | 2,622 | 290 | 194 | **8** |
+| Hyderabad | 1,641 | 2,575 | 2,416 | +159 | 2,215 | 3,167 | 81.3% | 79.5% | **−1.8%** | 2,926 | 323 | 213 | **8** |
+| Chennai | 1,752 | 2,407 | 2,306 | +101 | 2,163 | 2,989 | 80.5% | 79.5% | **−1.0%** | 2,273 | 234 | 178 | **8** |
+| Kolkata | 546 | 623 | 599 | +24 | 815 | 1,035 | 60.2% | 60.0% | **−0.2%** | 693 | 74 | 96 | 0 |
+| Pune | 985 | 1,190 | 1,143 | +47 | 1,196 | 1,653 | 72.0% | 70.0% | **−2.0%** | 1,599 | 156 | 146 | **3** |
+| **India** | 11,733 | **15,621** | 15,082 | **+539** | 14,818 | 20,763 | **75.2%** | | | **15,701** | | 1,323 | 33 |
 
 **Actuals view:**
 
-| City | On road (plan) | Lakshya | Plan − Lakshya | Util | Max util | Recruitment (14 wks) | Weeks above capacity |
+| City | On road (plan) | Lakshya | Plan − Lakshya | Util | Max util | Recruitment (13 wks) | Weeks above capacity |
 |---|---|---|---|---|---|---|---|
-| Mumbai | 3,365 | 3,381 | −16 | 75.0% | 75.0% | 2,588 | 0 |
-| Delhi NCR | 2,462 | 2,468 | −6 | 62.0% | 62.0% | 2,698 | 2 |
-| Bangalore | 2,639 | 2,769 | −130 | 76.2% | 79.5% | 2,528 | 4 |
-| Hyderabad | 1,970 | 2,416 | **−446** | 62.2% | 79.5% | 2,807 | 3 |
-| Chennai | 2,290 | 2,306 | −16 | 76.6% | 79.5% | 2,244 | 0 |
-| Kolkata | 593 | 599 | −6 | 57.3% | 60.0% | 854 | 0 |
-| Pune | 1,159 | 1,143 | +16 | 70.1% | 70.0% | 1,676 | 1 |
-| **India** | **14,478** | 15,082 | **−604** | **69.7%** | | **15,395** | 10 |
+| Mumbai | 3,365 | 3,381 | −16 | 75.0% | 75.0% | 2,473 | 0 |
+| Delhi NCR | 2,460 | 2,468 | −8 | 61.9% | 62.0% | 2,551 | 2 |
+| Bangalore | 2,664 | 2,769 | −105 | 76.9% | 79.5% | 2,422 | 4 |
+| Hyderabad | 1,964 | 2,416 | **−452** | 62.0% | 79.5% | 2,594 | 3 |
+| Chennai | 2,246 | 2,306 | −60 | 75.1% | 79.5% | 2,085 | 0 |
+| Kolkata | 584 | 599 | −15 | 56.5% | 60.0% | 798 | 0 |
+| Pune | 1,132 | 1,143 | −11 | 68.5% | 70.0% | 1,559 | 0 |
+| **India** | **14,416** | 15,082 | **−667** | **69.4%** | | **14,481** | 9 |
 
 ### C2 – Sources
 
@@ -466,8 +463,8 @@ The sources listed in [section 4](#4-source-data), with links.
 | 3 actual weeks (grey-blue) | w/c 7, 14, 21 Sep (21 Sep has 6 days loaded, scaled to a week) |
 | "Last 3 weeks avg (actual)" | Average of the 3 actual weeks |
 | "Last 8 weeks avg (actual)" | From section 3 |
-| 14 plan weeks | w/c 28 Sep – 28 Dec |
-| "Avg 28 Sep – 28 Dec (cars, EIP: total)" | Attrition and recruitment: per full week; util and on-road cars: average; cars added, cars sold and EIP: 14-week total |
+| 13 plan weeks | w/c 28 Sep – 21 Dec |
+| "Avg 28 Sep – 21 Dec (cars, EIP: total)" | Attrition and recruitment: a week; util and on-road cars: average; cars added, cars sold and EIP: 13-week total |
 
 Columns, left to right (Lakshya-based plan and Actuals view):
 
@@ -484,7 +481,7 @@ Columns, left to right (Lakshya-based plan and Actuals view):
    - Attrition and recruitment are per full week; recruitment also has its month total.
    - Util and on-road cars are month averages.
    - Cars added, cars sold and EIP are month totals.
-   - The "14 weeks" row gives the plan-period figures.
+   - The "13 weeks" row gives the plan-period figures.
 4. **Seasonality check:**
    - **"Seasonality not in plan":** weeks where last year (Diwali-aligned) hiring fell 15%+ or attrition rose 15%+ and the plan does not show it.
    - **"Action needed":** sourcing push / retention push, or the expected miss. In the Actuals view, weeks before Diwali outside Kolkata are not flagged.
@@ -527,11 +524,11 @@ Cars added and sold are reporting-DB history (grey).
 
 | Tab | Visible? | What it shows |
 |---|---|---|
-| **Summary View** | Yes | City and fuel picker (B1). Weekly dashboard: 4 actual weeks + 14 plan weeks. Each block has a 2026 plan row, a 2026 actual row and a 2025 same-week row. Blocks: Util, On Road Cars, On road growth %, Recruitment, Net Attrition %, EIP Growth, FSE, Vendor, Referrals, Performance marketing, EIP %, Total car, Total buy, Total Sold, On Road Cars EIP / Own Now / L+DTO, Driver Acquisition. A "We are here" marker (yellow) and an Actual marker are shown. Colour scale: see section 5. |
+| **Summary View** | Yes | City and fuel picker (B1). Weekly dashboard: 4 actual weeks + 13 plan weeks. Each block has a 2026 plan row, a 2026 actual row and a 2025 same-week row. Blocks: Util, On Road Cars, On road growth %, Recruitment, Net Attrition %, EIP Growth, FSE, Vendor, Referrals, Performance marketing, EIP %, Total car, Total buy, Total Sold, On Road Cars EIP / Own Now / L+DTO, Driver Acquisition. A "We are here" marker (yellow) and an Actual marker are shown. Colour scale: see section 5. |
 | **Lakshya vs Plan vs LY** | Yes | See [section 11](#11-the-comparison-tab-lakshya-vs-plan-vs-ly). |
 | **Inputs** | Yes | See [section 10](#10-inputs-tab-section-by-section-with-the-current-values). |
 | **Lakshya Source** | Yes | Lakshya v4's own figures, typed as given. (1) Churn inputs: L+DTO book 31 Aug, churn rate a month, Own Now churn and rollover by month. (2) Weekly driver acquisition (L+DTO, Own Now, total) w/c 7 Sep – 28 Dec, with December re-split formulas and the "as given" weeks on the right. |
-| **City tabs** (7) | Yes | The weekly engine, one row per week: 4 actual weeks (rows 2–5), 14 plan weeks, totals row, step rows. Columns: see below. |
+| **City tabs** (7) | Yes | The weekly engine, one row per week: 4 actual weeks (rows 2–5), 13 plan weeks, totals row, step rows. Columns: see below. |
 | **Combined All** | Yes | All city tabs stacked (feeds Summary View). |
 | **raw_performance** | Yes | The pasted SSOT output. |
 | **Read Me** | Hidden | How the plan works. |
@@ -573,65 +570,65 @@ L = Lakshya, P = plan. Attrition and recruitment "a week" are per full 7-day wee
 
 | City | Month | Util % L / P | On-road avg L / P | Attrition % a week L / P | Recruitment a week L / P | Recruitment total L / P | Cars added L / P | Cars sold L / P | EIP net add L / P |
 |---|---|---|---|---|---|---|---|---|---|
-| India | Oct | 65.1% / 65.1% | 13,028 / 12,936 | 9.8% / 9.8% | 1,118 / 1,315 | 5,591 / 6,573 | 1,382 / 1,382 | 290 / 290 | 219 / 219 |
-|  | Nov | 63.9% / 63.9% | 13,382 / 13,278 | 8.5% / 8.5% | 1,082 / 830 | 5,408 / 4,152 | 918 / 918 | 253 / 253 | 219 / 219 |
-|  | Dec | 70.4% / 70.4% | 14,762 / 14,654 | 6.8% / 6.8% | 954 / 1,177 | 3,816 / 4,710 | 0 / 0 | 178 / 178 | 175 / 175 |
-|  | 14 weeks | 66.2% / 66.2% | 13,650 / 13,549 | 8.5% / 8.5% | 1,058 / 1,102 | 14,815 / 15,434 | 2,300 / 2,300 | 721 / 721 | 612 / 612 |
-| Mumbai | Oct | 67.4% / 67.4% | 2,915 / 2,902 | 9.8% / 9.8% | 208 / 245 | 1,038 / 1,224 | 281 / 281 | 60 / 60 | 46 / 46 |
-|  | Nov | 67.0% / 67.0% | 3,025 / 3,010 | 8.4% / 8.4% | 201 / 153 | 1,007 / 764 | 186 / 186 | 53 / 53 | 46 / 46 |
-|  | Dec | 73.3% / 73.3% | 3,313 / 3,297 | 6.5% / 6.5% | 176 / 222 | 705 / 887 | 0 / 0 | 38 / 38 | 37 / 37 |
-|  | 14 weeks | 68.9% / 68.9% | 3,068 / 3,054 | 8.3% / 8.3% | 196 / 205 | 2,750 / 2,875 | 467 / 467 | 151 / 151 | 129 / 129 |
-| Delhi NCR | Oct | 55.8% / 55.8% | 2,309 / 2,302 | 8.5% / 8.5% | 195 / 210 | 976 / 1,049 | 0 / 0 | 84 / 84 | 7 / 7 |
-|  | Nov | 55.8% / 55.8% | 2,265 / 2,259 | 7.7% / 7.7% | 186 / 161 | 932 / 804 | 0 / 0 | 73 / 73 | 7 / 7 |
-|  | Dec | 60.8% / 60.8% | 2,432 / 2,425 | 6.3% / 6.3% | 170 / 189 | 681 / 756 | 0 / 0 | 52 / 52 | 6 / 6 |
-|  | 14 weeks | 57.2% / 57.2% | 2,328 / 2,322 | 7.6% / 7.6% | 185 / 186 | 2,589 / 2,609 | 0 / 0 | 209 / 209 | 20 / 20 |
-| Bangalore | Oct | 70.6% / 70.6% | 2,286 / 2,192 | 8.5% / 8.5% | 187 / 220 | 937 / 1,101 | 380 / 380 | 20 / 20 | 50 / 50 |
-|  | Nov | 68.1% / 68.1% | 2,414 / 2,319 | 7.4% / 7.4% | 187 / 130 | 934 / 651 | 253 / 253 | 18 / 18 | 50 / 50 |
-|  | Dec | 74.9% / 74.9% | 2,700 / 2,597 | 5.9% / 5.9% | 165 / 207 | 661 / 827 | 0 / 0 | 12 / 12 | 40 / 40 |
-|  | 14 weeks | 71.0% / 71.0% | 2,450 / 2,353 | 7.3% / 7.3% | 181 / 184 | 2,532 / 2,579 | 633 / 633 | 50 / 50 | 141 / 141 |
-| Hyderabad | Oct | 70.0% / 70.0% | 1,945 / 1,966 | 11.9% / 11.9% | 198 / 257 | 988 / 1,286 | 380 / 380 | 20 / 20 | 67 / 67 |
-|  | Nov | 66.7% / 66.7% | 2,060 / 2,074 | 10.3% / 10.3% | 193 / 135 | 967 / 673 | 253 / 253 | 18 / 18 | 67 / 67 |
-|  | Dec | 74.6% / 74.6% | 2,347 / 2,365 | 7.9% / 7.9% | 169 / 232 | 677 / 927 | 0 / 0 | 12 / 12 | 54 / 54 |
-|  | 14 weeks | 70.1% / 70.1% | 2,101 / 2,118 | 10.2% / 10.2% | 188 / 206 | 2,632 / 2,885 | 633 / 633 | 50 / 50 | 188 / 188 |
-| Chennai | Oct | 72.2% / 72.2% | 1,952 / 1,966 | 9.5% / 9.5% | 156 / 194 | 778 / 968 | 290 / 290 | 20 / 20 | 39 / 39 |
-|  | Nov | 69.3% / 69.3% | 2,034 / 2,045 | 8.3% / 8.3% | 155 / 120 | 773 / 602 | 193 / 193 | 18 / 18 | 39 / 39 |
-|  | Dec | 75.7% / 75.7% | 2,254 / 2,267 | 6.6% / 6.6% | 136 / 166 | 543 / 662 | 0 / 0 | 12 / 12 | 31 / 31 |
-|  | 14 weeks | 72.2% / 72.2% | 2,068 / 2,080 | 8.2% / 8.2% | 150 / 159 | 2,094 / 2,233 | 483 / 483 | 50 / 50 | 110 / 110 |
+| India | Oct | 65.2% / 65.2% | 13,038 / 12,946 | 9.8% / 9.8% | 1,118 / 1,314 | 5,591 / 6,572 | 1,382 / 1,382 | 290 / 290 | 235 / 235 |
+|  | Nov | 64.1% / 64.1% | 13,409 / 13,305 | 8.5% / 8.5% | 1,082 / 830 | 5,408 / 4,152 | 918 / 918 | 253 / 253 | 235 / 235 |
+|  | Dec | 71.8% / 71.8% | 15,066 / 14,955 | 8.8% / 8.8% | 1,272 / 1,659 | 3,816 / 4,977 | 0 / 0 | 178 / 178 | 141 / 141 |
+|  | 13 weeks | 66.3% / 66.3% | 13,649 / 13,548 | 9.1% / 9.1% | 1,140 / 1,208 | 14,815 / 15,701 | 2,300 / 2,300 | 721 / 721 | 612 / 612 |
+| Mumbai | Oct | 67.4% / 67.4% | 2,917 / 2,904 | 9.8% / 9.8% | 208 / 245 | 1,038 / 1,224 | 281 / 281 | 60 / 60 | 50 / 50 |
+|  | Nov | 67.1% / 67.1% | 3,031 / 3,016 | 8.4% / 8.4% | 201 / 153 | 1,007 / 764 | 186 / 186 | 53 / 53 | 50 / 50 |
+|  | Dec | 74.6% / 74.6% | 3,371 / 3,355 | 8.6% / 8.6% | 235 / 312 | 705 / 937 | 0 / 0 | 38 / 38 | 30 / 30 |
+|  | 13 weeks | 69.0% / 69.0% | 3,066 / 3,051 | 9.0% / 9.0% | 212 / 225 | 2,750 / 2,925 | 467 / 467 | 151 / 151 | 129 / 129 |
+| Delhi NCR | Oct | 55.8% / 55.8% | 2,309 / 2,303 | 8.5% / 8.5% | 195 / 210 | 976 / 1,049 | 0 / 0 | 84 / 84 | 8 / 8 |
+|  | Nov | 55.8% / 55.8% | 2,266 / 2,260 | 7.7% / 7.7% | 186 / 161 | 932 / 804 | 0 / 0 | 73 / 73 | 8 / 8 |
+|  | Dec | 62.1% / 62.1% | 2,482 / 2,475 | 8.3% / 8.3% | 227 / 270 | 681 / 811 | 0 / 0 | 52 / 52 | 5 / 5 |
+|  | 13 weeks | 57.2% / 57.2% | 2,332 / 2,326 | 8.2% / 8.2% | 199 / 205 | 2,589 / 2,664 | 0 / 0 | 209 / 209 | 20 / 20 |
+| Bangalore | Oct | 70.7% / 70.7% | 2,289 / 2,194 | 8.5% / 8.5% | 187 / 220 | 937 / 1,101 | 380 / 380 | 20 / 20 | 54 / 54 |
+|  | Nov | 68.3% / 68.3% | 2,420 / 2,325 | 7.4% / 7.4% | 187 / 130 | 934 / 651 | 253 / 253 | 18 / 18 | 54 / 54 |
+|  | Dec | 76.4% / 76.4% | 2,754 / 2,650 | 7.8% / 7.8% | 220 / 290 | 661 / 870 | 0 / 0 | 12 / 12 | 33 / 33 |
+|  | 13 weeks | 71.1% / 71.1% | 2,447 / 2,349 | 7.9% / 7.9% | 195 / 202 | 2,532 / 2,622 | 633 / 633 | 50 / 50 | 141 / 141 |
+| Hyderabad | Oct | 70.1% / 70.1% | 1,948 / 1,969 | 11.9% / 11.9% | 198 / 257 | 988 / 1,286 | 380 / 380 | 20 / 20 | 72 / 72 |
+|  | Nov | 67.0% / 67.0% | 2,068 / 2,082 | 10.3% / 10.3% | 193 / 135 | 967 / 673 | 253 / 253 | 18 / 18 | 72 / 72 |
+|  | Dec | 76.4% / 76.4% | 2,404 / 2,422 | 10.3% / 10.3% | 226 / 323 | 677 / 968 | 0 / 0 | 12 / 12 | 43 / 43 |
+|  | 13 weeks | 70.3% / 70.3% | 2,100 / 2,117 | 10.9% / 10.9% | 202 / 225 | 2,632 / 2,926 | 633 / 633 | 50 / 50 | 188 / 188 |
+| Chennai | Oct | 72.2% / 72.2% | 1,953 / 1,967 | 9.5% / 9.5% | 156 / 194 | 778 / 968 | 290 / 290 | 20 / 20 | 42 / 42 |
+|  | Nov | 69.5% / 69.5% | 2,039 / 2,050 | 8.3% / 8.3% | 155 / 120 | 773 / 602 | 193 / 193 | 18 / 18 | 42 / 42 |
+|  | Dec | 77.2% / 77.2% | 2,299 / 2,312 | 8.6% / 8.6% | 181 / 234 | 543 / 703 | 0 / 0 | 12 / 12 | 25 / 25 |
+|  | 13 weeks | 72.3% / 72.3% | 2,066 / 2,079 | 8.8% / 8.8% | 161 / 175 | 2,094 / 2,273 | 483 / 483 | 50 / 50 | 110 / 110 |
 | Kolkata | Oct | 51.5% / 51.5% | 558 / 552 | 10.7% / 10.7% | 56 / 53 | 278 / 267 | 0 / 0 | 20 / 20 | 5 / 5 |
-|  | Nov | 51.5% / 51.5% | 549 / 543 | 9.0% / 9.0% | 49 / 41 | 244 / 205 | 0 / 0 | 18 / 18 | 5 / 5 |
-|  | Dec | 56.2% / 56.2% | 591 / 584 | 7.0% / 7.0% | 42 / 52 | 166 / 210 | 0 / 0 | 12 / 12 | 4 / 4 |
-|  | 14 weeks | 52.8% / 52.8% | 564 / 558 | 9.0% / 9.0% | 49 / 49 | 688 / 682 | 0 / 0 | 50 / 50 | 14 / 14 |
-| Pune | Oct | 61.3% / 61.3% | 1,063 / 1,056 | 11.8% / 11.8% | 119 / 135 | 596 / 677 | 50 / 50 | 65 / 65 | 4 / 4 |
-|  | Nov | 60.3% / 60.3% | 1,036 / 1,029 | 10.3% / 10.3% | 110 / 91 | 551 / 454 | 34 / 34 | 56 / 56 | 4 / 4 |
-|  | Dec | 67.1% / 67.1% | 1,126 / 1,118 | 8.1% / 8.1% | 96 / 110 | 383 / 440 | 0 / 0 | 40 / 40 | 3 / 3 |
-|  | 14 weeks | 62.6% / 62.6% | 1,071 / 1,064 | 10.2% / 10.2% | 109 / 112 | 1,530 / 1,571 | 84 / 84 | 161 / 161 | 10 / 10 |
+|  | Nov | 51.6% / 51.6% | 549 / 544 | 9.0% / 9.0% | 49 / 41 | 244 / 205 | 0 / 0 | 18 / 18 | 5 / 5 |
+|  | Dec | 57.5% / 57.5% | 604 / 597 | 9.2% / 9.2% | 55 / 74 | 166 / 221 | 0 / 0 | 12 / 12 | 3 / 3 |
+|  | 13 weeks | 52.9% / 52.9% | 565 / 559 | 9.7% / 9.7% | 53 / 53 | 688 / 693 | 0 / 0 | 50 / 50 | 14 / 14 |
+| Pune | Oct | 61.4% / 61.4% | 1,063 / 1,056 | 11.8% / 11.8% | 119 / 135 | 596 / 677 | 50 / 50 | 65 / 65 | 4 / 4 |
+|  | Nov | 60.3% / 60.3% | 1,036 / 1,030 | 10.3% / 10.3% | 110 / 91 | 551 / 453 | 34 / 34 | 56 / 56 | 4 / 4 |
+|  | Dec | 68.8% / 68.8% | 1,153 / 1,145 | 10.6% / 10.6% | 128 / 156 | 383 / 468 | 0 / 0 | 40 / 40 | 2 / 2 |
+|  | 13 weeks | 62.7% / 62.7% | 1,073 / 1,066 | 10.9% / 10.9% | 118 / 123 | 1,530 / 1,599 | 84 / 84 | 161 / 161 | 10 / 10 |
 
-**End of w/c 28 Dec, and where each city starts (last 8 weeks, actual)**
+**End of w/c 21 Dec (27 Dec), and where each city starts (last 8 weeks, actual)**
 
-| City | End of w/c 28 Dec: util L / P | On-road L / P | Last 8 weeks: attrition | recruitment | util | on-road |
+| City | End of w/c 21 Dec (27 Dec): util L / P | On-road L / P | Last 8 weeks: attrition | recruitment | util | on-road |
 |---|---|---|---|---|---|---|
-| India | 72.1% / 73.7% | 15,082 / 15,307 | 10.9% | 979 | 62.7% | 12,012 |
-| Mumbai | 75.0% / 76.5% | 3,381 / 3,433 | 9.9% | 159 | 63.3% | 2,672 |
-| Delhi NCR | 62.0% / 62.7% | 2,468 / 2,489 | 9.6% | 192 | 53.2% | 2,228 |
-| Bangalore | 76.9% / 79.0% | 2,769 / 2,735 | 9.4% | 142 | 71.2% | 2,016 |
-| Hyderabad | 76.9% / 79.7% | 2,416 / 2,523 | 13.4% | 158 | 68.8% | 1,752 |
-| Chennai | 77.6% / 79.0% | 2,306 / 2,360 | 10.4% | 135 | 70.1% | 1,782 |
-| Kolkata | 57.3% / 58.9% | 599 / 610 | 14.6% | 70 | 50.3% | 545 |
-| Pune | 68.7% / 70.0% | 1,143 / 1,157 | 13.4% | 123 | 58.7% | 1,018 |
+| India | 72.1% / 75.2% | 15,082 / 15,621 | 10.9% | 979 | 62.7% | 12,012 |
+| Mumbai | 75.0% / 77.8% | 3,381 / 3,491 | 9.9% | 159 | 63.3% | 2,672 |
+| Delhi NCR | 62.0% / 64.2% | 2,468 / 2,550 | 9.6% | 192 | 53.2% | 2,228 |
+| Bangalore | 76.9% / 80.5% | 2,769 / 2,785 | 9.4% | 142 | 71.2% | 2,016 |
+| Hyderabad | 76.9% / 81.3% | 2,416 / 2,575 | 13.4% | 158 | 68.8% | 1,752 |
+| Chennai | 77.6% / 80.5% | 2,306 / 2,407 | 10.4% | 135 | 70.1% | 1,782 |
+| Kolkata | 57.3% / 60.2% | 599 / 623 | 14.6% | 70 | 50.3% | 545 |
+| Pune | 68.7% / 72.0% | 1,143 / 1,190 | 13.4% | 123 | 58.7% | 1,018 |
 
-**Recruitment week by week (plan)**
+**Recruitment week by week**
 
-| City | 28 Sep | 05 Oct | 12 Oct | 19 Oct | 26 Oct | 02 Nov | 09 Nov | 16 Nov | 23 Nov | 30 Nov | 07 Dec | 14 Dec | 21 Dec | 28 Dec |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **India Lakshya** | 1,415 | 1,356 | 1,169 | 985 | 666 | 565 | 769 | 1,283 | 1,433 | 1,358 | 954 | 954 | 954 | 954 |
-| **India plan** | 1,321 | 1,321 | 1,304 | 1,304 | 1,321 | 711 | 711 | 910 | 910 | 910 | 1,177 | 1,177 | 1,177 | 1,177 |
-| Mumbai rec | 245 | 245 | 245 | 245 | 245 | 133 | 133 | 166 | 166 | 166 | 222 | 222 | 222 | 222 |
-| Delhi NCR rec | 210 | 210 | 210 | 210 | 210 | 111 | 111 | 194 | 194 | 194 | 189 | 189 | 189 | 189 |
-| Bangalore rec | 220 | 220 | 220 | 220 | 220 | 112 | 112 | 143 | 143 | 143 | 207 | 207 | 207 | 207 |
-| Hyderabad rec | 257 | 257 | 257 | 257 | 257 | 129 | 129 | 138 | 138 | 138 | 232 | 232 | 232 | 232 |
-| Chennai rec | 194 | 194 | 194 | 194 | 194 | 112 | 112 | 126 | 126 | 126 | 166 | 166 | 166 | 166 |
-| Kolkata rec | 60 | 60 | 43 | 43 | 60 | 35 | 35 | 45 | 45 | 45 | 52 | 52 | 52 | 52 |
-| Pune rec | 135 | 135 | 135 | 135 | 135 | 80 | 80 | 98 | 98 | 98 | 110 | 110 | 110 | 110 |
+| City | 28 Sep | 05 Oct | 12 Oct | 19 Oct | 26 Oct | 02 Nov | 09 Nov | 16 Nov | 23 Nov | 30 Nov | 07 Dec | 14 Dec | 21 Dec |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **India Lakshya** | 1,415 | 1,356 | 1,169 | 985 | 666 | 565 | 769 | 1,283 | 1,433 | 1,358 | 1,550 | 1,487 | 779 |
+| **India plan** | 1,321 | 1,321 | 1,304 | 1,304 | 1,321 | 711 | 711 | 910 | 910 | 910 | 1,659 | 1,659 | 1,659 |
+| Mumbai plan | 245 | 245 | 245 | 245 | 245 | 133 | 133 | 166 | 166 | 166 | 312 | 312 | 312 |
+| Delhi NCR plan | 210 | 210 | 210 | 210 | 210 | 111 | 111 | 194 | 194 | 194 | 270 | 270 | 270 |
+| Bangalore plan | 220 | 220 | 220 | 220 | 220 | 112 | 112 | 143 | 143 | 143 | 290 | 290 | 290 |
+| Hyderabad plan | 257 | 257 | 257 | 257 | 257 | 129 | 129 | 138 | 138 | 138 | 323 | 323 | 323 |
+| Chennai plan | 194 | 194 | 194 | 194 | 194 | 112 | 112 | 126 | 126 | 126 | 234 | 234 | 234 |
+| Kolkata plan | 60 | 60 | 43 | 43 | 60 | 35 | 35 | 45 | 45 | 45 | 74 | 74 | 74 |
+| Pune plan | 135 | 135 | 135 | 135 | 135 | 80 | 80 | 98 | 98 | 98 | 156 | 156 | 156 |
 
 ### 13.2 Actuals view
 
@@ -639,65 +636,65 @@ L = Lakshya, P = plan. Attrition and recruitment "a week" are per full 7-day wee
 
 | City | Month | Util % L / P | On-road avg L / P | Attrition % a week L / P | Recruitment a week L / P | Recruitment total L / P | Cars added L / P | Cars sold L / P | EIP net add L / P |
 |---|---|---|---|---|---|---|---|---|---|
-| India | Oct | 65.1% / 63.3% | 13,028 / 12,491 | 9.8% / 9.8% | 1,118 / 1,118 | 5,591 / 5,591 | 1,382 / 1,241 | 290 / 290 | 219 / 230 |
-|  | Nov | 63.9% / 62.4% | 13,382 / 12,944 | 8.5% / 9.7% | 1,082 / 1,082 | 5,408 / 5,408 | 918 / 1,060 | 253 / 253 | 219 / 230 |
-|  | Dec | 70.4% / 67.3% | 14,762 / 14,021 | 6.8% / 8.5% | 954 / 1,099 | 3,816 / 4,396 | 0 / 0 | 178 / 178 | 175 / 184 |
-|  | 14 weeks | 66.2% / 64.1% | 13,650 / 13,090 | 8.5% / 9.4% | 1,058 / 1,100 | 14,815 / 15,395 | 2,300 / 2,301 | 721 / 721 | 612 / 644 |
-| Mumbai | Oct | 67.4% / 66.7% | 2,915 / 2,875 | 9.8% / 9.8% | 208 / 208 | 1,038 / 1,038 | 281 / 281 | 60 / 60 | 46 / 130 |
-|  | Nov | 67.0% / 69.6% | 3,025 / 3,125 | 8.4% / 8.9% | 201 / 201 | 1,007 / 1,007 | 186 / 186 | 53 / 53 | 46 / 130 |
-|  | Dec | 73.3% / 73.2% | 3,313 / 3,295 | 6.5% / 7.1% | 176 / 136 | 705 / 543 | 0 / 0 | 38 / 38 | 37 / 104 |
-|  | 14 weeks | 68.9% / 69.6% | 3,068 / 3,084 | 8.3% / 8.7% | 196 / 185 | 2,750 / 2,588 | 467 / 467 | 151 / 151 | 129 / 364 |
-| Delhi NCR | Oct | 55.8% / 54.9% | 2,309 / 2,268 | 8.5% / 8.5% | 195 / 195 | 976 / 976 | 0 / 1 | 84 / 84 | 7 / -15 |
-|  | Nov | 55.8% / 52.9% | 2,265 / 2,146 | 7.7% / 8.3% | 186 / 186 | 932 / 932 | 0 / 0 | 73 / 73 | 7 / -15 |
-|  | Dec | 60.8% / 59.1% | 2,432 / 2,359 | 6.3% / 6.7% | 170 / 197 | 681 / 790 | 0 / 0 | 52 / 52 | 6 / -12 |
-|  | 14 weeks | 57.2% / 55.4% | 2,328 / 2,250 | 7.6% / 7.9% | 185 / 193 | 2,589 / 2,698 | 0 / 1 | 209 / 209 | 20 / -42 |
-| Bangalore | Oct | 70.6% / 70.5% | 2,286 / 2,147 | 8.5% / 8.5% | 187 / 187 | 937 / 937 | 380 / 304 | 20 / 20 | 50 / 103 |
-|  | Nov | 68.1% / 69.9% | 2,414 / 2,371 | 7.4% / 8.8% | 187 / 187 | 934 / 934 | 253 / 329 | 18 / 18 | 50 / 103 |
-|  | Dec | 74.9% / 73.7% | 2,700 / 2,556 | 5.9% / 7.5% | 165 / 164 | 661 / 657 | 0 / 0 | 12 / 12 | 40 / 82 |
-|  | 14 weeks | 71.0% / 71.2% | 2,450 / 2,344 | 7.3% / 8.3% | 181 / 181 | 2,532 / 2,528 | 633 / 633 | 50 / 50 | 141 / 287 |
-| Hyderabad | Oct | 70.0% / 63.3% | 1,945 / 1,777 | 11.9% / 11.9% | 198 / 198 | 988 / 988 | 380 / 366 | 20 / 20 | 67 / -14 |
-|  | Nov | 66.7% / 58.7% | 2,060 / 1,825 | 10.3% / 12.8% | 193 / 193 | 967 / 967 | 253 / 267 | 18 / 18 | 67 / -14 |
-|  | Dec | 74.6% / 61.2% | 2,347 / 1,942 | 7.9% / 12.0% | 169 / 213 | 677 / 852 | 0 / 0 | 12 / 12 | 54 / -11 |
-|  | 14 weeks | 70.1% / 61.1% | 2,101 / 1,841 | 10.2% / 12.3% | 188 / 201 | 2,632 / 2,807 | 633 / 633 | 50 / 50 | 188 / -39 |
-| Chennai | Oct | 72.2% / 70.9% | 1,952 / 1,873 | 9.5% / 9.5% | 156 / 156 | 778 / 778 | 290 / 239 | 20 / 20 | 39 / 45 |
-|  | Nov | 69.3% / 68.6% | 2,034 / 2,024 | 8.3% / 8.5% | 155 / 155 | 773 / 773 | 193 / 244 | 18 / 18 | 39 / 45 |
-|  | Dec | 75.7% / 74.2% | 2,254 / 2,221 | 6.6% / 8.8% | 136 / 173 | 543 / 693 | 0 / 0 | 12 / 12 | 31 / 36 |
-|  | 14 weeks | 72.2% / 71.0% | 2,068 / 2,026 | 8.2% / 9.0% | 150 / 160 | 2,094 / 2,244 | 483 / 483 | 50 / 50 | 110 / 126 |
+| India | Oct | 65.2% / 63.3% | 13,038 / 12,490 | 9.8% / 9.8% | 1,118 / 1,118 | 5,591 / 5,591 | 1,382 / 1,241 | 290 / 290 | 235 / 230 |
+|  | Nov | 64.1% / 62.4% | 13,409 / 12,952 | 8.5% / 9.7% | 1,082 / 1,082 | 5,408 / 5,408 | 918 / 1,060 | 253 / 253 | 235 / 230 |
+|  | Dec | 71.8% / 67.4% | 15,066 / 14,037 | 8.8% / 8.6% | 1,272 / 1,161 | 3,816 / 3,482 | 0 / 0 | 178 / 178 | 141 / 138 |
+|  | 13 weeks | 66.3% / 63.9% | 13,649 / 13,025 | 9.1% / 9.4% | 1,140 / 1,114 | 14,815 / 14,481 | 2,300 / 2,301 | 721 / 721 | 612 / 598 |
+| Mumbai | Oct | 67.4% / 66.7% | 2,917 / 2,875 | 9.8% / 9.8% | 208 / 208 | 1,038 / 1,038 | 281 / 281 | 60 / 60 | 50 / 130 |
+|  | Nov | 67.1% / 69.6% | 3,031 / 3,126 | 8.4% / 8.9% | 201 / 201 | 1,007 / 1,007 | 186 / 186 | 53 / 53 | 50 / 130 |
+|  | Dec | 74.6% / 72.9% | 3,371 / 3,279 | 8.6% / 7.1% | 235 / 143 | 705 / 428 | 0 / 0 | 38 / 38 | 30 / 78 |
+|  | 13 weeks | 69.0% / 69.2% | 3,066 / 3,065 | 9.0% / 8.8% | 212 / 190 | 2,750 / 2,473 | 467 / 467 | 151 / 151 | 129 / 338 |
+| Delhi NCR | Oct | 55.8% / 54.9% | 2,309 / 2,267 | 8.5% / 8.5% | 195 / 195 | 976 / 976 | 0 / 1 | 84 / 84 | 8 / -15 |
+|  | Nov | 55.8% / 53.0% | 2,266 / 2,146 | 7.7% / 8.3% | 186 / 186 | 932 / 932 | 0 / 0 | 73 / 73 | 8 / -15 |
+|  | Dec | 62.1% / 59.6% | 2,482 / 2,376 | 8.3% / 6.8% | 227 / 214 | 681 / 643 | 0 / 0 | 52 / 52 | 5 / -9 |
+|  | 13 weeks | 57.2% / 55.2% | 2,332 / 2,246 | 8.2% / 8.1% | 199 / 196 | 2,589 / 2,551 | 0 / 1 | 209 / 209 | 20 / -39 |
+| Bangalore | Oct | 70.7% / 70.5% | 2,289 / 2,147 | 8.5% / 8.5% | 187 / 187 | 937 / 937 | 380 / 304 | 20 / 20 | 54 / 103 |
+|  | Nov | 68.3% / 70.0% | 2,420 / 2,374 | 7.4% / 8.8% | 187 / 187 | 934 / 934 | 253 / 329 | 18 / 18 | 54 / 103 |
+|  | Dec | 76.4% / 74.7% | 2,754 / 2,588 | 7.8% / 7.4% | 220 / 184 | 661 / 551 | 0 / 0 | 12 / 12 | 33 / 62 |
+|  | 13 weeks | 71.1% / 71.3% | 2,447 / 2,336 | 7.9% / 8.4% | 195 / 186 | 2,532 / 2,422 | 633 / 633 | 50 / 50 | 141 / 267 |
+| Hyderabad | Oct | 70.1% / 63.3% | 1,948 / 1,777 | 11.9% / 11.9% | 198 / 198 | 988 / 988 | 380 / 366 | 20 / 20 | 72 / -14 |
+|  | Nov | 67.0% / 58.7% | 2,068 / 1,826 | 10.3% / 12.8% | 193 / 193 | 967 / 967 | 253 / 267 | 18 / 18 | 72 / -14 |
+|  | Dec | 76.4% / 61.0% | 2,404 / 1,936 | 10.3% / 11.8% | 226 / 213 | 677 / 639 | 0 / 0 | 12 / 12 | 43 / -8 |
+|  | 13 weeks | 70.3% / 61.0% | 2,100 / 1,832 | 10.9% / 12.2% | 202 / 200 | 2,632 / 2,594 | 633 / 633 | 50 / 50 | 188 / -36 |
+| Chennai | Oct | 72.2% / 70.9% | 1,953 / 1,873 | 9.5% / 9.5% | 156 / 156 | 778 / 778 | 290 / 239 | 20 / 20 | 42 / 45 |
+|  | Nov | 69.5% / 68.6% | 2,039 / 2,026 | 8.3% / 8.5% | 155 / 155 | 773 / 773 | 193 / 244 | 18 / 18 | 42 / 45 |
+|  | Dec | 77.2% / 73.8% | 2,299 / 2,209 | 8.6% / 9.3% | 181 / 178 | 543 / 534 | 0 / 0 | 12 / 12 | 25 / 27 |
+|  | 13 weeks | 72.3% / 70.7% | 2,066 / 2,009 | 8.8% / 9.0% | 161 / 160 | 2,094 / 2,085 | 483 / 483 | 50 / 50 | 110 / 117 |
 | Kolkata | Oct | 51.5% / 50.4% | 558 / 541 | 10.7% / 10.7% | 56 / 56 | 278 / 278 | 0 / 0 | 20 / 20 | 5 / -9 |
-|  | Nov | 51.5% / 46.2% | 549 / 487 | 9.0% / 12.9% | 49 / 49 | 244 / 244 | 0 / 0 | 18 / 18 | 5 / -9 |
-|  | Dec | 56.2% / 53.0% | 591 / 551 | 7.0% / 10.8% | 42 / 83 | 166 / 332 | 0 / 0 | 12 / 12 | 4 / -7 |
-|  | 14 weeks | 52.8% / 49.6% | 564 / 524 | 9.0% / 11.5% | 49 / 61 | 688 / 854 | 0 / 0 | 50 / 50 | 14 / -25 |
-| Pune | Oct | 61.3% / 58.5% | 1,063 / 1,010 | 11.8% / 11.8% | 119 / 119 | 596 / 596 | 50 / 50 | 65 / 65 | 4 / -10 |
-|  | Nov | 60.3% / 56.7% | 1,036 / 967 | 10.3% / 11.2% | 110 / 110 | 551 / 551 | 34 / 34 | 56 / 56 | 4 / -10 |
-|  | Dec | 67.1% / 65.7% | 1,126 / 1,096 | 8.1% / 9.7% | 96 / 132 | 383 / 529 | 0 / 0 | 40 / 40 | 3 / -8 |
-|  | 14 weeks | 62.6% / 59.9% | 1,071 / 1,019 | 10.2% / 11.0% | 109 / 120 | 1,530 / 1,676 | 84 / 84 | 161 / 161 | 10 / -28 |
+|  | Nov | 51.6% / 46.2% | 549 / 487 | 9.0% / 12.9% | 49 / 49 | 244 / 244 | 0 / 0 | 18 / 18 | 5 / -9 |
+|  | Dec | 57.5% / 53.5% | 604 / 555 | 9.2% / 11.3% | 55 / 92 | 166 / 276 | 0 / 0 | 12 / 12 | 3 / -5 |
+|  | 13 weeks | 52.9% / 49.5% | 565 / 523 | 9.7% / 11.7% | 53 / 61 | 688 / 798 | 0 / 0 | 50 / 50 | 14 / -23 |
+| Pune | Oct | 61.4% / 58.5% | 1,063 / 1,010 | 11.8% / 11.8% | 119 / 119 | 596 / 596 | 50 / 50 | 65 / 65 | 4 / -10 |
+|  | Nov | 60.3% / 56.7% | 1,036 / 968 | 10.3% / 11.2% | 110 / 110 | 551 / 551 | 34 / 34 | 56 / 56 | 4 / -10 |
+|  | Dec | 68.8% / 65.6% | 1,153 / 1,094 | 10.6% / 10.1% | 128 / 137 | 383 / 412 | 0 / 0 | 40 / 40 | 2 / -6 |
+|  | 13 weeks | 62.7% / 59.5% | 1,073 / 1,013 | 10.9% / 11.2% | 118 / 120 | 1,530 / 1,559 | 84 / 84 | 161 / 161 | 10 / -26 |
 
-**End of w/c 28 Dec, and where each city starts (last 8 weeks, actual)**
+**End of w/c 21 Dec (27 Dec), and where each city starts (last 8 weeks, actual)**
 
-| City | End of w/c 28 Dec: util L / P | On-road L / P | Last 8 weeks: attrition | recruitment | util | on-road |
+| City | End of w/c 21 Dec (27 Dec): util L / P | On-road L / P | Last 8 weeks: attrition | recruitment | util | on-road |
 |---|---|---|---|---|---|---|
-| India | 72.1% / 69.7% | 15,082 / 14,478 | 10.9% | 979 | 62.7% | 12,012 |
+| India | 72.1% / 69.4% | 15,082 / 14,416 | 10.9% | 979 | 62.7% | 12,012 |
 | Mumbai | 75.0% / 75.0% | 3,381 / 3,365 | 9.9% | 159 | 63.3% | 2,672 |
-| Delhi NCR | 62.0% / 62.0% | 2,468 / 2,462 | 9.6% | 192 | 53.2% | 2,228 |
-| Bangalore | 76.9% / 76.2% | 2,769 / 2,639 | 9.4% | 142 | 71.2% | 2,016 |
-| Hyderabad | 76.9% / 62.2% | 2,416 / 1,970 | 13.4% | 158 | 68.8% | 1,752 |
-| Chennai | 77.6% / 76.6% | 2,306 / 2,290 | 10.4% | 135 | 70.1% | 1,782 |
-| Kolkata | 57.3% / 57.3% | 599 / 593 | 14.6% | 70 | 50.3% | 545 |
-| Pune | 68.7% / 70.1% | 1,143 / 1,159 | 13.4% | 123 | 58.7% | 1,018 |
+| Delhi NCR | 62.0% / 61.9% | 2,468 / 2,460 | 9.6% | 192 | 53.2% | 2,228 |
+| Bangalore | 76.9% / 76.9% | 2,769 / 2,664 | 9.4% | 142 | 71.2% | 2,016 |
+| Hyderabad | 76.9% / 62.0% | 2,416 / 1,964 | 13.4% | 158 | 68.8% | 1,752 |
+| Chennai | 77.6% / 75.1% | 2,306 / 2,246 | 10.4% | 135 | 70.1% | 1,782 |
+| Kolkata | 57.3% / 56.5% | 599 / 584 | 14.6% | 70 | 50.3% | 545 |
+| Pune | 68.7% / 68.5% | 1,143 / 1,132 | 13.4% | 123 | 58.7% | 1,018 |
 
-**Recruitment week by week (plan)**
+**Recruitment week by week**
 
-| City | 28 Sep | 05 Oct | 12 Oct | 19 Oct | 26 Oct | 02 Nov | 09 Nov | 16 Nov | 23 Nov | 30 Nov | 07 Dec | 14 Dec | 21 Dec | 28 Dec |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **India Lakshya** | 1,415 | 1,356 | 1,169 | 985 | 666 | 565 | 769 | 1,283 | 1,433 | 1,358 | 954 | 954 | 954 | 954 |
-| **India plan** | 1,216 | 1,202 | 1,132 | 978 | 1,064 | 862 | 862 | 1,245 | 1,258 | 1,181 | 1,043 | 1,018 | 1,177 | 1,159 |
-| Mumbai rec | 225 | 225 | 220 | 197 | 171 | 182 | 182 | 214 | 228 | 202 | 104 | 106 | 210 | 122 |
-| Delhi NCR rec | 211 | 211 | 206 | 175 | 173 | 100 | 100 | 222 | 259 | 251 | 172 | 173 | 219 | 226 |
-| Bangalore rec | 203 | 203 | 183 | 175 | 174 | 165 | 165 | 219 | 188 | 196 | 162 | 147 | 154 | 194 |
-| Hyderabad rec | 220 | 220 | 187 | 154 | 206 | 173 | 173 | 212 | 224 | 186 | 213 | 213 | 213 | 213 |
-| Chennai rec | 163 | 163 | 159 | 142 | 152 | 132 | 132 | 178 | 178 | 153 | 178 | 178 | 163 | 174 |
-| Kolkata rec | 70 | 55 | 55 | 27 | 71 | 41 | 41 | 57 | 49 | 55 | 74 | 84 | 92 | 82 |
-| Pune rec | 125 | 125 | 122 | 109 | 117 | 69 | 69 | 144 | 131 | 139 | 140 | 116 | 126 | 147 |
+| City | 28 Sep | 05 Oct | 12 Oct | 19 Oct | 26 Oct | 02 Nov | 09 Nov | 16 Nov | 23 Nov | 30 Nov | 07 Dec | 14 Dec | 21 Dec |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **India Lakshya** | 1,415 | 1,356 | 1,169 | 985 | 666 | 565 | 769 | 1,283 | 1,433 | 1,358 | 1,550 | 1,487 | 779 |
+| **India plan** | 1,216 | 1,202 | 1,132 | 978 | 1,064 | 862 | 862 | 1,245 | 1,258 | 1,181 | 1,113 | 1,099 | 1,270 |
+| Mumbai plan | 225 | 225 | 220 | 197 | 171 | 182 | 182 | 214 | 228 | 202 | 107 | 108 | 213 |
+| Delhi NCR plan | 211 | 211 | 206 | 175 | 173 | 100 | 100 | 222 | 259 | 251 | 197 | 200 | 246 |
+| Bangalore plan | 203 | 203 | 183 | 175 | 174 | 165 | 165 | 219 | 188 | 196 | 189 | 177 | 185 |
+| Hyderabad plan | 220 | 220 | 187 | 154 | 206 | 173 | 173 | 212 | 224 | 186 | 213 | 213 | 213 |
+| Chennai plan | 163 | 163 | 159 | 142 | 152 | 132 | 132 | 178 | 178 | 153 | 178 | 178 | 178 |
+| Kolkata plan | 70 | 55 | 55 | 27 | 71 | 41 | 41 | 57 | 49 | 55 | 84 | 96 | 96 |
+| Pune plan | 125 | 125 | 122 | 109 | 117 | 69 | 69 | 144 | 131 | 139 | 146 | 128 | 138 |
 
 ---
 
@@ -709,13 +706,13 @@ L = Lakshya, P = plan. Attrition and recruitment "a week" are per full 7-day wee
    - Attrition runs at 10.9% against Lakshya's October 9.8%.
 2. **This year against last year.** Recruitment is 17% lower than the same weeks last year (979 vs 1,174), and attrition is lower too (10.9% vs 12.2%).
 3. **Matching monthly util needs front-loaded hiring.**
-   - The Lakshya-based plan hires +197 a week above Lakshya in October, 252 below in November and +223 above in December.
-   - That is 15,434 hires over 14 weeks against Lakshya's 14,815 (+619).
-   - Util ends at 73.7% against 72.1%.
-4. **Util ceiling breached in the Lakshya-based plan:** Mumbai ends at 76.5% (max 75.0%), Delhi NCR at 62.7% (max 62.0%) and Hyderabad at 79.7% (max 79.5%).
-5. **Hiring above proven capacity in the Lakshya-based plan:** Bangalore (9 weeks), Hyderabad (9 weeks) and Chennai (5 weeks).
+   - The Lakshya-based plan hires +196 a week above Lakshya in October, 252 below in November and +387 above in December.
+   - That is 15,701 hires over 13 weeks against Lakshya's 14,815 (+886).
+   - Util ends at 75.2% against 72.1%, with 15,621 cars on road against 15,082.
+4. **Util ceiling breached in the Lakshya-based plan.** Every city ends above its maximum utilisation: Mumbai 77.8% (max 75.0%), Delhi NCR 64.2% (62.0%), Bangalore 80.5% (79.5%), Hyderabad 81.3% (79.5%), Chennai 80.5% (79.5%), Kolkata 60.2% (60.0%) and Pune 72.0% (70.0%).
+5. **Hiring above proven capacity in the Lakshya-based plan:** 33 city-weeks in total. Bangalore, Hyderabad and Chennai have 8 weeks each; Mumbai, Delhi NCR and Pune have 3 each.
 6. **On-road cars run about 100 below Lakshya each month even with util matched.** Our fleet is slightly smaller than Lakshya's, so the same util gives fewer cars on road.
-7. **The Actuals view lands 604 cars short of Lakshya** (14,478 against 15,082, util 69.7%). Almost all of it is **Hyderabad (−446)**: attrition there runs 13.4% a week, and its December hiring is capped at its best week (213).
+7. **The Actuals view lands 667 cars short of Lakshya** (14,416 against 15,082, util 69.4%). Most of it is **Hyderabad (−452)**: attrition there runs 13.4% a week, and its December hiring is capped at its best week (213).
 8. **EIP.**
    - EIP fell 241 cars in August (mostly Mumbai drop-offs) and recovered 184 in September.
    - The last 4 weeks run at +46 a week, close to Lakshya's +44–47.
@@ -768,25 +765,28 @@ L = Lakshya, P = plan. Attrition and recruitment "a week" are per full 7-day wee
 | 36 | Lakshya has 21 Dec; add 28 Dec and split December's number | w/c 28 Dec added; Lakshya's December re-split (total unchanged) |
 | 37 | Don't split the week; take all 7 days | w/c 28 Dec is a full week to Sun 3 Jan; December split evenly, 954 a week |
 | 38 | Full documentation MD | This file |
-| 39 | One more sheet with the weekly plan exactly equal to Lakshya, plus a monthly summary tab | New sheet "Lakshya exact, week by week" (v2 engine, new comparison layout incl. on-road cars) with a Monthly Summary tab: Lakshya / Plan / Plan − Lakshya / Actual so far / Last year for Oct, Nov, Dec and the 14 weeks |
+| 39 | One more sheet with the weekly plan exactly equal to Lakshya, plus a monthly summary tab | New sheet "Lakshya exact, week by week" (v2 engine, new comparison layout incl. on-road cars) with a Monthly Summary tab: Lakshya / Plan / Plan − Lakshya / Actual so far / Last year for Oct, Nov, Dec and the plan total |
+| 40 | December should end at w/c 21 Dec, to match Lakshya | Plan back to 13 weeks ending Sun 27 Dec; Lakshya's December weeks as given (no re-split); all four sheets rebuilt |
 
 ---
 
 ## 16. Open points
 
-1. **Lakshya-based plan, up-and-down pattern.**
-   - Matching each month's average util means:
-     - util goes 67.1% at the end of October → 63.3% in Diwali week → 73.7% at the end;
-     - recruitment goes 1,315 → 830 → 1,177 a week.
-   - A smoother alternative is to match each month's closing util instead. That gives steadier hiring, but the monthly averages would not match.
-2. **Util ceiling breaches:** Mumbai (76.5% against 75%), Delhi NCR (62.7% against 62%) and Hyderabad (79.7% against 79.5%) in the Lakshya-based plan.
-3. **Weeks above proven capacity:** Bangalore 9, Hyderabad 9 and Chennai 5 in the Lakshya-based plan.
-4. **Actuals view, Hyderabad:** 446 cars short. This needs either lower attrition (13.4% now) or hiring above its best week.
+1. **Lakshya-based plan, December hiring jump.**
+   - Lakshya's December averages 71.8% util over only 3 weeks. To match that average, the plan hires 1,659 a week in December, which is 387 above Lakshya's December average.
+   - In w/c 21 Dec Lakshya itself has only 779.
+   - Over the plan that is 15,701 hires against Lakshya's 14,815.
+   - **The up-and-down pattern:** util goes about 67% at the end of October → 63% in Diwali week → 75.2% on 27 Dec, and recruitment goes 1,314 → 830 → 1,659 a week.
+   - A smoother alternative is to match each month's closing util instead of the average.
+2. **Util ceiling breaches:** every city ends above its maximum utilisation in the Lakshya-based plan (see finding 4).
+3. **Weeks above proven capacity:** 33 city-weeks in the Lakshya-based plan.
+4. **Actuals view, Hyderabad:** 452 cars short. This needs either lower attrition (13.4% now) or hiring above its best week.
 5. **Actuals view, Mumbai's December:** follows last year's uneven December weeks. It can be smoothed with the same December total.
 6. **Actuals view, first week:** recruitment steps from 1,002 (last actual week) to 1,216 in w/c 28 Sep (+21%), because festival-week hires were moved earlier.
 7. **New cars:** 571 October cars and 1,148 November cars are still to be ordered. At 5 weeks from order to road, October's are already late.
 8. **v2:** still on the older comparison layout.
 9. **Last-year cars for Aug 2025:** missing from the reporting DB pull (left blank).
+10. **The new "Lakshya exact" sheet** is shared only with its owner so far.
 
 ---
 
@@ -804,7 +804,7 @@ L = Lakshya, P = plan. Attrition and recruitment "a week" are per full 7-day wee
   | Module | Holds |
   |---|---|
   | `lakshya_cmp.py` | Lakshya week by week, from the v2 engine |
-  | `ly_pattern.py` | Last year's Diwali-aligned weekly pattern, 14 weeks |
+  | `ly_pattern.py` | Last year's Diwali-aligned weekly pattern (14 weeks kept; the plan uses 13) |
   | `car_flows.py` | Actual cars added and sold by week |
   | `plan_history.py` | History, seasonality, capacity and the attrition trend |
 
