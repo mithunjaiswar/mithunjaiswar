@@ -139,6 +139,20 @@ np as (
   where for_collections = 1
     and hissab_week >= (select min(hw) from wk) - 14
 ),
+-- Entire week active: pilot held a car on ALL days of the hisaab week (allocation table, till today for the
+--   running week). Replaces MV total_allocated_days >= 7 (MV counts car-swap days twice).
+fw as (
+  select m.hissab_week, m.partner_etm,
+         count(distinct d::date) = least(7, current_date - m.hissab_week + 1) as full_week
+  from m
+  join analytics.ssot_alloc_dealloc_base s
+    on s.employee_id = m.partner_etm and s.allocation_date <= m.hissab_week + 6
+   and coalesce(s.jama_date, current_date) >= m.hissab_week
+  cross join lateral generate_series(greatest(s.allocation_date, m.hissab_week)::timestamp,
+                                     least(coalesce(s.jama_date, current_date), m.hissab_week + 6, current_date)::timestamp,
+                                     interval '1 day') d
+  group by 1, 2
+),
 -- [MISSING 5] funnel bad debt
 -- Funnel bad debt (same rule as old Sheet col AY bad_debt_rec_100pct):
 --   money paid in the NEXT hisaab week (all positive mv_daily_recovery types) by a partner who has
@@ -168,7 +182,7 @@ select
   sp.razorpay_100pct, sp.other_100pct, sp.phonepe_100pct, sp.adjustment_100pct, sp.deposit_to_rent_100pct,
   -- behaviour (MV)
   m.partners_not_paid_2_weeks, m.last_week_payment_habit, m.total_allocated_days,
-  case when m.total_allocated_days >= 7 then 1 else 0 end                                    as entire_week_active,
+  case when fw.full_week then 1 else 0 end                                    as entire_week_active,
   m.last_payment_date_till_hissab_week, m.last_jama_date, m.tenure_days,
   -- deposit (MV + deposit at allocation)
   m.week_start_deposit, m.week_end_deposit, da.alloc_date, da.dep_at_alloc,
@@ -206,6 +220,7 @@ left join ml          on ml.partner_et_id = m.partner_etm and ml.week       = m.
 left join dep_alloc da on da.partner_etm  = m.partner_etm and da.hissab_week = m.hissab_week
 left join rc          on rc.employee_id   = m.partner_etm and rc.hw         = m.hissab_week
 left join bdn         on bdn.employee_id  = m.partner_etm and bdn.hw = m.hissab_week
+left join fw          on fw.partner_etm   = m.partner_etm and fw.hissab_week = m.hissab_week
 left join np          on np.partner_etm   = m.partner_etm and np.hissab_week = m.hissab_week
 cross join lateral (  -- collection split waterfall (os = |total_os|)
   select least(coalesce(r.razorpay_amt, 0), abs(coalesce(m.total_os, 0))) as razorpay_100pct,
