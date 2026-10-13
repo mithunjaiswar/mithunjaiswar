@@ -7,6 +7,7 @@ is the short version.
 ```
 python3 build_weekly_supply_plan.py out.xlsx raw.json         # raw.json = {"hdr": [...], "data": [[...]]} from the SSOT query
 python3 build_weekly_supply_plan.py out_v2.xlsx raw.json --v2  # v2: Lakshya as given
+python3 build_weekly_supply_plan.py out_exact.xlsx raw.json --exact  # Lakshya exact, week by week + Monthly Summary
 python3 build_weekly_supply_plan.py out_act.xlsx raw.json --actual  # actuals-based view
 ```
 
@@ -30,6 +31,10 @@ plan stops at w/e 27 Dec with a light last week, so its December after w/e 6 Dec
   and the attrition working; its Summary View has a colour scale on every row.
   Same cars as the Lakshya-based plan, so util compares like for like.
 - **v2** (`--v2`): every Own Now and L+DTO number is Lakshya v4's.
+- **Lakshya exact, week by week** (`--exact`, its own sheet): the v2 engine (every week = Lakshya v4: recruitment,
+  attrition, util, on-road cars, fleet, cars added / sold, EIP) with the new comparison layout and a **Monthly Summary**
+  tab: Oct, Nov, Dec and the 14 weeks for every Summary View metric - Lakshya, plan, Plan - Lakshya (0), actual so far
+  (fully loaded weeks only) and the same weeks last year; own city picker (B1).
 
 `plan_history.py` holds the history the plan is checked against (reporting DB, weekly by city, Jan 2024 – Sep 2026):
 seasonal changes by season block in 2024 and 2025, the weekly series aligned on Diwali, each city's proven hiring

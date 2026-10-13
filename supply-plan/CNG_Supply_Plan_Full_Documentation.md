@@ -38,6 +38,7 @@ This file records every rule, input, number and decision behind the three plan s
 | **Lakshya-based plan** (main sheet) | https://docs.google.com/spreadsheets/d/1h314RtB8WjMOZEQTGEbR-Ly4iYUdXsnzWPUhGvpzvWI/edit |
 | **Actuals view** | https://docs.google.com/spreadsheets/d/1qgLxZmiLOfBWFnmHzQrQZj10571ae8ln9Ao3q2991RI/edit |
 | **v2 – everything = Lakshya** (reference) | https://docs.google.com/spreadsheets/d/1mYh3raKeU-taJxLsObbOfNbJpDx4wtx_2OPdJhQZjbY/edit |
+| **Lakshya exact, week by week** (with Monthly Summary) | https://docs.google.com/spreadsheets/d/15IhNdV4Vh_ieanqEDDLc5AOH0UMwk_5-aaI6h9T6ee0/edit |
 | Lakshya_15000_Model_v4 (source of targets) | https://docs.google.com/spreadsheets/d/1Bu8NkgNVcakYondqbyK_jW4nFuFDBqEk/edit |
 | SSOT query (raw data) | https://docs.google.com/document/d/1UIKW0voWgrUu2HDonBR4GsWdFz8XLVgWq7r5UoaYMpc/edit |
 | Builder code | GitHub repo `mithunjaiswar/mithunjaiswar`, branch `claude/pensive-mendel-s62wy1`, folder `supply-plan/` |
@@ -257,6 +258,16 @@ Steps 1–9 are calculated on each city tab, one row per week. India is the sum 
 - **Where the "Lakshya" figures come from:** the main and Actuals comparison tabs take their "Lakshya" weekly figures (`lakshya_cmp.py`) from v2's engine output. That is how Lakshya's weekly on road, fleet, book and util are produced.
 
 ---
+
+### 8.1 Lakshya exact, week by week (new sheet)
+
+- **What it is:** the v2 engine, so every week equals Lakshya v4. That covers recruitment, attrition, util, on-road cars, fleet, cars added and sold, and EIP. It starts from Lakshya's own 27 Sep book.
+- **Comparison tab:** the new layout.
+- **Monthly Summary tab:**
+  - Its own city picker (B1).
+  - For each month (Oct, Nov, Dec) and the 14 weeks, every Summary View metric shows: Lakshya v4 (where Lakshya has the figure), Plan, **Plan − Lakshya** (0 everywhere, red if not), Actual so far (fully loaded weeks only), and Last year (same weeks, 364 days earlier).
+  - Flows are month totals; util and attrition are month averages; stock figures are at the month's last week.
+- **India results:** util 65.1% / 63.9% / 70.4%; on road at month-end 13,038 / 14,229 / 15,082; recruitment 5,591 / 5,408 / 3,816 (14,815); attrition 9.8% / 8.5% / 6.8%; cars added 2,300 and sold 721; EIP +612.
 
 ## 9. Lakshya's December re-split
 
@@ -757,6 +768,7 @@ L = Lakshya, P = plan. Attrition and recruitment "a week" are per full 7-day wee
 | 36 | Lakshya has 21 Dec; add 28 Dec and split December's number | w/c 28 Dec added; Lakshya's December re-split (total unchanged) |
 | 37 | Don't split the week; take all 7 days | w/c 28 Dec is a full week to Sun 3 Jan; December split evenly, 954 a week |
 | 38 | Full documentation MD | This file |
+| 39 | One more sheet with the weekly plan exactly equal to Lakshya, plus a monthly summary tab | New sheet "Lakshya exact, week by week" (v2 engine, new comparison layout incl. on-road cars) with a Monthly Summary tab: Lakshya / Plan / Plan − Lakshya / Actual so far / Last year for Oct, Nov, Dec and the 14 weeks |
 
 ---
 

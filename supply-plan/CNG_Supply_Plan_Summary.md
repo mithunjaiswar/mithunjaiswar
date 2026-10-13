@@ -9,6 +9,7 @@
 | **Lakshya-based plan** (main) | Each month's average util equals Lakshya's month average. Attrition, cars added, cars sold and EIP match Lakshya; recruitment carries the catch-up needed for util. | [Open](https://docs.google.com/spreadsheets/d/1h314RtB8WjMOZEQTGEbR-Ly4iYUdXsnzWPUhGvpzvWI/edit) |
 | **Actuals view** | What the business is likely to do: the last 8 weeks' run rate, last year's festival pattern, and Lakshya's month averages where agreed. | [Open](https://docs.google.com/spreadsheets/d/1qgLxZmiLOfBWFnmHzQrQZj10571ae8ln9Ao3q2991RI/edit) |
 | **v2** | Every Own Now and L+DTO number taken from Lakshya v4 as given (reference). | [Open](https://docs.google.com/spreadsheets/d/1mYh3raKeU-taJxLsObbOfNbJpDx4wtx_2OPdJhQZjbY/edit) |
+| **Lakshya exact, week by week** | Every week equals Lakshya v4, in the new layout, with a **Monthly Summary** tab (Lakshya, plan, actual so far and last year by month). | [Open](https://docs.google.com/spreadsheets/d/15IhNdV4Vh_ieanqEDDLc5AOH0UMwk_5-aaI6h9T6ee0/edit) |
 
 ### Source data behind the sheets
 

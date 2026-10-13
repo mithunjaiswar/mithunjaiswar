@@ -137,6 +137,7 @@ SSOT_URL = "https://docs.google.com/document/d/1UIKW0voWgrUu2HDonBR4GsWdFz8XLVgW
 V2_URL = "https://docs.google.com/spreadsheets/d/1mYh3raKeU-taJxLsObbOfNbJpDx4wtx_2OPdJhQZjbY/edit?gid=352333344#gid=352333344"
 PLAN_URL = "https://docs.google.com/spreadsheets/d/1h314RtB8WjMOZEQTGEbR-Ly4iYUdXsnzWPUhGvpzvWI/edit"
 ACT_URL = "https://docs.google.com/spreadsheets/d/1qgLxZmiLOfBWFnmHzQrQZj10571ae8ln9Ao3q2991RI/edit"
+EXACT_URL = "https://docs.google.com/spreadsheets/d/15IhNdV4Vh_ieanqEDDLc5AOH0UMwk_5-aaI6h9T6ee0/edit"
 SOURCES = [
     ("Lakshya source (targets)", LAKSHYA_URL, "Lakshya_15000_Model_v4.xlsx - the December targets and month-end books"),
     ("AOP FY27", AOP_URL, "AOP FY27 - month-end on road, EIP and recruitment (baseline); recruitment channel mix"),
@@ -1538,6 +1539,7 @@ for _v in LK_WEEKLY.values():
 # rollover by Lakshya month spread evenly over its weeks, starting from Lakshya's own book on the opening date.
 # EIP (not weekly in Lakshya) runs in a straight line from the actual to its December target.
 V2 = False
+EXACT = False   # --exact: the v2 engine (Lakshya week by week) with the new comparison layout and a Monthly Summary tab
 MODE = "main"   # "main" = the Lakshya-based plan, "actual" = the actuals-based view (--actual)
 LW_TAB = "Lakshya Weekly"
 LW = f"'{LW_TAB}'"
@@ -2517,7 +2519,7 @@ def build_cmp(wb):
     ws.column_dimensions["A"].width = 22
     L = get_column_letter
     ACTL = MODE == "actual"                           # actuals view
-    NEWL = not V2                                     # layout: Lakshya and plan per measure (+ EIP), the 8-week box, the month box
+    NEWL = (not V2) or EXACT                          # layout: Lakshya and plan per measure (+ EIP), the 8-week box, the month box
     n = len(CITIES)
     PICK, CF = "$B$3", "$E$3"
     city_list = f"Inputs!$A${R_SUM0}:$A${R_SUM0 + n - 1}"
@@ -2553,7 +2555,7 @@ def build_cmp(wb):
     lk_att = {c: [v["leave"][w] / v["book"][w] for w in range(NW)] for c, v in lk.items()}
     lk_ut = {c: [v["onroad"][w] / v["fleet"][w] for w in range(NW)] for c, v in lk.items()}
 
-    ws["A1"] = (("ACTUALS-BASED VIEW  -  " if ACTL else "") +
+    ws["A1"] = (("ACTUALS-BASED VIEW  -  " if ACTL else "LAKSHYA EXACT, WEEK BY WEEK  -  " if EXACT else "") +
                 "LAKSHYA vs PLAN vs LAST 8 WEEKS  -  attrition, driver recruitment, util, cars added, cars sold, EIP"
                 if NEWL else
                 "LAKSHYA vs PLAN vs LAST YEAR vs LAST 8 WEEKS  -  attrition, driver recruitment, util, cars added, cars sold")
@@ -2581,8 +2583,9 @@ def build_cmp(wb):
     links = [(1, 11, "Lakshya v4 model", LAKSHYA_URL + "/edit"),
              (2, 11, "Lakshya-based plan" + this("main"), PLAN_URL),
              (1, 13, "Actuals view (last 8 weeks x last year)" + this("actual"), ACT_URL),
-             (2, 13, "v2 - everything = Lakshya" + (" (this file)" if V2 else ""), V2_URL.split("?")[0]),
-             (1, 15, "SSOT query (raw data)", SSOT_URL + "/edit")]
+             (2, 13, "v2 - everything = Lakshya" + (" (this file)" if V2 and not EXACT else ""), V2_URL.split("?")[0]),
+             (1, 15, "SSOT query (raw data)", SSOT_URL + "/edit"),
+             (2, 15, "Lakshya exact, week by week" + (" (this file)" if EXACT else ""), EXACT_URL)]
     for r_, c_, lab, url in links:                     # plain text (no HYPERLINK): label, then the link next to it
         ws.cell(r_, c_, lab).font = F_BOLD
         ws.cell(r_, c_ + 1, url).font = F_NOTE
@@ -3203,6 +3206,270 @@ SV_WEEKS = N_ACTUAL + N_WEEKS   # 18 columns: 4 actual + 14 plan weeks
 SV_FIRST_BLOCK = 8
 
 
+def _sv_blocks(CITY, FUEL):
+    """Summary View metrics: (title, plan formula(week), raw formula(week) or None, number format)."""
+    CA = "'Combined All'"
+
+    def ca(col, wk):
+        return (f"SUMIFS({CA}!${col}:${col},{CA}!$A:$A,{CITY},{CA}!$B:$B,{FUEL},{CA}!$D:$D,{wk})")
+
+    def raw_day(field, wk):   # on the week's last day (Sunday)
+        L = rc(field)
+        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{CITY},raw_performance!$E:$E,{FUEL},"
+                f"raw_performance!$C:$C,{wk}+6)")
+
+    def raw_mon(field, wk):   # on the week's Monday
+        L = rc(field)
+        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{CITY},raw_performance!$E:$E,{FUEL},"
+                f"raw_performance!$C:$C,{wk})")
+
+    def raw_wk(field, wk):    # sum over the week
+        L = rc(field)
+        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{CITY},raw_performance!$E:$E,{FUEL},"
+                f"raw_performance!$B:$B,{wk})")
+
+    def raw_attr_pct(wk):
+        abs_ = (raw_wk("attrition_cnt", wk) + "+" + raw_wk("temp_attrition_cnt", wk) + "-"
+                + raw_wk("rejoin_cnt", wk) + "-" + raw_wk("temp_rejoin_cnt", wk))
+        base = raw_mon("uniq_partners_dt_beginning", wk) + "+" + raw_wk("newjoin_cnt", wk) + "+" + raw_wk("resurrection_cnt", wk)
+        return f"IFERROR(({abs_})/({base}),\"\")"
+
+    # (title, plan formula(wk), raw formula(wk) or None, number format)
+    blocks = [
+        ("Util", lambda w: f"IFERROR({ca(cb('Week-ending cars on Road'), w)}/{ca(cb('Total Cars [week ending]'), w)},\"\")",
+         lambda w: f"IFERROR({raw_day('allotted_cars_eod', w)}/{raw_day('fleet_total_cars_cnt', w)},\"\")", "0%"),
+        ("On Road Cars", lambda w: ca(cb("Week-ending cars on Road"), w), lambda w: raw_day("allotted_cars_eod", w), "#,##0"),
+        ("On road growth % (week on week)",
+         lambda w: f"IFERROR({ca(cb('Week-ending cars on Road'), w)}/{ca(cb('Week-ending cars on Road'), w + '-7')}-1,\"\")",
+         lambda w: f"IFERROR({raw_day('allotted_cars_eod', w)}/{raw_day('allotted_cars_eod', w + '-7')}-1,\"\")", "0.0%"),
+        ("Recruitment", lambda w: ca(cb("Channel Sourcing"), w),
+         lambda w: raw_wk("newjoin_cnt", w) + "+" + raw_wk("resurrection_cnt", w), "#,##0"),
+        ("Net Attrition %", lambda w: f"IFERROR(-{ca(cb('Net Attrition'), w)}/{ca(cb('WE Active Pilots'), w)},\"\")",
+         raw_attr_pct, "0.0%"),
+        ("EIP Growth", lambda w: ca(cb("EIP Net add-on"), w), lambda w: raw_wk("Net EIP Add-ons", w), "#,##0"),
+        ("Field Sales Executive", lambda w: ca(cb("Field Sales Executive"), w),
+         lambda w: raw_wk("ni_fse_cnt", w) + "+" + raw_wk("resurrection_fse_cnt", w), "#,##0"),
+        ("Vendor", lambda w: ca(cb("Vendor"), w),
+         lambda w: raw_wk("ni_vendor_cnt", w) + "+" + raw_wk("resurrection_vendor_cnt", w), "#,##0"),
+        ("Referrals", lambda w: ca(cb("Referrals"), w),
+         lambda w: raw_wk("ni_driver_referral_cnt", w) + "+" + raw_wk("resurrection_driver_referral_cnt", w), "#,##0"),
+        ("Performance marketing", lambda w: ca(cb("Performance marketing"), w),
+         lambda w: raw_wk("ni_perf_mktg_cnt", w) + "+" + raw_wk("resurrection_perf_mktg_cnt", w), "#,##0"),
+        ("EIP %", lambda w: f"IFERROR({ca(cb('EIP cars'), w)}/{ca(cb('Week-ending cars on Road'), w)},\"\")",
+         lambda w: f"IFERROR({raw_day('eip_vehicles_cnt', w)}/{raw_day('allotted_cars_eod', w)},\"\")", "0%"),
+        ("Total car", lambda w: ca(cb("Total Cars [week ending]"), w), lambda w: raw_day("fleet_total_cars_cnt", w), "#,##0"),
+        ("Total buy", lambda w: ca(cb("Total buy (new cars)"), w), None, "#,##0"),
+        ("Total Sold", lambda w: ca(cb("Total sold"), w), None, "#,##0"),
+        ("On Road Cars EIP", lambda w: ca(cb("EIP cars"), w), lambda w: raw_day("eip_vehicles_cnt", w), "#,##0"),
+        ("On Road Cars Own Now", lambda w: ca(cb("Own Now cars on Road - WE"), w), lambda w: raw_day("own_now_cars_eod", w), "#,##0"),
+        ("On Road Cars Leasing + DTO", lambda w: ca(cb("Leasing + DTO cars on Road - WE"), w),
+         lambda w: raw_day("allotted_cars_eod", w) + "-" + raw_day("own_now_cars_eod", w) + "-" + raw_day("eip_vehicles_cnt", w), "#,##0"),
+        ("Driver Acquisition (Own Now + L+DTO)", lambda w: ca(cb("Total driver acquisition (Own Now + L+DTO)"), w), None, "#,##0"),
+    ]
+    return blocks
+
+
+MS_TAB = "Monthly Summary"
+
+
+def build_monthly_summary(wb):
+    """Month by month (Oct, Nov, Dec and the 14 weeks) for India or a picked city: Lakshya, the plan, the actual so far
+    and the same weeks last year, for every Summary View metric."""
+    ws = wb.create_sheet(MS_TAB, 2)
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = TEAL
+    L = get_column_letter
+    ws.column_dimensions["A"].width = 34
+    for j in range(2, 7):
+        ws.column_dimensions[L(j)].width = 15
+    ws.column_dimensions["G"].width = 3
+    ws.column_dimensions["H"].width = 60
+    ws["A1"] = "City"
+    ws["A1"].font = F_BOLD
+    c = ws["B1"]
+    c.value = "India"
+    c.font = Font(name="Calibri", size=11, bold=True, color=BLUE_TXT)
+    c.fill = fill(INPUT)
+    c.border = BOX
+    ws["A2"] = "Fuel Type"
+    ws["A2"].font = F_BOLD
+    c = ws["B2"]
+    c.value = "CNG"
+    c.font = Font(name="Calibri", size=11, bold=True, color=BLUE_TXT)
+    c.fill = fill(INPUT)
+    c.border = BOX
+    dv = DataValidation(type="list", formula1='"' + ",".join(["India"] + CITIES) + '"', allow_blank=False)
+    dv2 = DataValidation(type="list", formula1='"CNG"', allow_blank=False)
+    ws.add_data_validation(dv)
+    ws.add_data_validation(dv2)
+    dv.add("B1")
+    dv2.add("B2")
+    ws["D1"] = ("MONTHLY SUMMARY  -  " + ("the plan = Lakshya v4 week by week" if V2 else "the plan") +
+                ". Pick a city (or India) in B1.")
+    ws["D1"].font = F_TITLE
+    ws["D2"] = "City filter:"
+    ws["D2"].font = F_NOTE
+    ws["E2"] = '=IF($B$1="India","*",$B$1)'
+    ws["E2"].font = F_NOTE
+    ws["F2"] = "=MAX(raw_performance!$C:$C)"
+    ws["F2"].number_format = '"raw data to "dd-mmm-yy'
+    ws["F2"].font = F_NOTE
+    CITY, FUEL, RAWMAX = "$E$2", "$B$2", "$F$2"
+    blocks = _sv_blocks(CITY, FUEL)
+    # attrition on the same basis as Lakshya and the comparison tab: drivers leaving / drivers at the week's start
+    CA = "'Combined All'"
+    ca = lambda col, w: f"SUMIFS({CA}!${col}:${col},{CA}!$A:$A,{CITY},{CA}!$B:$B,{FUEL},{CA}!$D:$D,{w})"
+    def rsum(field, crit_col, w):
+        c_ = rc(field)
+        return (f"SUMIFS(raw_performance!${c_}:${c_},raw_performance!$D:$D,{CITY},raw_performance!$E:$E,{FUEL},"
+                f"raw_performance!${crit_col}:${crit_col},{w})")
+    att_plan = lambda w: (f'IFERROR(-{ca(cb("Net Attrition (Abs)"), w)}/{ca(cb("Week beginning active partners"), w)},"")')
+    att_raw = lambda w: (f'IFERROR(({rsum("attrition_cnt", "B", w)}+{rsum("temp_attrition_cnt", "B", w)}-{rsum("rejoin_cnt", "B", w)}'
+                         f'-{rsum("temp_rejoin_cnt", "B", w)})/{rsum("uniq_partners_dt_beginning", "C", w)},"")')
+    blocks = [(t, att_plan, att_raw, f) if t == "Net Attrition %" else (t, pf, rf, f) for t, pf, rf, f in blocks]
+    bmap = {t: (pf, rf) for t, pf, rf, _ in blocks}
+
+    # the plan's months (a week counts in the month of its Monday; w/c 28 Sep in October), and the whole plan
+    wk = lambda w: f"Inputs!$B${R_CAL0 + w}"
+    months = [(mon, [w for w in range(N_WEEKS) if MATCH_MONTH[w] == mon]) for mon in PLAN_MONTHS]
+    months.append((f"{N_WEEKS} weeks", list(range(N_WEEKS))))
+    opening = f"({G_OPEN_DATE}-6)"                    # w/c 21 Sep: the last actual week (month-end before October)
+    prev_end = {0: opening}
+    for k in range(1, len(PLAN_MONTHS)):
+        prev_end[k] = wk(months[k - 1][1][-1])
+    prev_end[len(PLAN_MONTHS)] = opening
+
+    hdr(ws, 4, 1, "Month")
+    heads = [f"Oct\n(w/c 28 Sep - 26 Oct)", "Nov\n(w/c 2 - 30 Nov)", f"Dec\n(w/c 7 - 28 Dec)", f"Plan total\n({N_WEEKS} weeks)"]
+    for j, h in enumerate(heads, start=2):
+        hdr(ws, 4, j, h)
+    ws.row_dimensions[4].height = 34
+    put(ws, 5, 1, "Weeks in the month", bold=True)
+    put(ws, 6, 1, "Weeks of actual loaded (raw data)", bold=True)
+    cnt = {}
+    for j, (mon, ws_) in enumerate(months, start=2):
+        put(ws, 5, j, len(ws_), "0").alignment = CENTER
+        put(ws, 6, j, "=" + "+".join(f"({wk(w)}+6<={RAWMAX})*1" for w in ws_), "0", bg=ACTUAL).alignment = CENTER
+        cnt[j] = f"${L(j)}$6"
+
+    # Lakshya v4 week by week (the same figures as the comparison tab), for the pick
+    lk = {c: LK_CMP[c] for c in CITIES}
+    lk["INDIA"] = {k: [sum(LK_CMP[c][k][w] for c in CITIES) for w in range(N_WEEKS + 1)] for k in LK_CMP[CITIES[0]]}
+    def lk_pick(fn):
+        vals = [str(round(fn(lk[c]), 6)) for c in CITIES]
+        return f'IF($B$1="India",{round(fn(lk["INDIA"]), 6)},CHOOSE(MATCH($B$1,{{"' + '","'.join(CITIES) + f'"}},0),{",".join(vals)}))'
+    LKF = {   # metric -> (how it rolls up, Lakshya value of week w (1 = w/c 28 Sep))
+        "Util": ("avg", lambda d, w: d["onroad"][w] / d["fleet"][w]),
+        "On Road Cars": ("end", lambda d, w: d["onroad"][w]),
+        "Recruitment": ("sum", lambda d, w: d["rec"][w]),
+        "Net Attrition %": ("avg", lambda d, w: d["leave"][w] / d["book"][w]),
+        "Total car": ("end", lambda d, w: d["fleet"][w]),
+        "Total buy": ("sum", lambda d, w: d["added"][w]),
+        "Total Sold": ("sum", lambda d, w: d["sold"][w]),
+        "Driver Acquisition (Own Now + L+DTO)": ("sum", lambda d, w: d["rec"][w]),
+    }
+    AGG = {"Util": "avg", "Net Attrition %": "avg", "On Road Cars": "end", "EIP %": "end", "Total car": "end",
+           "On Road Cars EIP": "end", "On Road Cars Own Now": "end", "On Road Cars Leasing + DTO": "end",
+           "On road growth % (week on week)": "growth"}
+    NAME = {"On road growth % (week on week)": "On road growth % (month on month)", "EIP Growth": "EIP net add"}
+    UNIT = {"avg": "month average of the weeks", "end": "at the month's last week", "sum": "month total",
+            "growth": "month-end vs the month before"}
+
+    def agg_plan(agg, pf, ws_, k):
+        if agg == "sum":
+            return "=" + "+".join(f"N({pf(wk(w))})" for w in ws_)
+        if agg == "avg":
+            return "=(" + "+".join(f"N({pf(wk(w))})" for w in ws_) + f")/{len(ws_)}"
+        if agg == "end":
+            return "=" + pf(wk(ws_[-1]))
+        on = bmap["On Road Cars"][0]
+        return f'=IFERROR({on(wk(ws_[-1]))}/{on(prev_end[k])}-1,"")'
+
+    def agg_act(agg, rf, ws_, k, cn):
+        loaded = lambda w: f"({wk(w)}+6<={RAWMAX})"
+        if agg == "sum":
+            return f'=IF({cn}=0,"",' + "+".join(f"IF({loaded(w)},N({rf(wk(w))}),0)" for w in ws_) + ")"
+        if agg == "avg":
+            return f'=IF({cn}=0,"",(' + "+".join(f"IF({loaded(w)},N({rf(wk(w))}),0)" for w in ws_) + f")/{cn})"
+        last = f"({wk(ws_[0])}+7*({cn}-1))"           # the latest loaded week in the month
+        if agg == "end":
+            return f'=IF({cn}=0,"",{rf(last)})'
+        on = bmap["On Road Cars"][1]
+        return f'=IF({cn}=0,"",IFERROR({on(last)}/{on(prev_end[k])}-1,""))'
+
+    def agg_ly(agg, rf, ws_, k):
+        ly = lambda w: f"({wk(w)}-364)"
+        if agg == "sum":
+            return "=" + "+".join(f"N({rf(ly(w))})" for w in ws_)
+        if agg == "avg":
+            return "=(" + "+".join(f"N({rf(ly(w))})" for w in ws_) + f")/{len(ws_)}"
+        if agg == "end":
+            return "=" + rf(ly(ws_[-1]))
+        on = bmap["On Road Cars"][1]
+        return f'=IFERROR({on(ly(ws_[-1]))}/{on(f"({prev_end[k]}-364)")}-1,"")'
+
+    def agg_lk(agg, fn, ws_):
+        w1 = [w + 1 for w in ws_]
+        if agg == "sum":
+            return "=" + lk_pick(lambda d: sum(fn(d, w) for w in w1))
+        if agg == "avg":
+            return "=" + lk_pick(lambda d: sum(fn(d, w) for w in w1) / len(w1))
+        return "=" + lk_pick(lambda d: fn(d, w1[-1]))
+
+    r = 8
+    for title, pf, rf, fmt in blocks:
+        agg = AGG.get(title, "sum")
+        if agg == "growth":
+            fmt = "0.0%"
+        hdr(ws, r, 1, f"{NAME.get(title, title)}  ({UNIT[agg]})", NAVY)
+        ws.cell(r, 1).alignment = Alignment(horizontal="left", vertical="center")
+        for j in range(2, 6):
+            hdr(ws, r, j, ws.cell(4, j).value.split("\n")[0], NAVY)
+        rows = []
+        if title in LKF:
+            rows.append(("Lakshya v4", "lk"))
+        rows += [("Plan (= Lakshya, week by week)" if V2 else "Plan", "plan")]
+        if title in LKF:
+            rows.append(("Plan - Lakshya", "gap"))
+        rows += [("Actual (weeks loaded so far)", "act"), ("Last year (same weeks, 364 days earlier)", "ly")]
+        rr = {}
+        for i, (lab, kind) in enumerate(rows):
+            rr[kind] = r + 1 + i
+        for i, (lab, kind) in enumerate(rows):
+            row = r + 1 + i
+            put(ws, row, 1, lab, bold=kind == "plan", bg=ACTUAL if kind == "act" else (HIST if kind == "ly" else None),
+                font=F_HIST if kind == "ly" else F_BODY).border = BOX
+            for k, (j, (mon, ws_)) in enumerate(zip(range(2, 6), months)):
+                if kind == "lk":
+                    v = agg_lk(agg, LKF[title][1], ws_)
+                elif kind == "plan":
+                    v = agg_plan(agg, pf, ws_, k)
+                elif kind == "gap":
+                    v = f'=IFERROR({L(j)}{rr["plan"]}-{L(j)}{rr["lk"]},"")'
+                elif rf is None:
+                    v = "n/a"
+                elif kind == "act":
+                    v = agg_act(agg, rf, ws_, k, cnt[j])
+                else:
+                    v = agg_ly(agg, rf, ws_, k)
+                c = put(ws, row, j, v, fmt, bold=kind == "plan",
+                        bg=ACTUAL if kind == "act" else (HIST if kind == "ly" else (INPUT if kind == "plan" else None)),
+                        font=F_HIST if kind == "ly" else (F_BOLD if kind == "plan" else F_BODY))
+                c.alignment = CENTER
+                c.border = BOX
+        if "gap" in rr:
+            g, tol = rr["gap"], (0.0005 if "%" in fmt else 0.5)
+            ws.conditional_formatting.add(f"B{g}:E{g}", FormulaRule(formula=[f'AND(B{g}<>"",ABS(B{g})>{tol})'], font=RED_FONT))
+        r += len(rows) + 2
+    note(ws, r, "Months: a week counts in the month of its Monday (w/c 28 Sep in October; Inputs A8, column Q). Flows (recruitment, "
+                "channels, EIP net add, cars bought / sold) are month totals; util and attrition are the average of the month's weeks; "
+                "on-road cars, fleet, EIP % and the on-road split are at the month's last week. Lakshya v4 = the same week-by-week "
+                "figures as the Lakshya vs Plan vs LY tab. Actual = raw_performance, only weeks fully loaded (row 6); for month-end "
+                "metrics, the latest loaded week. Last year = the same weeks 364 days earlier. Plan - Lakshya shows red when it is not 0.")
+    ws.freeze_panes = "B5"
+    return ws
+
+
 def build_summary(wb):
     ws = wb.create_sheet("Summary View", 1)
     last_col = get_column_letter(1 + SV_WEEKS)
@@ -3269,64 +3536,8 @@ def build_summary(wb):
     ws.conditional_formatting.add(f"B6:{last_col}6", FormulaRule(formula=['B6="We are here"'], fill=fill("FFFFFF00")))
     ws.conditional_formatting.add(f"B3:{last_col}3", FormulaRule(formula=['B3="Actual"'], fill=fill(ACTUAL)))
 
-    CA = "'Combined All'"
+    blocks = _sv_blocks(CITY, FUEL)
 
-    def ca(col, wk):
-        return (f"SUMIFS({CA}!${col}:${col},{CA}!$A:$A,{CITY},{CA}!$B:$B,{FUEL},{CA}!$D:$D,{wk})")
-
-    def raw_day(field, wk):   # on the week's last day (Sunday)
-        L = rc(field)
-        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{CITY},raw_performance!$E:$E,{FUEL},"
-                f"raw_performance!$C:$C,{wk}+6)")
-
-    def raw_mon(field, wk):   # on the week's Monday
-        L = rc(field)
-        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{CITY},raw_performance!$E:$E,{FUEL},"
-                f"raw_performance!$C:$C,{wk})")
-
-    def raw_wk(field, wk):    # sum over the week
-        L = rc(field)
-        return (f"SUMIFS(raw_performance!${L}:${L},raw_performance!$D:$D,{CITY},raw_performance!$E:$E,{FUEL},"
-                f"raw_performance!$B:$B,{wk})")
-
-    def raw_attr_pct(wk):
-        abs_ = (raw_wk("attrition_cnt", wk) + "+" + raw_wk("temp_attrition_cnt", wk) + "-"
-                + raw_wk("rejoin_cnt", wk) + "-" + raw_wk("temp_rejoin_cnt", wk))
-        base = raw_mon("uniq_partners_dt_beginning", wk) + "+" + raw_wk("newjoin_cnt", wk) + "+" + raw_wk("resurrection_cnt", wk)
-        return f"IFERROR(({abs_})/({base}),\"\")"
-
-    # (title, plan formula(wk), raw formula(wk) or None, number format)
-    blocks = [
-        ("Util", lambda w: f"IFERROR({ca(cb('Week-ending cars on Road'), w)}/{ca(cb('Total Cars [week ending]'), w)},\"\")",
-         lambda w: f"IFERROR({raw_day('allotted_cars_eod', w)}/{raw_day('fleet_total_cars_cnt', w)},\"\")", "0%"),
-        ("On Road Cars", lambda w: ca(cb("Week-ending cars on Road"), w), lambda w: raw_day("allotted_cars_eod", w), "#,##0"),
-        ("On road growth % (week on week)",
-         lambda w: f"IFERROR({ca(cb('Week-ending cars on Road'), w)}/{ca(cb('Week-ending cars on Road'), w + '-7')}-1,\"\")",
-         lambda w: f"IFERROR({raw_day('allotted_cars_eod', w)}/{raw_day('allotted_cars_eod', w + '-7')}-1,\"\")", "0.0%"),
-        ("Recruitment", lambda w: ca(cb("Channel Sourcing"), w),
-         lambda w: raw_wk("newjoin_cnt", w) + "+" + raw_wk("resurrection_cnt", w), "#,##0"),
-        ("Net Attrition %", lambda w: f"IFERROR(-{ca(cb('Net Attrition'), w)}/{ca(cb('WE Active Pilots'), w)},\"\")",
-         raw_attr_pct, "0.0%"),
-        ("EIP Growth", lambda w: ca(cb("EIP Net add-on"), w), lambda w: raw_wk("Net EIP Add-ons", w), "#,##0"),
-        ("Field Sales Executive", lambda w: ca(cb("Field Sales Executive"), w),
-         lambda w: raw_wk("ni_fse_cnt", w) + "+" + raw_wk("resurrection_fse_cnt", w), "#,##0"),
-        ("Vendor", lambda w: ca(cb("Vendor"), w),
-         lambda w: raw_wk("ni_vendor_cnt", w) + "+" + raw_wk("resurrection_vendor_cnt", w), "#,##0"),
-        ("Referrals", lambda w: ca(cb("Referrals"), w),
-         lambda w: raw_wk("ni_driver_referral_cnt", w) + "+" + raw_wk("resurrection_driver_referral_cnt", w), "#,##0"),
-        ("Performance marketing", lambda w: ca(cb("Performance marketing"), w),
-         lambda w: raw_wk("ni_perf_mktg_cnt", w) + "+" + raw_wk("resurrection_perf_mktg_cnt", w), "#,##0"),
-        ("EIP %", lambda w: f"IFERROR({ca(cb('EIP cars'), w)}/{ca(cb('Week-ending cars on Road'), w)},\"\")",
-         lambda w: f"IFERROR({raw_day('eip_vehicles_cnt', w)}/{raw_day('allotted_cars_eod', w)},\"\")", "0%"),
-        ("Total car", lambda w: ca(cb("Total Cars [week ending]"), w), lambda w: raw_day("fleet_total_cars_cnt", w), "#,##0"),
-        ("Total buy", lambda w: ca(cb("Total buy (new cars)"), w), None, "#,##0"),
-        ("Total Sold", lambda w: ca(cb("Total sold"), w), None, "#,##0"),
-        ("On Road Cars EIP", lambda w: ca(cb("EIP cars"), w), lambda w: raw_day("eip_vehicles_cnt", w), "#,##0"),
-        ("On Road Cars Own Now", lambda w: ca(cb("Own Now cars on Road - WE"), w), lambda w: raw_day("own_now_cars_eod", w), "#,##0"),
-        ("On Road Cars Leasing + DTO", lambda w: ca(cb("Leasing + DTO cars on Road - WE"), w),
-         lambda w: raw_day("allotted_cars_eod", w) + "-" + raw_day("own_now_cars_eod", w) + "-" + raw_day("eip_vehicles_cnt", w), "#,##0"),
-        ("Driver Acquisition (Own Now + L+DTO)", lambda w: ca(cb("Total driver acquisition (Own Now + L+DTO)"), w), None, "#,##0"),
-    ]
     r = SV_FIRST_BLOCK
     for title, plan_f, raw_f, fmt in blocks:
         ws.cell(r, 1, title).font = F_HDR
@@ -3414,13 +3625,15 @@ def main(out, raw_path):
     for i, city in enumerate(CITIES):
         build_city(wb, i, city)
     build_summary(wb)
+    if EXACT:
+        build_monthly_summary(wb)
     build_dashboard(wb)
     build_cmp(wb)   # (the LY vs CY vs Plan tab, build_bridge, was removed from the sheet by the user)
     build_lk_source(wb)
     build_combined(wb)
     build_readme(wb)
     build_raw(wb, raw)
-    order = ["Read Me", "Summary View", DASH, CMP_TAB, "Inputs", LKSRC_TAB, SEAS_TAB, LW_TAB] + CITIES + ["Combined All", "raw_performance"]
+    order = ["Read Me", "Summary View", MS_TAB, DASH, CMP_TAB, "Inputs", LKSRC_TAB, SEAS_TAB, LW_TAB] + CITIES + ["Combined All", "raw_performance"]
     wb._sheets.sort(key=lambda ws: order.index(ws.title))
     for t in ("Read Me", DASH, SEAS_TAB):       # hidden in the sheet (still built, still live)
         wb[t].sheet_state = "hidden"
@@ -3429,6 +3642,7 @@ def main(out, raw_path):
 
 
 if __name__ == "__main__":
-    V2 = "--v2" in sys.argv[3:]
+    EXACT = "--exact" in sys.argv[3:]
+    V2 = "--v2" in sys.argv[3:] or EXACT
     MODE = "actual" if "--actual" in sys.argv[3:] else "main"
     main(sys.argv[1], sys.argv[2])
