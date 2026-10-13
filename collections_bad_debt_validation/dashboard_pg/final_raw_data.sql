@@ -37,12 +37,17 @@ ml as (
   where week in (select hw from wk)
   order by week, partner_et_id, snapshot_date desc
 ),
--- [MISSING 3] deposit AT ALLOCATION: deposit balance on the latest allocation date <= hisaab week end
+-- [MISSING 3] deposit AT ALLOCATION (Active pilots): deposit balance on the day of the LAST
+--   allocation BEFORE the hisaab week starts (allocation_date < hissab_week).
+--   Pilot first allocated inside the week (no earlier allocation) -> that allocation is used.
 alloc as (
-  select m.hissab_week, m.partner_etm, max(s.allocation_date) as alloc_date
+  select m.hissab_week, m.partner_etm,
+         coalesce(max(s.allocation_date) filter (where s.allocation_date < m.hissab_week),
+                  min(s.allocation_date) filter (where s.allocation_date >= m.hissab_week))::date as alloc_date
   from m
   join analytics.ssot_alloc_dealloc_base s
-    on s.employee_id = m.partner_etm and s.allocation_date <= m.hissab_week + 6
+    on s.employee_id = m.partner_etm and s.allocation_date < m.hissab_week + 7
+  where m.active_inactive_flag = 'Active'
   group by 1, 2
 ),
 dep_alloc as (
@@ -52,7 +57,7 @@ dep_alloc as (
     select coalesce(sum(x.amount), 0) as dep_at_alloc
     from mv_deposits_raw x
     where x.employee_id = a.partner_etm
-      and x.date <= a.alloc_date
+      and x.date::date <= a.alloc_date
       and x.deposit_type not in ('SD_TO_OWNNOW', 'OWNNOW_TO_OWNNOW')
   ) d
 ),
