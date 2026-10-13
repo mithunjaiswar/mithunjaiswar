@@ -311,3 +311,58 @@ from rcase c
 join wk w on c.week_start <= w.hw and c.close_week >= w.hw
 order by 1, 4, 2;
 
+
+
+-- =====================================================================================
+-- QUERY 2 - Deposit_Raw (Summary rows "Deposit Threshold" and "Deposit [At Allocation]")
+-- Grain : 1 row per pilot who held a car at ANY time in the hisaab week (allocation table, not only MV).
+-- Why separate: these ~12K pilots/week include ~2K not in the MV; adding them to Raw_Data would
+--   push the Google Sheet over its 10M cell limit, so they load into the small Deposit_Raw tab.
+-- deposit_week_end          = deposit balance till hisaab week end (today for the running week)
+-- deposit_at_alloc_week_end = deposit balance till the end of the week of the pilot's LAST allocation
+-- (both exclude SD_TO_OWNNOW / OWNNOW_TO_OWNNOW). City / fuel / product: MV row of that week if present,
+-- else allocation table (leasing -> SINGLE or EV, DTO -> D2O).
+-- =====================================================================================
+with wk as (
+  select generate_series((date_trunc('week', current_date) - interval '63 days')::timestamp,
+                         date_trunc('week', current_date)::timestamp, interval '7 days')::date as hw
+),
+alloc as (
+  select w.hw, s.employee_id, s.allocation_date, s.city, s.fuel_type, s.product_type,
+         row_number() over (partition by w.hw, s.employee_id order by s.allocation_datetime desc) as rn
+  from analytics.ssot_alloc_dealloc_base s
+  join wk w on s.allocation_date <= w.hw + 6 and (s.jama_date is null or s.jama_date >= w.hw)
+),
+p as (select * from alloc where rn = 1),
+dep as (
+  select employee_id, date::date as dt, sum(amount) as amt
+  from mv_deposits_raw
+  where deposit_type not in ('SD_TO_OWNNOW', 'OWNNOW_TO_OWNNOW')
+    and employee_id in (select employee_id from p)
+  group by 1, 2
+),
+m as (
+  select hissab_week, partner_etm, city, fuel_type, product_type
+  from analytics.collections_bad_debt_mv
+  where for_collections = 1 and hissab_week in (select hw from wk)
+)
+select
+  p.hw                                                                         as hissab_week,
+  p.employee_id                                                                as partner_etm,
+  coalesce(m.city, p.city)                                                     as city,
+  coalesce(m.fuel_type, p.fuel_type)                                           as fuel_type,
+  coalesce(m.product_type,
+           case when p.product_type = 'leasing' then case when p.fuel_type = 'EV' then 'EV' else 'SINGLE' end
+                when p.product_type = 'DTO' then 'D2O'
+                when p.product_type = 'Rev_share' then 'Revenue Share'
+                when p.product_type = 'New_team' then 'SINGLE'
+                else p.product_type end)                                       as product_type,
+  p.allocation_date                                                            as last_alloc_date,
+  round(coalesce(sum(d.amt) filter (where d.dt <= least(p.hw + 6, current_date)), 0))                                     as deposit_week_end,
+  round(coalesce(sum(d.amt) filter (where d.dt <= least(date_trunc('week', p.allocation_date)::date + 6, current_date)), 0)) as deposit_at_alloc_week_end,
+  case when m.partner_etm is not null then 'Yes' else 'No' end                as in_mv
+from p
+left join dep d on d.employee_id = p.employee_id
+left join m on m.partner_etm = p.employee_id and m.hissab_week = p.hw
+group by 1, 2, 3, 4, 5, 6, m.partner_etm
+order by 1, 3, 2;
