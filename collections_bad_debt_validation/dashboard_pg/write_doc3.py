@@ -37,6 +37,16 @@ def cmpw(src,row):
         dp=(d/abs(x)) if x else ('' if d==0 else 'n/a (Sheet 0)')
         out.append((x,y,d,dp,abs(d)>tol+1e-9))
     return out,pc
+RMV=json.load(open('../dash/recovery_mv_check.json'))['weeks']
+def cmpr(key):
+    # MV recovery column vs Recovery Dash case logic (all India, partner-weeks in MV); 'Sheet value' = Recovery Dash
+    import datetime as _dt
+    out=[]
+    for w in TW:
+        d_=_dt.datetime.strptime(w+'-2026','%b-%d-%Y').date().isoformat(); k=RMV.get(d_,{})
+        x,y=k.get(key+'_dash',0),k.get(key+'_mv',0)
+        out.append((x,y,y-x,((y-x)/x if x else ''),k.get(key+'_bad',0)>0.005*k.get('n',1)))
+    return out,False
 def cmp(src,row):
     A,B,cols=(SR,SN,range(6,10)) if src=='S' else (WR,WN,range(2,6))
     i=row-1; pc=any('%' in g(A,i,j) for j in cols)
@@ -71,7 +81,7 @@ for (iid,met,req,what,rc,src,st,calc,flt,jn,corr,ref) in C:
     reason,ex=DET.get(iid,(corr,''))
     mlog=ML.get(iid,calc); j=JO.get(iid,jn); s_=SRC.get(iid,src)
     for k,r in enumerate(subs):
-        wk,pc=cmpw(ref[0],r)
+        wk,pc=(cmpr(r) if ref[0]=='R' else cmpw(ref[0],r))
         name=(g(SR,r-1,1).strip() if ref[0]=='S' else name_w(r)) if len(subs)>1 else met
         first=k==0
         base=[name,st,INMV[st],rc,s_,SL.get(iid,'') if first else '',mlog if first else '',j if first else '']
@@ -79,7 +89,7 @@ for (iid,met,req,what,rc,src,st,calc,flt,jn,corr,ref) in C:
         for (x,y,d,dp,bad) in wk:
             blocks+= [x,y,d,dp,(reason if bad else '• Matched (within 2%)'),(ex if bad else '')]
             flags.append(bad)
-        sec[ref[0]].append(base+blocks+[pc,first,flags])
+        sec['S' if ref[0]=='R' else ref[0]].append(base+blocks+[pc,first,flags])
 sql=open('/home/user/mithunjaiswar/collections_bad_debt_validation/dashboard_pg/final_raw_data.sql').read()
 docf='../dash/sql_doc_id.txt'
 if os.path.exists(docf):

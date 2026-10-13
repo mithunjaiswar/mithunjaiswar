@@ -55,21 +55,50 @@ dep_alloc as (
       and x.deposit_type not in ('SD_TO_OWNNOW', 'OWNNOW_TO_OWNNOW')
   ) d
 ),
--- [MISSING 4] car-recovery events per partner per hisaab week (recovery_cars)
+-- [MISSING 4] car-recovery cases per partner per hisaab week.
+--   Same logic as the Central Car Recovery Dash (RawData query + Weekly_Summary):
+--   status from rec_tags_id (111 Completed, 112/113 Cancelled, else Pending),
+--   close date = last complete/failed/cancelled status log, partner = case driver
+--   else driver allocated to the car at activation. MV recovery columns are NOT used (wrong).
+rcase as (
+  select a.id, a.recovery_agent_id,
+    date_trunc('week', a.activation_date)::date as week_start,
+    case when a.rec_tags_id in (111, 112, 113)
+         then date_trunc('week', coalesce(ls.close_date, a.updated_at at time zone 'Asia/Kolkata'))::date
+         else date '2099-12-28' end as close_week,
+    case when a.rec_tags_id = 111 then 'Completed' when a.rec_tags_id in (112, 113) then 'Cancelled' else 'Pending' end as final_status,
+    coalesce(a.cancel_reason, '') as reason,
+    a.checkin_id is not null as has_checkin,
+    extract(epoch from (coalesce(ls.close_date, now()) - a.activation_date)) / 3600.0 as tat_hrs,
+    coalesce(fd.employee_id, fd2.employee_id) as employee_id
+  from recovery_cars a
+  left join lateral (
+    select b.datetime as close_date from recovery_status_logs b
+    where b.recovery_id = a.id and b.recovery_status in ('complete', 'failed', 'cancelled')
+    order by b.id desc limit 1
+  ) ls on true
+  left join fleet_driver fd on fd.id = a.driver_id
+  left join lateral (
+    select ca.driver_id from car_allocation ca
+    where ca.deactivation_date is null and ca.driver_id is not null
+      and ca.car_id = a.car_id and ca.allocation_date <= a.activation_date
+    order by ca.id desc limit 1
+  ) al on a.driver_id is null
+  left join fleet_driver fd2 on fd2.id = al.driver_id
+  where a.activation_date < (select max(hw) from wk) + 7
+),
 rc as (
-  select fd.employee_id, w.hw,
-    count(*) filter (where r.created_at >= w.hw and r.created_at < w.hw + 7)                         as recovery_initiated,
-    count(*) filter (where r.created_at <  w.hw)                                                       as recovery_brought_fwd,
-    count(*) filter (where r.recovery_status = 'complete'  and r.updated_at >= w.hw and r.updated_at < w.hw + 7) as recovered_team,
-    count(*) filter (where r.recovery_status = 'cancelled' and r.updated_at >= w.hw and r.updated_at < w.hw + 7) as recovered_organic,
-    count(*) filter (where r.recovery_status in ('pending', 'active') and r.created_at < w.hw + 7)   as recovery_pending,
-    round(max(extract(epoch from r.updated_at - r.created_at) / 3600.0)
-          filter (where r.recovery_status = 'complete' and r.updated_at >= w.hw and r.updated_at < w.hw + 7)::numeric, 1) as recovery_tat_hrs,
-    min(r.recovery_agent_id) filter (where r.recovery_status = 'complete' and r.updated_at >= w.hw and r.updated_at < w.hw + 7) as recovery_agent_id
-  from recovery_cars r
-  join fleet_driver fd on fd.id = r.driver_id
-  join wk w on r.created_at < w.hw + 7
-           and (r.recovery_status not in ('complete', 'cancelled') or r.updated_at >= w.hw)
+  select c.employee_id, w.hw,
+    count(*) filter (where c.week_start = w.hw)                                                   as recovery_initiated,
+    count(*) filter (where c.week_start < w.hw)                                                   as recovery_brought_fwd,
+    count(*) filter (where c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '') as recovered_team,
+    count(*) filter (where c.close_week = w.hw and c.final_status = 'Cancelled'
+                       and (c.reason = 'Driver Dropped Vehicle' or (c.reason = '' and c.has_checkin))) as recovered_organic,
+    count(*) filter (where c.close_week > w.hw)                                                   as recovery_pending,
+    round(avg(c.tat_hrs) filter (where c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '')::numeric, 1) as recovery_tat_hrs,
+    min(c.recovery_agent_id) filter (where c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '') as recovery_agent_id
+  from rcase c
+  join wk w on c.week_start <= w.hw and c.close_week >= w.hw
   group by 1, 2
 ),
 -- [MISSING 6] NOT PAID > 2 WEEKS (+ asset-risk input). Replaces wrong MV flag partners_not_paid_2_weeks.
