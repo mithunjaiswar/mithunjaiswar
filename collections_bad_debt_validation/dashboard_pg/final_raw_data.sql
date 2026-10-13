@@ -139,12 +139,15 @@ np as (
   where for_collections = 1
     and hissab_week >= (select min(hw) from wk) - 14
 ),
--- [MISSING 5] funnel bad debt: first hisaab week the partner went to bad debt (whole MV history)
-bd as (
-  select partner_etm, min(hissab_week) as first_bad_debt_week
-  from analytics.collections_bad_debt_mv
-  where bad_debt_amount < 0
-  group by 1
+-- [MISSING 5] funnel bad debt
+-- Funnel bad debt (same rule as old Sheet col AY bad_debt_rec_100pct):
+--   money paid in the NEXT hisaab week (all positive mv_daily_recovery types) by a partner who has
+--   bad debt this week, capped at the bad debt amount.
+bdn as (
+  select employee_id, date_trunc('week', date)::date - 7 as hw, sum(amount) filter (where amount > 0) as next_week_paid
+  from mv_daily_recovery
+  where date >= (select min(hw) from wk) + 7 and date < (select max(hw) from wk) + 14
+  group by 1, 2
 )
 select
   -- keys & filters (MV)
@@ -174,8 +177,8 @@ select
   -- bad debt (MV + funnel)
   m.bad_debt_amount,
   m.bad_debt_collected                                                                       as bad_debt_collected_nonfunnel,
-  case when bd.first_bad_debt_week < m.hissab_week and m.active_inactive_flag = 'Inactive'
-       then coalesce(m.total_collected_100_pct, 0) else 0 end                                as bad_debt_collected_funnel, -- paid after going to bad debt, not rejoined
+  case when m.bad_debt_amount < 0
+       then least(coalesce(bdn.next_week_paid, 0), abs(m.bad_debt_amount)) else 0 end      as bad_debt_collected_funnel, -- next-week payment, capped at bad debt
   -- asset risk (Sheet Raw_Data col AL logic: score of 6 signals -> 6 Critical .. 2 Minimal, 0-1 No risk)
   case y.risk_score when 6 then 'Critical Risk' when 5 then 'High Risk' when 4 then 'Moderate Risk'
                     when 3 then 'Low Risk' when 2 then 'Minimal Risk' else 'No risk' end   as asset_risk,
@@ -202,7 +205,7 @@ left join rec r       on r.employee_id    = m.partner_etm and r.hw          = m.
 left join ml          on ml.partner_et_id = m.partner_etm and ml.week       = m.hissab_week
 left join dep_alloc da on da.partner_etm  = m.partner_etm and da.hissab_week = m.hissab_week
 left join rc          on rc.employee_id   = m.partner_etm and rc.hw         = m.hissab_week
-left join bd          on bd.partner_etm   = m.partner_etm
+left join bdn         on bdn.employee_id  = m.partner_etm and bdn.hw = m.hissab_week
 left join np          on np.partner_etm   = m.partner_etm and np.hissab_week = m.hissab_week
 cross join lateral (  -- collection split waterfall (os = |total_os|)
   select least(coalesce(r.razorpay_amt, 0), abs(coalesce(m.total_os, 0))) as razorpay_100pct,
