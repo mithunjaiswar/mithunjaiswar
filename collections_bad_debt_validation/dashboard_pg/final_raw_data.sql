@@ -1,14 +1,15 @@
 -- =====================================================================================
 -- Collections Dashboard (Summary + WBR) - consolidated Raw_Data query
--- Grain : 1 row per partner per hisaab week (analytics.collections_bad_debt_mv, for_collections = 1)
+-- Grain : PART 1 = 1 row per partner per hisaab week (analytics.collections_bad_debt_mv, for_collections = 1)
+--         PART 2 = 1 row per car recovery case per hisaab week (row_type = 'Recovery case')
 -- Window: last 9 hisaab weeks (rolling) - change the 63 below to load more/less history
 -- Rule  : MV columns are used AS-IS (MV data fixes are tracked separately in the Validation tab).
 --         Other tables are joined ONLY for columns missing in the MV. Every join is pre-aggregated
 --         to (partner, hisaab_week) so the result never duplicates MV rows.
 -- =====================================================================================
 with wk as (            -- rolling list of hisaab weeks (Mondays)
-  select generate_series(date_trunc('week', current_date)::date - 63,
-                         date_trunc('week', current_date)::date, 7)::date as hw
+  select generate_series((date_trunc('week', current_date) - interval '63 days')::timestamp,
+                         date_trunc('week', current_date)::timestamp, interval '7 days')::date as hw
 ),
 m as (                  -- base: MV rows of those weeks
   select *
@@ -61,23 +62,40 @@ dep_alloc as (
 --   close date = last complete/failed/cancelled status log, partner = case driver
 --   else driver allocated to the car at activation. MV recovery columns are NOT used (wrong).
 rcase as (
-  select a.id, a.recovery_agent_id,
+  select a.id, a.recovery_agent_id, coalesce(ee.name, '') as agent_name,
     date_trunc('week', a.activation_date)::date as week_start,
     case when a.rec_tags_id in (111, 112, 113)
          then date_trunc('week', coalesce(ls.close_date, a.updated_at at time zone 'Asia/Kolkata'))::date
          else date '2099-12-28' end as close_week,
     case when a.rec_tags_id = 111 then 'Completed' when a.rec_tags_id in (112, 113) then 'Cancelled' else 'Pending' end as final_status,
     coalesce(a.cancel_reason, '') as reason,
-    a.checkin_id is not null as has_checkin,
+    cc.id is not null as has_checkin,
     extract(epoch from (coalesce(ls.close_date, now()) - a.activation_date)) / 3600.0 as tat_hrs,
-    coalesce(fd.employee_id, fd2.employee_id) as employee_id
+    coalesce(fd.employee_id, fd2.employee_id) as employee_id,
+    fcity.name as city,
+    case when fcar.model_id in (8,16,20,40,41,42,43,52,53,54,55) then 'EV' else 'CNG' end as fuel_type,
+    case when ft.bv_pm_map_id in (11,12,13,19) then 'EV' when ft.bv_pm_map_id in (14,6) then 'EIP'
+         when ft.bv_pm_map_id = 7 then 'D2O' when ft.bv_pm_map_id = 18 then 'Own Now'
+         when ft.bv_pm_map_id = 1 then 'Revenue Share' when ft.bv_pm_map_id = 3 then 'Fixed Pay'
+         when ft.bv_pm_map_id = 8 then 'ETS' when ft.bv_pm_map_id = 9 then 'Intercity'
+         when ft.bv_pm_map_id = 10 then 'Last Mile Delivery' else 'SINGLE' end as product_type
   from recovery_cars a
   left join lateral (
     select b.datetime as close_date from recovery_status_logs b
     where b.recovery_id = a.id and b.recovery_status in ('complete', 'failed', 'cancelled')
     order by b.id desc limit 1
   ) ls on true
+  left join fleet_car fcar on fcar.id = a.car_id
   left join fleet_driver fd on fd.id = a.driver_id
+  left join lateral (
+    select fct.team_id from fleet_car_team fct
+    where fct.car_id = a.car_id and fct.start_date <= a.activation_date
+    order by fct.start_date desc limit 1
+  ) tm on true
+  left join fleet_team ft on ft.id = tm.team_id
+  left join fleet_city fcity on fcity.id = ft.city_id
+  left join everest_employee ee on ee.id = a.recovery_agent_id
+  left join car_checkin cc on cc.id = a.checkin_id
   left join lateral (
     select ca.driver_id from car_allocation ca
     where ca.deactivation_date is null and ca.driver_id is not null
@@ -86,6 +104,7 @@ rcase as (
   ) al on a.driver_id is null
   left join fleet_driver fd2 on fd2.id = al.driver_id
   where a.activation_date < (select max(hw) from wk) + 7
+    and (a.rec_tags_id not in (111, 112, 113) or coalesce(ls.close_date, a.updated_at) >= (select min(hw) from wk))
 ),
 rc as (
   select c.employee_id, w.hw,
@@ -96,7 +115,7 @@ rc as (
                        and (c.reason = 'Driver Dropped Vehicle' or (c.reason = '' and c.has_checkin))) as recovered_organic,
     count(*) filter (where c.close_week > w.hw)                                                   as recovery_pending,
     round(avg(c.tat_hrs) filter (where c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '')::numeric, 1) as recovery_tat_hrs,
-    min(c.recovery_agent_id) filter (where c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '') as recovery_agent_id
+    min(c.agent_name) filter (where c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '') as recovery_agent
   from rcase c
   join wk w on c.week_start <= w.hw and c.close_week >= w.hw
   group by 1, 2
@@ -162,7 +181,7 @@ select
   coalesce(rc.recovered_team, 0)       as recovered_team,
   coalesce(rc.recovered_organic, 0)    as recovered_organic,
   coalesce(rc.recovery_pending, 0)     as recovery_pending,
-  rc.recovery_tat_hrs, rc.recovery_agent_id,
+  rc.recovery_tat_hrs, rc.recovery_agent,
   m.last_updated                                                                             as mv_last_updated,
   -- asset-risk inputs (kept for audit)
   y.risk_score, x.payment_habit_week, coalesce(np.not_paid_prev_2w, 0) as not_paid_prev_2w,
@@ -171,7 +190,8 @@ select
   -- advance collection (old advance_payment_data tab): paid above the week OS, excluding deposit-to-OS
   greatest(coalesce(m.total_collected_amount_in_week, 0) - abs(coalesce(m.total_os, 0)), 0) as advance_amount,  -- paid above OS (Sheet col AU)
   -- WBR CarryForward (OS bifurcation) counts only OS carried forward (negative), not credits
-  least(coalesce(m.prev_carryforward_os, 0), 0) as carry_forward_os_neg
+  least(coalesce(m.prev_carryforward_os, 0), 0) as carry_forward_os_neg,
+  null::date as rec_week, 'MV' as row_type, null::bigint as recovery_id
 from m
 left join rec r       on r.employee_id    = m.partner_etm and r.hw          = m.hissab_week
 left join ml          on ml.partner_et_id = m.partner_etm and ml.week       = m.hissab_week
@@ -210,80 +230,76 @@ cross join lateral (  -- risk score = number of risk signals
        + coalesce(m.active_inactive_flag = 'Active' and ml.current_week_gps_kms = 0 and coalesce(ml.current_week_uber_kms, 0) = 0, false)::int
        + (coalesce(ml.conn_total, 0) <= 0)::int as risk_score
 ) y
-order by m.hissab_week, m.city, m.partner_etm;
 
-
--- =====================================================================================
--- QUERY 2 - Recovery_Raw (car recovery metrics in Summary)
--- Grain : 1 row per recovery case (same logic as Central Car Recovery Dash "RawData")
--- Why   : case level, so all recovery cases count (also partners not in the MV) and
---         TAT is per case -> numbers match the Car Recovery Dash exactly.
--- Load  : overwrite Recovery_Raw!A:P
--- =====================================================================================
+-- ---- PART 2: car recovery cases (1 row per case per hisaab week it is active) -------------------
+--   Same logic as Central Car Recovery Dash (RawData + Weekly_Summary). hissab_week (A) is left blank so
+--   these rows never enter MV metrics; Summary recovery rows filter on rec_week (BH) instead.
+--   Team = Completed with no reason (before 07-Sep: all Completed, as Recovery Dash); TAT only for team cases.
+union all
 select
-  date_trunc('week', a.activation_date)::date                                   as week_start,
-  case when a.rec_tags_id in (111, 112, 113)
-       then date_trunc('week', coalesce(ls.close_date, a.updated_at at time zone 'Asia/Kolkata'))::date
-       else (date_trunc('week', current_date)::date + 7) end                    as close_week,
-  a.activation_date::date                                                       as start_date,
-  case when a.rec_tags_id in (111, 112, 113)
-       then coalesce(ls.close_date::date, (a.updated_at at time zone 'Asia/Kolkata')::date) end as close_date,
-  round((extract(epoch from (coalesce(ls.close_date, now()) - a.activation_date)) / 3600.0)::numeric, 1) as tat_hrs,
-  fcity.name                                                                    as city,
-  coalesce(fcl.location, '')                                                    as location,
-  case when fcar.model_id in (8,16,20,40,41,42,43,52,53,54,55) then 'EV' else 'CNG' end as fuel_type,
-  case when ft.bv_pm_map_id in (11,12,13,19) then 'EV'
-       when ft.bv_pm_map_id in (14,6) then 'EIP'
-       when ft.bv_pm_map_id = 7  then 'D2O'
-       when ft.bv_pm_map_id = 18 then 'Own Now'
-       when ft.bv_pm_map_id = 1  then 'Revenue Share'
-       when ft.bv_pm_map_id = 3  then 'Fixed Pay'
-       when ft.bv_pm_map_id = 8  then 'ETS'
-       when ft.bv_pm_map_id = 9  then 'Intercity'
-       when ft.bv_pm_map_id = 10 then 'Last Mile Delivery'
-       else 'SINGLE' end                                                        as product_type,
-  coalesce(fd.employee_id, fd2.employee_id)                                     as partner_etid,
-  fcar.car_number,
-  coalesce(ee.name, '')                                                         as agent_name,
-  case when a.rec_tags_id = 111 then 'Completed'
-       when a.rec_tags_id in (112, 113) then 'Cancelled' else 'Pending' end     as final_status,
-  coalesce(a.cancel_reason, '')                                                 as final_reason,
-  coalesce(to_char(cc.activation_date::timestamp, 'YYYY-MM-DD HH24:MI:SS'), '') as checkin_dt,
-  a.id                                                                          as recovery_id
-from recovery_cars a
-left join lateral (
-  select b.datetime as close_date from recovery_status_logs b
-  where b.recovery_id = a.id and b.recovery_status in ('complete', 'failed', 'cancelled')
-  order by b.id desc limit 1
-) ls on true
-left join fleet_car fcar on fcar.id = a.car_id
-left join fleet_driver fd on fd.id = a.driver_id
-left join lateral (
-  select fct.team_id from fleet_car_team fct
-  where fct.car_id = a.car_id and fct.start_date <= a.activation_date
-  order by fct.start_date desc limit 1
-) team on true
-left join fleet_team ft on ft.id = team.team_id
-left join fleet_company_loc fcl on fcl.id = ft.loc_id
-left join fleet_city fcity on fcity.id = ft.city_id
-left join everest_employee ee on ee.id = a.recovery_agent_id
-left join car_checkin cc on cc.id = a.checkin_id
-left join lateral (
-  select ca.driver_id from car_allocation ca
-  where ca.deactivation_date is null and ca.driver_id is not null
-    and ca.car_id = a.car_id and ca.allocation_date <= a.activation_date
-  order by ca.id desc limit 1
-) al on true
-left join fleet_driver fd2 on fd2.id = al.driver_id
-where ls.close_date::date >= date_trunc('week', current_date)::date - 84
-   or ls.close_date is null
-order by 1, 6;
+  null as hissab_week,
+  c.employee_id as partner_etm,
+  null as lead_id,
+  c.city as city,
+  null as location,
+  c.product_type as product_type,
+  null as revenue_type,
+  c.fuel_type as fuel_type,
+  null as eip_filter,
+  null as elc_filter,
+  null as active_inactive_flag,
+  null as in_car_recovery,
+  null as total_os,
+  null as weekly_os,
+  null as prev_carryforward_os,
+  null as total_collected_amount_in_week,
+  null as total_collected_100_pct,
+  null as till_wed_100pct,
+  null as os_to_deposit,
+  null as razorpay_100pct,
+  null as other_100pct,
+  null as phonepe_100pct,
+  null as adjustment_100pct,
+  null as deposit_to_rent_100pct,
+  null as partners_not_paid_2_weeks,
+  null as last_week_payment_habit,
+  null as total_allocated_days,
+  null as entire_week_active,
+  null as last_payment_date_till_hissab_week,
+  null as last_jama_date,
+  null as tenure_days,
+  null as week_start_deposit,
+  null as week_end_deposit,
+  null as alloc_date,
+  null as dep_at_alloc,
+  null as os_surpass_deposit_amt,
+  null as bad_debt_amount,
+  null as bad_debt_collected_nonfunnel,
+  null as bad_debt_collected_funnel,
+  null as asset_risk,
+  null as recovery_recommended,
+  null as cars_under_recovery_hissab_week,
+  null as recovery_tat,
+  (c.week_start = w.hw)::int as recovery_initiated,
+  (c.week_start < w.hw)::int as recovery_brought_fwd,
+  (c.close_week = w.hw and c.final_status = 'Completed' and (c.reason = '' or w.hw < date '2026-09-07'))::int as recovered_team,
+  (c.close_week = w.hw and c.final_status = 'Cancelled' and ((c.reason = 'Driver Dropped Vehicle' and not c.has_checkin) or (c.reason = '' and c.has_checkin)))::int as recovered_organic,
+  (c.close_week > w.hw)::int as recovery_pending,
+  case when c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '' then round(c.tat_hrs::numeric, 1) end as recovery_tat_hrs,
+  case when c.close_week = w.hw and c.final_status = 'Completed' and c.reason = '' then c.agent_name end as recovery_agent,
+  null as mv_last_updated,
+  null as risk_score,
+  null as payment_habit_week,
+  null as not_paid_prev_2w,
+  null as nd_count_hw,
+  null as gps_inactive,
+  null as connects,
+  null as advance_amount,
+  null as carry_forward_os_neg,
+  w.hw as rec_week,
+  'Recovery case' as row_type,
+  c.id as recovery_id
+from rcase c
+join wk w on c.week_start <= w.hw and c.close_week >= w.hw
+order by 1, 4, 2;
 
--- Summary formulas on Recovery_Raw (W = column week, filters City / Fuel / Product):
---   Initiated        : week_start = W and close_week >= W
---   Brought Forward  : week_start < W and close_week >= W
---   Organic          : close_week = W, Cancelled, reason = 'Driver Dropped Vehicle' (or no reason + check-in)
---   Recovery Team    : close_week = W, Completed, no reason
---   Pending          : week_start <= W and close_week > W
---   Avg / P90 / P50 / P25 TAT : tat_hrs of Recovery Team cases closed in W
---   Recovery / Agent : Recovery Team / unique agent_name of those cases

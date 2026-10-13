@@ -4,10 +4,11 @@ exec(open('doc_catalog.py').read()); exec(open('doc_detail.py').read()); exec(op
 DS=open('../dash/dash_sid.txt').read().strip()
 REF='1wkebsPPLwXnRYAuvRV_fhMGQLRxv6JwH-cYlaIEBjRw'
 SR=call('GET',f"{API}/{REF}/values/'Summary'!A1:J86")['values']
-call('POST',f'{API}/{DS}/values:batchUpdate',json={'valueInputOption':'RAW','data':[{'range':"'Summary'!B2",'values':[['Delhi NCR']]},{'range':"'Summary'!B5",'values':[['*']]}]})
+_FILT=call('GET',f"{API}/{DS}/values/'Summary'!B2:B7")['values']  # user's filters, restored below
+call('POST',f'{API}/{DS}/values:batchUpdate',json={'valueInputOption':'RAW','data':[{'range':"'Summary'!B2:B7",'values':[['Delhi NCR'],[''],['*'],['*'],['*'],['*']]}]})
 time.sleep(20)
 SN=call('GET',f"{API}/{DS}/values/'Summary'!A1:J86")['values']
-call('POST',f'{API}/{DS}/values:batchUpdate',json={'valueInputOption':'RAW','data':[{'range':"'Summary'!B2",'values':[['*']]}]})
+call('POST',f'{API}/{DS}/values:batchUpdate',json={'valueInputOption':'RAW','data':[{'range':"'Summary'!B2:B7",'values':[(r or [''])[:1] for r in _FILT]+[['']]*(6-len(_FILT))}]})
 WR=call('GET',f"{API}/{REF}/values/'WBR View'!A1:H486")['values']
 # Car recovery rows (Summary 53-61) are compared with the Central Car Recovery Dash, all products, Delhi NCR.
 # Values are computed from the Recovery Dash RawData with its Weekly_Summary formulas, so a filter set on

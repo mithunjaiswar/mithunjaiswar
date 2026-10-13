@@ -119,7 +119,7 @@ DET={
          'Rule = Central Car Recovery Dash Weekly_Summary (same COUNTIFS on RawData)',
          'Status from rec_tags_id: 111 Completed, 112/113 Cancelled, else Pending',
          'Close date = last complete/failed/cancelled status log',
-         'Built from Query 2 -> Recovery_Raw tab (1 row per case), so all cases count and TAT is per case',
+         'Built in Raw_Data query PART 2 (1 row per recovery case per week), so all cases count and TAT is per case',
          'Result: matches Car Recovery Dash for every week'),
        B('Week 28-Sep, all cities: new cases 1,290 = Recovery Dash 1,290; brought forward 727 = 727')),
 'S29':SAME('S28'),'S30':(B('Same logic source as S28',
