@@ -52,8 +52,8 @@ crit as (
 --   status from rec_tags_id (111 Completed, 112/113 Cancelled, else Pending),
 --   close date = last complete/failed/cancelled status log, partner = case driver
 --   else driver allocated to the car at activation. MV recovery columns are NOT used (wrong).
-rcase as (
-  select a.id, a.recovery_agent_id, coalesce(ee.name, '') as agent_name,
+rcase as (   -- Query 1 needs only partner + case dates (QUERY 3 has the full case detail)
+  select a.id,
     date_trunc('week', a.activation_date)::date as week_start,
     a.activation_date::date as start_date,
     case when a.rec_tags_id in (111, 112, 113)
@@ -61,36 +61,14 @@ rcase as (
     case when a.rec_tags_id in (111, 112, 113)
          then date_trunc('week', coalesce(ls.close_date, a.updated_at at time zone 'Asia/Kolkata'))::date
          else date '2099-12-28' end as close_week,
-    case when a.rec_tags_id = 111 then 'Completed' when a.rec_tags_id in (112, 113) then 'Cancelled' else 'Pending' end as final_status,
-    case when a.rec_tags_id = 111 then coalesce(a.payment_reason, '') else coalesce(a.cancel_reason, '') end as reason,  -- Recovery Dash finalstatus_reason
-    cc.id is not null as has_checkin,
-    extract(epoch from (coalesce(ls.close_date, now()) - a.activation_date)) / 3600.0 as tat_hrs,
-    coalesce(fd.employee_id, fd2.employee_id) as employee_id,
-    fcity.name as city,
-    case when fcar.model_id in (8,16,20,40,41,42,43,52,53,54,55) then 'EV' else 'CNG' end as fuel_type,
-    case when ft.bv_pm_map_id in (11,12,13,19) then 'EV' when ft.bv_pm_map_id in (14,6) then 'EIP'
-         when ft.bv_pm_map_id = 7 then 'D2O' when ft.bv_pm_map_id = 18 then 'Own Now'
-         when ft.bv_pm_map_id = 1 then 'Revenue Share' when ft.bv_pm_map_id = 3 then 'Fixed Pay'
-         when ft.bv_pm_map_id = 8 then 'ETS' when ft.bv_pm_map_id = 9 then 'Intercity'
-         when ft.bv_pm_map_id = 10 then 'Last Mile Delivery' else 'SINGLE' end as product_type
+    coalesce(fd.employee_id, fd2.employee_id) as employee_id
   from recovery_cars a
   left join lateral (
     select b.datetime as close_date from recovery_status_logs b
     where b.recovery_id = a.id and b.recovery_status in ('complete', 'failed', 'cancelled')
     order by b.id desc limit 1
   ) ls on true
-  left join fleet_car fcar on fcar.id = a.car_id
   left join fleet_driver fd on fd.id = a.driver_id
-  left join lateral (
-    select fct.team_id from fleet_car_team fct
-    where fct.car_id = a.car_id and fct.start_date <= a.activation_date
-      and fct.start_date <= coalesce(fct.end_date, current_date)   -- skip bad team rows (end before start), as Recovery Dash
-    order by fct.start_date desc limit 1
-  ) tm on true
-  left join fleet_team ft on ft.id = tm.team_id
-  left join fleet_city fcity on fcity.id = ft.city_id
-  left join everest_employee ee on ee.id = a.recovery_agent_id
-  left join car_checkin cc on cc.id = a.checkin_id
   left join lateral (
     select ca.driver_id from car_allocation ca
     where ca.deactivation_date is null and ca.driver_id is not null
@@ -102,6 +80,7 @@ rcase as (
     and (coalesce(a.rec_tags_id, 0) not in (111, 112, 113) or  -- open cases have rec_tags_id NULL
          coalesce(ls.close_date, a.updated_at) >= (select min(hw) from wk))
 ),
+
 -- car recovery dates per partner per hisaab week (Sheet cols BM/BN): latest case open in the week;
 --   end date = close date, or today while the case is still pending
 rcp as (
