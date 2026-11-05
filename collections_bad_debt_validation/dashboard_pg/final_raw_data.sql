@@ -159,12 +159,12 @@ select
   -- Columns A..BS: same names and order as the old Collections Sheet Raw_Data
   m.hissab_week                                                         as hisaab_week,            -- A
   m.city                                                                as location,               -- B (old Sheet: city / hub cluster)
-  m.revenue_type,                                                                                  -- C
+  case when m.product_type = 'EV' and m.revenue_type = 'D2O' then 'EV_D2O' else m.revenue_type end as revenue_type,  -- C (old Sheet: EV car on D2O = EV_D2O)
   m.partner_etm                                                         as partner_et_id,          -- D
   m.total_os                                                            as negative_os,            -- E
   m.city,                                                                                          -- F
   case when m.eip_tag = 1 then 'EIP' else 'SINGLE' end                  as eip_filter,             -- G
-  m.product_type,                                                                                  -- H
+  case when m.product_type = 'EV' and m.revenue_type = 'D2O' then 'EV_D2O' else m.product_type end as product_type,  -- H (old Sheet: EV car on D2O = EV_D2O)
   coalesce(m.total_collected_amount_in_week, 0)                         as total_recovery,         -- I
   coalesce(r.razorpay_amt, 0)                                           as razorpay_recovery,      -- J
   coalesce(r.other_amt, 0)                                              as other_recovery,         -- K
@@ -216,7 +216,7 @@ select
   m.lead_id,                                                                                       -- BA
   m.week_start_deposit                                                  as sd_week_start,          -- BB
   case when m.in_car_recovery_hissab_week then 'Yes' else 'No' end      as in_car_recovery,        -- BC
-  m.product_type                                                        as bad_debt_product_type,  -- BD
+  case when m.product_type = 'EV' and m.revenue_type = 'D2O' then 'EV_D2O' else m.product_type end as bad_debt_product_type,  -- BD
   case when v.net_os_neg >= 0 then ''
        when -v.net_os_neg < 1000 then '1 to 1K' when -v.net_os_neg < 5000 then '1K to 5K'
        when -v.net_os_neg < 10000 then '5K to 10K' when -v.net_os_neg < 15000 then '10K to 15K'
