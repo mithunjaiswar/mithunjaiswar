@@ -119,3 +119,13 @@ Known gaps to tell the user:
 - Scratchpad (`/tmp/claude-0/.../scratchpad`) is temporary; scripts that matter are copied into this folder.
 - User style: short, simple sentences; bullet points; don't change header colours; don't delete user tabs;
   never edit the old reference sheet; don't create PRs unless asked.
+
+## 8. Green-tab check (06-Nov, verification sheet 1rZVul…)
+- `Tab_Check` tab: per green tab -> errors, filled cells, cells differing >1% vs original (IMPORTRANGE).
+- Fixed: Raw_Data duplicate header rows deleted; BX2 exception_status formula restored; sd_bucket_V2 tab added
+  (IMPORTRANGE Dash_V2); Country_Collection_RCA!J1 -> MAX(Raw_Data!W2:W) (collections_data tab not here).
+- raw_data_v3.sql: 9 weeks (56 days), BK/BL from mv_elc_upload_data, BS hub of latest allocation,
+  AW/AB = 0 and V = 1 when no OS (old Sheet values). EV + D2O + eip_tag=1 -> EV / EV_Leasing.
+- User must: click Allow access in sd_bucket!A1, sd_bucket_V2!A1, Ownership_CR_Import!A1 (desktop); re-run A1 query and paste.
+- Known gaps: product change mid-week (orig uses product on refresh day); MV deposit values changed for ~10% pilots;
+  current week Nov-02 is live; Summary filters in original set to Chennai/EIP.
