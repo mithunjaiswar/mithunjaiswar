@@ -103,14 +103,14 @@ al as materialized (
 cl as materialized (
   select partner_et_id, week_start, sum(attempt_count) as attempts, sum(connect_count) as connects
   from public.collections_calling_data_raw
-  where week_start in (select hw from wk)
+  where week_start in (select hw from wk) and partner_et_id in (select partner_etm from o)
   group by 1, 2
 ),
 -- calling inputs for ELC filter and GPS signal (last masterlist snapshot of the week)
 ml as materialized (
   select distinct on (week, partner_et_id) week, partner_et_id, elc_filter, current_week_gps_kms, current_week_uber_kms
   from mv_collections_calling_masterlist
-  where week in (select hw from wk)
+  where week in (select hw from wk) and partner_et_id in (select partner_etm from o)
   order by week, partner_et_id, snapshot_date desc
 ),
 -- entire week active: car allocated on all days of the hisaab week (till today for the running week)
@@ -127,16 +127,24 @@ fw as materialized (
   group by 1, 2
 ),
 -- AX bad_debt_rec: money paid after the hisaab week and after the pilot left (bad debt rows only)
+bdo as materialized (   -- bad debt rows only
+  select hissab_week, partner_etm, last_jama_date from o where bad_debt_amount < 0
+),
+pay as materialized (     -- daily payments of those partners after the first output week
+  select employee_id, date::date as d, sum(amount) as amt
+  from mv_daily_recovery
+  where employee_id in (select partner_etm from bdo)
+    and date >= (select w0 from lim) + 7
+    and recovery_type::text in ('razorpay_recovery', 'other_positive_recovery', 'phonepe_recovery',
+                                'positive_adjustment', 'deposit_to_os')
+  group by 1, 2
+),
 bdr as materialized (
-  select o.hissab_week, o.partner_etm, sum(x.amount) as paid_after_left
-  from o
-  join mv_daily_recovery x
-    on x.employee_id = o.partner_etm
-   and x.date >= o.hissab_week + 7
-   and x.date > coalesce(o.last_jama_date, o.hissab_week + 6)
-   and x.recovery_type::text in ('razorpay_recovery', 'other_positive_recovery', 'phonepe_recovery',
-                                 'positive_adjustment', 'deposit_to_os')
-  where o.bad_debt_amount < 0
+  select bdo.hissab_week, bdo.partner_etm, sum(p.amt) as paid_after_left
+  from bdo
+  join pay p on p.employee_id = bdo.partner_etm
+            and p.d >= bdo.hissab_week + 7
+            and p.d > coalesce(bdo.last_jama_date, bdo.hissab_week + 6)
   group by 1, 2
 ),
 -- car recovery cases (recovery_cars): partner = case driver, else driver allocated to the car at activation
