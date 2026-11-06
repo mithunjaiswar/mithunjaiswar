@@ -20,16 +20,16 @@ with wk as (
   select generate_series((date_trunc('week', current_date) - interval '63 days')::timestamp,
                          date_trunc('week', current_date)::timestamp, interval '7 days')::date as hw
 ),
-lim as (select min(hw) as w0, max(hw) as w1 from wk),
+lim as materialized (select min(hw) as w0, max(hw) as w1 from wk),
 -- MV rows: output weeks + 2 older weeks for the "previous week" columns
-m as (
+m as materialized (
   select *
   from analytics.collections_bad_debt_mv
   where for_collections = 1
     and hissab_week between (select w0 from lim) - 14 and (select w1 from lim)
 ),
 -- payments by type per partner per hisaab week (same as old Sheet collections_data)
-rec as (
+rec as materialized (
   select employee_id, date_trunc('week', date)::date as hw,
          coalesce(sum(amount) filter (where recovery_type::text = 'razorpay_recovery'), 0)       as razorpay_amt,
          coalesce(sum(amount) filter (where recovery_type::text = 'other_positive_recovery'), 0) as other_amt,
@@ -45,7 +45,7 @@ rec as (
   group by 1, 2
 ),
 -- per-row values the old Sheet computes with formulas, plus "previous week" lookups
-b as (
+b as materialized (
   select m.*,
          case when m.product_type = 'EV' and m.revenue_type = 'D2O' then 'EV_D2O' else m.revenue_type end as rev_type,
          case when m.product_type = 'EV' and m.revenue_type = 'D2O' then 'EV_D2O' else m.product_type end as prod_type,
@@ -60,7 +60,7 @@ b as (
   from m
   left join rec r on r.employee_id = m.partner_etm and r.hw = m.hissab_week
 ),
-b2 as (
+b2 as materialized (
   select b.*,
          case when b.e_os <> 0 then b.u_sun / abs(b.e_os) end as v_pct,
          -- AQ prev_carry_forward = AP of the same partner in the previous hisaab week
@@ -74,21 +74,21 @@ b2 as (
                                      range between interval '7 days' preceding and interval '7 days' preceding) as bb_prev
   from b
 ),
-b3 as (
+b3 as materialized (
   select b2.*,
          -- BQ <60_L2w = previous 2 weeks with collection % between 0% and 80% (old Sheet formula)
          count(*) filter (where b2.v_pct > 0 and b2.v_pct < 0.8) over (partition by b2.partner_etm order by b2.hissab_week
                                      range between interval '14 days' preceding and interval '1 day' preceding) as bq_lt80
   from b2
 ),
-o as (   -- output weeks only; AM et_rank = number of loaded weeks of the partner up to this week
+o as materialized (   -- output weeks only; AM et_rank = number of loaded weeks of the partner up to this week
   select b3.*,
          count(*) over (partition by b3.partner_etm order by b3.hissab_week rows unbounded preceding) as am_rank
   from b3
   where b3.hissab_week >= (select w0 from lim)
 ),
 -- cars held in the hisaab week, active on Sunday, active at least 1 day (allocation table)
-al as (
+al as materialized (
   select o.hissab_week, o.partner_etm,
          string_agg(distinct s.car_number, ',') as cars,
          bool_or(s.allocation_date <= least(o.hissab_week + 6, current_date)
@@ -100,21 +100,21 @@ al as (
   group by 1, 2
 ),
 -- calling attempts / connects in the hisaab week
-cl as (
+cl as materialized (
   select partner_et_id, week_start, sum(attempt_count) as attempts, sum(connect_count) as connects
   from public.collections_calling_data_raw
   where week_start in (select hw from wk)
   group by 1, 2
 ),
 -- calling inputs for ELC filter and GPS signal (last masterlist snapshot of the week)
-ml as (
+ml as materialized (
   select distinct on (week, partner_et_id) week, partner_et_id, elc_filter, current_week_gps_kms, current_week_uber_kms
   from mv_collections_calling_masterlist
   where week in (select hw from wk)
   order by week, partner_et_id, snapshot_date desc
 ),
 -- entire week active: car allocated on all days of the hisaab week (till today for the running week)
-fw as (
+fw as materialized (
   select o.hissab_week, o.partner_etm,
          count(distinct d::date) = least(7, current_date - o.hissab_week + 1) as full_week
   from o
@@ -127,7 +127,7 @@ fw as (
   group by 1, 2
 ),
 -- AX bad_debt_rec: money paid after the hisaab week and after the pilot left (bad debt rows only)
-bdr as (
+bdr as materialized (
   select o.hissab_week, o.partner_etm, sum(x.amount) as paid_after_left
   from o
   join mv_daily_recovery x
@@ -140,7 +140,7 @@ bdr as (
   group by 1, 2
 ),
 -- car recovery cases (recovery_cars): partner = case driver, else driver allocated to the car at activation
-rcase as (
+rcase as materialized (
   select a.activation_date::date as start_date,
          case when a.rec_tags_id in (111, 112, 113)
               then coalesce(ls.close_date, a.updated_at at time zone 'Asia/Kolkata')::date end as close_date,
@@ -163,14 +163,14 @@ rcase as (
     and (coalesce(a.rec_tags_id, 0) not in (111, 112, 113) or coalesce(ls.close_date, a.updated_at) >= (select w0 from lim))
 ),
 -- latest case open in the hisaab week
-rcp as (
+rcp as materialized (
   select distinct on (c.employee_id, w.hw) c.employee_id, w.hw, c.start_date,
          coalesce(c.close_date, current_date) as end_date
   from rcase c
   join wk w on c.start_date <= w.hw + 6 and coalesce(c.close_date, current_date) >= w.hw
   order by c.employee_id, w.hw, c.start_date desc
 ),
-f as (   -- one more step for values that need several of the above
+f as materialized (   -- one more step for values that need several of the above
   select o.*,
          abs(o.e_os) as abs_os,
          least(o.j_rz, abs(o.e_os))                                                               as p_rz,
