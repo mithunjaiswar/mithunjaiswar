@@ -129,3 +129,11 @@ Known gaps to tell the user:
 - User must: click Allow access in sd_bucket!A1, sd_bucket_V2!A1, Ownership_CR_Import!A1 (desktop); re-run A1 query and paste.
 - Known gaps: product change mid-week (orig uses product on refresh day); MV deposit values changed for ~10% pilots;
   current week Nov-02 is live; Summary filters in original set to Chennai/EIP.
+
+## 9. Summary / deposit work (06-Nov, later)
+- Notes for every tab: verification sheet tab `Gap_Notes` (was WBR_Gap_Notes), rows 36+ = tab-wise table.
+- OS_Surpass (Live OS Tracking): os_surpass.sql, loaded 9 weeks.
+- sd_bucket / sd_bucket_V2: DB data via deposit_buckets.sql (old SD sheet logic: all pilots holding a car any day
+  of the week, deposit from mv_deposits_raw). Raw lines in sd_bucket!Z, A2 = SPLIT. 4 weeks loaded (testing).
+- Original "Deposit [At Allocation]" is wrong (SD sheet col N static/misaligned + date mismatch); ours = Query 5 logic.
+- D2O_Deposit_Bucket: #VALUE came from Raw_Data duplicate header row 2 (deleted; BX2 restored).
