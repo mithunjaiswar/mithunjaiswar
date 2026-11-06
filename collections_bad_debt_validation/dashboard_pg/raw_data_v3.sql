@@ -86,7 +86,9 @@ b3 as materialized (
 ),
 o as materialized (   -- output weeks only; AM et_rank = number of loaded weeks of the partner up to this week
   select b3.*,
-         count(*) over (partition by b3.partner_etm order by b3.hissab_week rows unbounded preceding) as am_rank
+         count(*) over (partition by b3.partner_etm order by b3.hissab_week rows unbounded preceding) as am_rank,
+         -- bad debt only for closed weeks (old Sheet shows 0 for the running week)
+         case when b3.hissab_week < date_trunc('week', current_date)::date then b3.bad_debt_amount end as bd_amt
   from b3
   where b3.hissab_week >= (select w0 from lim)
 ),
@@ -128,20 +130,20 @@ ml as materialized (
 ),
 -- entire week active: car allocated on all days of the hisaab week (till today for the running week)
 fw as materialized (
+  -- old Sheet rule: one allocation that started on/before Monday and was still running after Sunday
+  -- (car swap in the week or car returned on Sunday = not entire week)
   select o.hissab_week, o.partner_etm,
-         count(distinct d::date) = least(7, current_date - o.hissab_week + 1) as full_week
+         bool_or(s.allocation_date <= o.hissab_week
+                 and (s.jama_date is null or s.jama_date >= current_date or s.jama_date > o.hissab_week + 6)) as full_week
   from o
   join analytics.ssot_alloc_dealloc_base s
     on s.employee_id = o.partner_etm and s.allocation_date <= o.hissab_week + 6
    and coalesce(s.jama_date, current_date) >= o.hissab_week
-  cross join lateral generate_series(greatest(s.allocation_date, o.hissab_week)::timestamp,
-                                     least(coalesce(s.jama_date, current_date), o.hissab_week + 6, current_date)::timestamp,
-                                     interval '1 day') d
   group by 1, 2
 ),
 -- AX bad_debt_rec: money paid after the hisaab week and after the pilot left (bad debt rows only)
 bdo as materialized (   -- bad debt rows only
-  select hissab_week, partner_etm, last_jama_date from o where bad_debt_amount < 0
+  select hissab_week, partner_etm, last_jama_date from o where bd_amt < 0
 ),
 pay as materialized (     -- daily payments of those partners after the first output week
   select employee_id, date::date as d, sum(amount) as amt
@@ -267,13 +269,13 @@ select
   least(f.i_tot - f.as_prev_rec, abs(f.e_os - f.aq_prev_cf))            as "current_recovery",     -- AT
   f.i_tot - f.as_prev_rec - least(f.i_tot - f.as_prev_rec, abs(f.e_os - f.aq_prev_cf)) as "advance_recovery", -- AU
   f.av_net                                                              as "net_os",               -- AV
-  coalesce(f.bad_debt_amount, 0)                                        as "bad_debt",             -- AW (0 when no bad debt, as old Sheet)
-  case when f.bad_debt_amount < 0 then coalesce(bdr.paid_after_left, 0) else 0 end as "bad_debt_rec", -- AX
-  case when f.bad_debt_amount < 0
-       then least(coalesce(bdr.paid_after_left, 0), abs(f.bad_debt_amount)) else 0 end as "bad_debt_rec_100pct", -- AY
-  coalesce(case when f.bad_debt_amount < 0
-                then least(coalesce(bdr.paid_after_left, 0), abs(f.bad_debt_amount)) else 0 end, 0)
-    + coalesce(f.bad_debt_amount, 0)                                    as "net_bad_debt",         -- AZ = AY + AW
+  coalesce(f.bd_amt, 0)                                        as "bad_debt",             -- AW (0 when no bad debt, as old Sheet)
+  case when f.bd_amt < 0 then coalesce(bdr.paid_after_left, 0) else 0 end as "bad_debt_rec", -- AX
+  case when f.bd_amt < 0
+       then least(coalesce(bdr.paid_after_left, 0), abs(f.bd_amt)) else 0 end as "bad_debt_rec_100pct", -- AY
+  coalesce(case when f.bd_amt < 0
+                then least(coalesce(bdr.paid_after_left, 0), abs(f.bd_amt)) else 0 end, 0)
+    + coalesce(f.bd_amt, 0)                                    as "net_bad_debt",         -- AZ = AY + AW
   f.lead_id                                                             as "lead_id",              -- BA
   f.week_start_deposit                                                  as "sd_week_start",        -- BB
   case when f.in_car_recovery_hissab_week then 'Yes' else 'No' end      as "in_car_recovery",      -- BC
