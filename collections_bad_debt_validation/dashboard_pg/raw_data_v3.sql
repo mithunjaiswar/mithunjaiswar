@@ -1,7 +1,7 @@
 -- =====================================================================================
 -- Collections Dashboard - Raw_Data query v3 (same 75 columns A..BW as the old Collections Sheet Raw_Data)
 -- Grain : 1 row per partner per hisaab week (analytics.collections_bad_debt_mv, for_collections = 1)
--- Window: last 10 hisaab weeks (change the 63 below). 2 extra older weeks are read only for the
+-- Window: last 8 hisaab weeks (change the 49 below). 2 extra older weeks are read only for the
 --         "previous week" columns (AA, AQ, BH, BQ) and are not output.
 -- Column rules (user spec, Nov-2026):
 --   I  total_recovery      = mv_daily_recovery (5 types) paid in the hisaab week (updates hourly)
@@ -17,7 +17,7 @@
 --   BM/BN/BO car recovery  = recovery_cars: start date, close date (today if pending), days between
 -- =====================================================================================
 with wk as (
-  select generate_series((date_trunc('week', current_date) - interval '63 days')::timestamp,
+  select generate_series((date_trunc('week', current_date) - interval '49 days')::timestamp,
                          date_trunc('week', current_date)::timestamp, interval '7 days')::date as hw
 ),
 lim as materialized (select min(hw) as w0, max(hw) as w1 from wk),
