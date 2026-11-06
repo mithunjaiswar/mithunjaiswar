@@ -91,6 +91,10 @@ o as materialized (   -- output weeks only; AM et_rank = number of loaded weeks 
 al as materialized (
   select o.hissab_week, o.partner_etm,
          string_agg(distinct s.car_number, ',') as cars,
+         -- latest allocation of the hisaab week: fuel, revenue type, payment plan (for EV_EIP / EV_D2O)
+         (array_agg(s.fuel_type          order by s.allocation_datetime desc))[1] as lat_fuel,
+         (array_agg(s.revenue_type       order by s.allocation_datetime desc))[1] as lat_rev,
+         (array_agg(s.payment_model_name order by s.allocation_datetime desc))[1] as lat_pm,
          bool_or(s.allocation_date <= least(o.hissab_week + 6, current_date)
                  and coalesce(s.jama_date, current_date) >= least(o.hissab_week + 6, current_date)) as on_sunday
   from o
@@ -198,12 +202,12 @@ f as materialized (   -- one more step for values that need several of the above
 select
   f.hissab_week                                                         as "hisaab_week",          -- A
   f.location                                                            as "location",             -- B
-  f.rev_type                                                            as "revenue_type",         -- C (EV car on D2O = EV_D2O)
+  px.rev2                                                               as "revenue_type",         -- C (EV car on D2O = EV_D2O)
   f.partner_etm                                                         as "partner_et_id",        -- D
   f.e_os                                                                as "negative_os",          -- E
   f.city                                                                as "city",                 -- F
   case when f.eip_tag = 1 then 'EIP' else 'SINGLE' end                  as "eip_filter",           -- G
-  f.prod_type                                                           as "product_type",         -- H
+  px.prod2                                                              as "product_type",         -- H
   f.i_tot                                                               as "total_recovery",       -- I
   f.j_rz                                                                as "razorpay_recovery",    -- J
   f.k_ot                                                                as "other_recovery",       -- K
@@ -246,7 +250,7 @@ select
     when 3 then 'Low Risk' when 2 then 'Minimal Risk' else 'No risk' end as "asset_risk",          -- AL
   f.am_rank                                                             as "et_rank",              -- AM
   coalesce(ml.elc_filter, 'Non_ELC')                                    as "elc_filter",           -- AN
-  case when left(f.rev_type, 3) = 'EV_' then 'EV' else 'CNG' end        as "fuel_type",            -- AO
+  case when left(px.rev2, 3) = 'EV_' then 'EV' else 'CNG' end         as "fuel_type",            -- AO
   f.ap_cf                                                               as "carry_forward_os",     -- AP
   f.aq_prev_cf                                                          as "prev_carry_forward",   -- AQ
   f.e_os - f.aq_prev_cf                                                 as "current_week_os",      -- AR
@@ -264,7 +268,7 @@ select
   f.lead_id                                                             as "lead_id",              -- BA
   f.week_start_deposit                                                  as "sd_week_start",        -- BB
   case when f.in_car_recovery_hissab_week then 'Yes' else 'No' end      as "in_car_recovery",      -- BC
-  f.prod_type                                                           as "bad_debt_product_type",  -- BD
+  px.prod2                                                              as "bad_debt_product_type",  -- BD
   case when f.ap_cf = 0 then ''
        when abs(f.ap_cf) < 1000 then '1 to 1K' when abs(f.ap_cf) < 5000 then '1K to 5K'
        when abs(f.ap_cf) < 10000 then '5K to 10K' when abs(f.ap_cf) < 15000 then '10K to 15K'
@@ -310,4 +314,16 @@ left join ml  on ml.partner_et_id = f.partner_etm and ml.week        = f.hissab_
 left join fw  on fw.partner_etm  = f.partner_etm and fw.hissab_week  = f.hissab_week
 left join bdr on bdr.partner_etm = f.partner_etm and bdr.hissab_week = f.hissab_week
 left join rcp on rcp.employee_id = f.partner_etm and rcp.hw          = f.hissab_week
+-- product from the latest car of the week: EV + EIP plan = EV_EIP, EV + Drive To Own = EV_D2O,
+-- EV + leasing single = EV (EV_Leasing); otherwise MV value (MV EV + D2O = EV_D2O)
+cross join lateral (
+  select case when al.lat_fuel = 'EV' and al.lat_pm ilike '%EIP%'      then 'EV_EIP'
+              when al.lat_fuel = 'EV' and al.lat_rev = 'DTO'           then 'EV_D2O'
+              when al.lat_fuel = 'EV' and al.lat_rev = 'leasing'       then 'EV_Leasing'
+              else f.rev_type end as rev2,
+         case when al.lat_fuel = 'EV' and al.lat_pm ilike '%EIP%'      then 'EV_EIP'
+              when al.lat_fuel = 'EV' and al.lat_rev = 'DTO'           then 'EV_D2O'
+              when al.lat_fuel = 'EV' and al.lat_rev = 'leasing'       then 'EV'
+              else f.prod_type end as prod2
+) px
 order by f.hissab_week, f.city, f.partner_etm;
