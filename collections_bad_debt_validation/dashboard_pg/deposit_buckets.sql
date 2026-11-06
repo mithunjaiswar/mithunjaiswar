@@ -1,4 +1,4 @@
--- deposit_db_raw tab -> feeds sd_bucket (Deposit Threshold, SD_Profiles) and sd_bucket_V2 (Deposit [At Allocation],
+-- sd_bucket!Z (raw lines) -> feeds sd_bucket (Deposit Threshold, SD_Profiles) and sd_bucket_V2 (Deposit [At Allocation],
 -- SD_Profiles [At Allocation]) via SPLIT formulas in sd_bucket!A2 / sd_bucket_V2!A2.
 -- Same logic as the old SD Bucket sheet (Raw_Data + Dash / Dash_V2) = QUERY 4 / QUERY 5 in final_raw_data.sql:
 --   pilots = everyone who held a car on ANY day of the hisaab week (ssot_alloc_dealloc_base), not only collections pilots
@@ -6,7 +6,7 @@
 --             till end of the week of the pilot's last allocation (at_alloc)
 --   product = old SD rule on the car's current team: Fixed Pay > EIP > D2O > Own Now > EV > Revenue Share > SINGLE
 --   buckets: <=0, (0,2K], (2K,5K], (5K,10K], (10K,20K], >20K
--- Run ONE WEEK AT A TIME (DB timeout 60s): change the date in wk and in m, then append the output lines to deposit_db_raw!A.
+-- Run ONE WEEK AT A TIME (DB timeout 60s): change the date in wk and in m, then append the output lines to sd_bucket!Z (below the header in Z1).
 with wk as (select date '2026-11-02' as hw),
 sa as materialized (
   select w.hw, s.employee_id, s.allocation_date, s.allocation_datetime, s.city, s.fuel_type, s.car_number
