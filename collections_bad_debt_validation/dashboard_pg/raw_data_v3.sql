@@ -14,7 +14,7 @@
 --   AJ/AK attempts/connects= public.collections_calling_data_raw, week_start = hisaab week
 --   AA, AE, AF, AH, AL, AM, AO, AP..AV, AZ, BE..BI, BQ = old Sheet formulas (row 87926) as SQL
 --   AX bad_debt_rec        = mv_daily_recovery paid AFTER the hisaab week and after the pilot left (jama)
---   BM/BN/BO car recovery  = recovery_cars: start date, close date (today if pending), days between
+--   BM/BN/BO car recovery  = recovery_cars: start date, close date (today if pending), days open till min(close, week end, today)
 -- =====================================================================================
 with wk as (
   select generate_series((date_trunc('week', current_date) - interval '56 days')::timestamp,
@@ -325,7 +325,7 @@ select
   coalesce(chn.src, elc.source_channel)                                 as "source_channel",       -- BL
   rcp.start_date                                                        as "car_recovery_startdate",   -- BM
   rcp.end_date                                                          as "car_recovery_enddate",     -- BN
-  rcp.end_date - rcp.start_date                                         as "car_recovery_pending_tat", -- BO
+  least(rcp.end_date, rcp.hw + 6, current_date) - rcp.start_date      as "car_recovery_pending_tat", -- BO (days open as at week end, as old Sheet)
   null::text                                                            as "firstdate_critical_risk",  -- BP
   f.bq_lt80                                                             as "<60_L2w",              -- BQ
   null::text                                                            as "bad_debt",             -- BR
