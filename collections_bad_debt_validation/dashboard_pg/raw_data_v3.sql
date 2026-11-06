@@ -1,7 +1,7 @@
 -- =====================================================================================
 -- Collections Dashboard - Raw_Data query v3 (same 75 columns A..BW as the old Collections Sheet Raw_Data)
 -- Grain : 1 row per partner per hisaab week (analytics.collections_bad_debt_mv, for_collections = 1)
--- Window: last 8 hisaab weeks (change the 49 below). 2 extra older weeks are read only for the
+-- Window: last 9 hisaab weeks, same as old Sheet (change the 56 below). 2 extra older weeks are read only for the
 --         "previous week" columns (AA, AQ, BH, BQ) and are not output.
 -- Column rules (user spec, Nov-2026):
 --   I  total_recovery      = mv_daily_recovery (5 types) paid in the hisaab week (updates hourly)
@@ -17,7 +17,7 @@
 --   BM/BN/BO car recovery  = recovery_cars: start date, close date (today if pending), days between
 -- =====================================================================================
 with wk as (
-  select generate_series((date_trunc('week', current_date) - interval '49 days')::timestamp,
+  select generate_series((date_trunc('week', current_date) - interval '56 days')::timestamp,
                          date_trunc('week', current_date)::timestamp, interval '7 days')::date as hw
 ),
 lim as materialized (select min(hw) as w0, max(hw) as w1 from wk),
@@ -94,6 +94,7 @@ o as materialized (   -- output weeks only; AM et_rank = number of loaded weeks 
 al as materialized (
   select o.hissab_week, o.partner_etm,
          string_agg(distinct s.car_number, ',') as cars,
+         (array_agg(s.location order by s.allocation_datetime desc))[1] as alloc_hub,   -- BS hub of latest allocation
          bool_or(s.allocation_date <= least(o.hissab_week + 6, current_date)
                  and coalesce(s.jama_date, current_date) >= least(o.hissab_week + 6, current_date)) as on_sunday
   from o
@@ -101,6 +102,15 @@ al as materialized (
     on s.employee_id = o.partner_etm and s.allocation_date <= o.hissab_week + 6
    and coalesce(s.jama_date, current_date) >= o.hissab_week
   group by 1, 2
+),
+-- BK uber tag / BL source channel: latest non-blank value in the ELC upload data
+elc as materialized (
+  select employee_id,
+         (array_agg(source_channel order by uploading_date desc) filter (where coalesce(source_channel, '') <> ''))[1] as source_channel,
+         (array_agg(uber_tag order by uploading_date desc) filter (where coalesce(uber_tag, '') <> ''))[1] as uber_tag
+  from mv_elc_upload_data
+  where employee_id in (select partner_etm from o)
+  group by 1
 ),
 -- calling attempts / connects in the hisaab week
 cl as materialized (
@@ -220,13 +230,13 @@ select
   f.s_ad                                                                as "adjustments_100pct",   -- S
   f.t_dp                                                                as "dp_to_os_100pct",      -- T
   f.u_sun                                                               as "till_sun_100pct",      -- U
-  f.v_pct                                                               as "recovery_pct",         -- V
+  case when f.e_os < 0 then f.v_pct else 1 end                         as "recovery_pct",         -- V (1 when OS >= 0, as old Sheet)
   f.last_payment_date_till_hissab_week                                  as "last_paid_date",       -- W
   f.last_jama_date                                                      as "last_jama_date",       -- X
   al.cars                                                               as "last_car_number",      -- Y
   case when al.on_sunday then 'active' else 'inactive' end              as "active_today?",        -- Z
   f.aa_np2                                                              as "not_paid_last_2_weeks",  -- AA
-  f.week_end_deposit                                                    as "week_end_deposit",     -- AB
+  coalesce(f.week_end_deposit, 0)                                       as "week_end_deposit",     -- AB
   case when fw.full_week then 1 else 0 end                              as "entire_week_active",   -- AC
   case when al.partner_etm is not null then 'Active' else 'Inactive' end as "1d_active",           -- AD
   case when f.e_os < 0 and coalesce(f.week_end_deposit, 0) = 0 then 1
@@ -257,7 +267,7 @@ select
   least(f.i_tot - f.as_prev_rec, abs(f.e_os - f.aq_prev_cf))            as "current_recovery",     -- AT
   f.i_tot - f.as_prev_rec - least(f.i_tot - f.as_prev_rec, abs(f.e_os - f.aq_prev_cf)) as "advance_recovery", -- AU
   f.av_net                                                              as "net_os",               -- AV
-  f.bad_debt_amount                                                     as "bad_debt",             -- AW
+  coalesce(f.bad_debt_amount, 0)                                        as "bad_debt",             -- AW (0 when no bad debt, as old Sheet)
   case when f.bad_debt_amount < 0 then coalesce(bdr.paid_after_left, 0) else 0 end as "bad_debt_rec", -- AX
   case when f.bad_debt_amount < 0
        then least(coalesce(bdr.paid_after_left, 0), abs(f.bad_debt_amount)) else 0 end as "bad_debt_rec_100pct", -- AY
@@ -293,15 +303,16 @@ select
        when f.tenure_days <= 90 then '60-90' when f.tenure_days <= 120 then '90-120'
        else '120+' end                                                  as "Tenure_Buckets",       -- BI
   f.tenure_days                                                         as "tenure_days",          -- BJ
-  null::text                                                            as "uber_tenure_tag",      -- BK
-  null::text                                                            as "source_channel",       -- BL
+  case when elc.uber_tag ilike 'old%' then 'Old In Uber'
+       when elc.uber_tag ilike 'new%' then 'New In Uber' end            as "uber_tenure_tag",      -- BK
+  elc.source_channel                                                    as "source_channel",       -- BL
   rcp.start_date                                                        as "car_recovery_startdate",   -- BM
   rcp.end_date                                                          as "car_recovery_enddate",     -- BN
   rcp.end_date - rcp.start_date                                         as "car_recovery_pending_tat", -- BO
   null::text                                                            as "firstdate_critical_risk",  -- BP
   f.bq_lt80                                                             as "<60_L2w",              -- BQ
   null::text                                                            as "bad_debt",             -- BR
-  null::text                                                            as "allocation_location",  -- BS
+  al.alloc_hub                                                          as "allocation_location",  -- BS
   null::text                                                            as "allocation_location",  -- BT
   null::text                                                            as "OWN NOW SWASTIK",      -- BU
   null::text                                                            as " ",                    -- BV
@@ -313,4 +324,5 @@ left join ml  on ml.partner_et_id = f.partner_etm and ml.week        = f.hissab_
 left join fw  on fw.partner_etm  = f.partner_etm and fw.hissab_week  = f.hissab_week
 left join bdr on bdr.partner_etm = f.partner_etm and bdr.hissab_week = f.hissab_week
 left join rcp on rcp.employee_id = f.partner_etm and rcp.hw          = f.hissab_week
+left join elc on elc.employee_id = f.partner_etm
 order by f.hissab_week, f.city, f.partner_etm;
