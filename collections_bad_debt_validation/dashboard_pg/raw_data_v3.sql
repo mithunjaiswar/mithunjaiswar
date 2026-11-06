@@ -279,7 +279,7 @@ select
   f.lead_id                                                             as "lead_id",              -- BA
   f.week_start_deposit                                                  as "sd_week_start",        -- BB
   case when f.in_car_recovery_hissab_week then 'Yes' else 'No' end      as "in_car_recovery",      -- BC
-  f.prod_type                                                             as "bad_debt_product_type",  -- BD
+  case when f.eip_tag = 1 then 'EIP' else f.prod_type end              as "bad_debt_product_type",  -- BD (EIP plan pilots = EIP, as old Sheet)
   case when f.ap_cf = 0 then ''
        when abs(f.ap_cf) < 1000 then '1 to 1K' when abs(f.ap_cf) < 5000 then '1K to 5K'
        when abs(f.ap_cf) < 10000 then '5K to 10K' when abs(f.ap_cf) < 15000 then '10K to 15K'
