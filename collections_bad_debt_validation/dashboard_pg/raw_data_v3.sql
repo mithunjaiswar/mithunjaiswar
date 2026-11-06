@@ -115,6 +115,21 @@ elc as materialized (
   group by 1
 ),
 -- calling attempts / connects in the hisaab week
+-- BK fallback: Uber first trip (mv_uber_ftd) before first allocation (driver_profile) = Old, else New
+--   (same rule as the old Sheet's FT Tracker; ELC tag wins when present)
+fdr as materialized (select id, employee_id from fleet_driver where employee_id in (select partner_etm from o)),
+fa as materialized (select dp.driver_id, min(dp.start_date)::date as first_alloc from driver_profile dp
+                    where dp.driver_id in (select id from fdr) group by 1),
+ftd as materialized (select u.driver_id, min(u.date)::date as first_trip from mv_uber_ftd u
+                     where u.driver_id in (select id from fdr) group by 1),
+utag as materialized (
+  select fdr.employee_id,
+         case when ftd.first_trip < fa.first_alloc then 'Old In Uber' else 'New In Uber' end as tag
+  from fdr left join fa on fa.driver_id = fdr.id left join ftd on ftd.driver_id = fdr.id
+),
+-- BL source channel: joining source in ssot_alloc_dealloc_full (old Sheet: Allocations Cohort sheet), ELC as fallback
+chn as materialized (select employee_id, max(main_source) as src from analytics.ssot_alloc_dealloc_full
+                     where main_source <> '' and employee_id in (select partner_etm from o) group by 1),
 cl as materialized (
   select partner_et_id, week_start, sum(attempt_count) as attempts, sum(connect_count) as connects
   from public.collections_calling_data_raw
@@ -306,8 +321,8 @@ select
        else '120+' end                                                  as "Tenure_Buckets",       -- BI
   f.tenure_days                                                         as "tenure_days",          -- BJ
   case when elc.uber_tag ilike 'old%' then 'Old In Uber'
-       when elc.uber_tag ilike 'new%' then 'New In Uber' end            as "uber_tenure_tag",      -- BK
-  elc.source_channel                                                    as "source_channel",       -- BL
+       when elc.uber_tag ilike 'new%' then 'New In Uber' else utag.tag end as "uber_tenure_tag",    -- BK
+  coalesce(chn.src, elc.source_channel)                                 as "source_channel",       -- BL
   rcp.start_date                                                        as "car_recovery_startdate",   -- BM
   rcp.end_date                                                          as "car_recovery_enddate",     -- BN
   rcp.end_date - rcp.start_date                                         as "car_recovery_pending_tat", -- BO
@@ -327,4 +342,6 @@ left join fw  on fw.partner_etm  = f.partner_etm and fw.hissab_week  = f.hissab_
 left join bdr on bdr.partner_etm = f.partner_etm and bdr.hissab_week = f.hissab_week
 left join rcp on rcp.employee_id = f.partner_etm and rcp.hw          = f.hissab_week
 left join elc on elc.employee_id = f.partner_etm
+left join utag on utag.employee_id = f.partner_etm
+left join chn on chn.employee_id = f.partner_etm
 order by f.hissab_week, f.city, f.partner_etm;
