@@ -27,8 +27,8 @@ alloc_today as materialized (   -- allocations live at any time today
     and (ca.deallocation_id is null or cd.date::date >= p.t)
 ),
 eipset as materialized (   -- EIP plan pilots last week (active_list rule)
-  select distinct flw.partner_id from fleet_leasing_weeklydata flw, p
-  where flw.leasing_type = 'EIP' and flw.start_date = p.w - 7
+  select distinct flw.partner_id from fleet_leasing_weeklydata flw
+  where flw.leasing_type = 'EIP' and flw.start_date = (select w from p) - 7
 ),
 act as materialized (   -- active_list product logic (team of the car)
   select distinct on (a.driver_id) a.driver_id, fd.employee_id as etm, team.city,
@@ -65,12 +65,16 @@ pop as materialized (
   union all
   select act.etm, act.city, act.product, 0 from act where act.etm not in (select etm from cl)
 ),
+leads as materialized (   -- latest lead per driver, read once (a per-row lookup was scanning the whole table each time)
+  select distinct on (hawkeye_driver_id) hawkeye_driver_id, lead_id
+  from crm.lead_driver where hawkeye_driver_id is not null
+  order by hawkeye_driver_id, id desc
+),
 drv as materialized (
   select pop.*, fd.id as driver_id, fd.name as partner_name, ld.lead_id
   from pop
   join lateral (select f.id, f.name from fleet_driver f where f.employee_id = pop.etm order by f.id desc limit 1) fd on true
-  left join lateral (select l.lead_id from crm.lead_driver l where l.hawkeye_driver_id = fd.id
-                     order by l.id desc limit 1) ld on true
+  left join leads ld on ld.hawkeye_driver_id = fd.id
 ),
 -- ---------- money ----------
 rec as materialized (
@@ -81,8 +85,8 @@ rec as materialized (
          sum(r.amount) filter (where r.recovery_type::text = 'positive_adjustment')     as adj,
          sum(r.amount) filter (where r.recovery_type::text = 'deposit_to_os')           as dp,
          sum(r.amount) filter (where r.date < (select t from p))                       as tot_sod   -- start of day
-  from mv_daily_recovery r, p
-  where r.date between p.rw and p.rw + 6
+  from mv_daily_recovery r
+  where r.date between (select rw from p) and (select rw from p) + 6
     and r.recovery_type::text in ('razorpay_recovery','other_positive_recovery','phonepe_recovery','positive_adjustment','deposit_to_os')
     and r.employee_id in (select etm from drv)
   group by 1
@@ -94,31 +98,35 @@ dep as materialized (
   where d.deposit_type not in ('OWNNOW_TO_OWNNOW', 'SD_TO_OWNNOW') and d.employee_id in (select etm from drv)
   group by 1
 ),
+lw_part as materialized (   -- pilots with a leasing / rev-share week row last week
+  select a.partner_id as driver_id from fleet_leasing_weeklydata a
+  where a.start_date >= (select w from p) - 7 and a.start_date < (select w from p)
+  union
+  select a.driver_id from fleet_weeklydata a
+  where a.week_start_date >= (select w from p) - 7 and a.week_start_date < (select w from p)
+),
 lwos as materialized (   -- total_os_raw: last week OS (account_ledger + fleet_leasing_total_os)
   select os.partner_id as driver_id, sum(os.total_os)::int as os
   from (
-    select driver_id as partner_id, total_os from account_ledger, p
-    where driver_id in (select driver_id from drv) and week_start_date >= p.w - 7 and week_start_date < p.w
+    select driver_id as partner_id, total_os from account_ledger
+    where week_start_date >= (select w from p) - 7 and week_start_date < (select w from p)
     union all
-    select partner_id, total_os from fleet_leasing_total_os, p
-    where partner_id in (select driver_id from drv) and week_start_date >= p.w - 7 and week_start_date < p.w
+    select partner_id, total_os from fleet_leasing_total_os
+    where week_start_date >= (select w from p) - 7 and week_start_date < (select w from p)
   ) os
-  where os.partner_id in (select a.partner_id from fleet_leasing_weeklydata a, p
-                          where a.partner_id in (select driver_id from drv) and a.start_date >= p.w - 7 and a.start_date < p.w
-                          union
-                          select a.driver_id from fleet_weeklydata a, p
-                          where a.driver_id in (select driver_id from drv) and a.week_start_date >= p.w - 7 and a.week_start_date < p.w)
+  join (select distinct driver_id from drv) d on d.driver_id = os.partner_id
+  join lw_part lp on lp.driver_id = os.partner_id
   group by 1
   having sum(os.total_os)::int <> 0
 ),
 habit as materialized (
   select distinct on (h.driver_id) h.driver_id, coalesce(h.payment_habit, 'Good') as habit
-  from driver_repayment_habit h, p
-  where h.week_start_date < p.w and h.driver_id in (select driver_id from drv)
+  from driver_repayment_habit h
+  where h.week_start_date < (select w from p) and h.driver_id in (select driver_id from drv)
   order by h.driver_id, h.week_start_date desc, h.id desc
 ),
--- ---------- daily car rows (earnings_raw + nd_raw), from Monday of last week till yesterday ----------
-days as (select generate_series((select w from p) - 8, (select t from p) - 1, interval '1 day')::date as d),
+-- ---------- daily car rows (earnings_raw + nd_raw): current week till yesterday + last week (only for the 2 last-week columns) ----------
+days as (select generate_series((select w from p) - 7, (select t from p) - 1, interval '1 day')::date as d),
 cday as materialized (
   select dy.d, ca.driver_id, ca.car_id
   from days dy
@@ -150,14 +158,14 @@ trip as materialized (
          round(sum(fdt.fare_total)) as fare, round(sum(fdt.cash_collected)) as cash, round(sum(fdt.tip_amount)) as tip,
          round(sum(fdt.subscription_charges)) as subs
   from fleet_dailytrip fdt
-  where fdt.date between (select w from p) - 8 and (select t from p) - 1 and fdt.trips > 0 and fdt.car_id is not null
+  where fdt.date between (select w from p) - 7 and (select t from p) - 1 and fdt.trips > 0 and fdt.car_id is not null
     and fdt.car_id in (select car_id from cday)
   group by 1, 2
 ),
 km as materialized (
   select k.date as d, k.car_id, sum(k.gps_km) as gps, sum(k.uber_km) as uber, sum(k.dead_km) as dead
   from car_dead_km k
-  where k.date between (select w from p) - 8 and (select t from p) - 1 and k.car_id in (select car_id from cday)
+  where k.date between (select w from p) - 7 and (select t from p) - 1 and k.car_id in (select car_id from cday)
   group by 1, 2
 ),
 rg as materialized (   -- rental_guide (current)
@@ -208,6 +216,7 @@ nda as materialized (
   from nd n, p group by n.driver_id
 ),
 -- ---------- other lookups ----------
+act_now as materialized (select distinct driver_id from alloc_today where deallocation_id is null),
 cars_now as materialized (
   select a.driver_id, string_agg(distinct fc.car_number, ', ') as cars
   from alloc_today a join fleet_car fc on fc.id = a.car_id where a.deallocation_id is null group by 1
@@ -233,6 +242,7 @@ rcar as materialized (   -- car_recovery_raw: cases open today
                      where b.recovery_id = a.id and b.recovery_status in ('complete','failed','cancelled')
                      order by b.id desc limit 1) ls on true
   where a.activation_date < current_date + 1 and (ls.close_date is null or ls.close_date >= current_date)
+    and a.driver_id in (select driver_id from drv)
   group by 1
 ),
 lpaid as materialized (
@@ -281,7 +291,7 @@ ndlist as materialized (   -- nd_list: live car now, and 0 trips (Uber + Ola) ye
                union all
                select car_id, trips from fleet_ola_dailytrip where car_id is not null and date::date = current_date - 1) x
              group by 1) te on te.car_id = ad.car_id
-  where ad.driver_id in (select driver_id from alloc_today where deallocation_id is null)
+  where ad.driver_id in (select driver_id from act_now)
   group by 1 having sum(coalesce(te.tt, 0)) = 0
 ),
 remarks as materialized (
@@ -394,8 +404,7 @@ select
   case when x.m_os = 0 then 0 else least(x.n_rec, abs(x.m_os)) / abs(x.m_os) end as "recovery_pct",
   x.q as "razorpay_recovery", x.r_ as "other_recovery", x.s as "phonepe_recovery", x.t_ as "adjustments", x.u as "dp_to_os",
   x.v_dep                                               as "current_deposit",
-  case when exists (select 1 from alloc_today a where a.driver_id = x.driver_id and a.deallocation_id is null)
-       then 'Active' else 'Inactive' end                as "active / inactive",
+  case when an.driver_id is not null then 'Active' else 'Inactive' end as "active / inactive",
   coalesce(h.habit, 'Good')                             as "last_payment_habit",
   x.y_lwos                                              as "Last Week OS",
   x.z_cars                                              as "Car Count",
@@ -443,6 +452,7 @@ select
   coalesce(x.car_model, '')                             as "car_model"
 from b3 x
 left join elc on elc.driver_id = x.driver_id
+left join act_now an on an.driver_id = x.driver_id
 left join cars_now cn on cn.driver_id = x.driver_id
 left join habit h on h.driver_id = x.driver_id
 left join rcar rc on rc.driver_id = x.driver_id
