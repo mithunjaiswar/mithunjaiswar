@@ -127,6 +127,10 @@ utag as materialized (
          case when ftd.first_trip < fa.first_alloc then 'Old In Uber' else 'New In Uber' end as tag
   from fdr left join fa on fa.driver_id = fdr.id left join ftd on ftd.driver_id = fdr.id
 ),
+-- BK main source (Nov-07): public.new_to_uber = FT Tracker data. Uber first ever trip before first allocation = Old, else New
+nt as materialized (select et_id as employee_id,
+                           case when min(first_ever_trip_date)::date < min(first_allocation_date) then 'Old In Uber' else 'New In Uber' end as tag
+                    from public.new_to_uber where et_id in (select partner_etm from o) group by 1),
 -- BL source channel: joining source in ssot_alloc_dealloc_full (old Sheet: Allocations Cohort sheet), ELC as fallback
 chn as materialized (select employee_id, max(main_source) as src from analytics.ssot_alloc_dealloc_full
                      where main_source <> '' and employee_id in (select partner_etm from o) group by 1),
@@ -320,8 +324,7 @@ select
        when f.tenure_days <= 90 then '60-90' when f.tenure_days <= 120 then '90-120'
        else '120+' end                                                  as "Tenure_Buckets",       -- BI
   f.tenure_days                                                         as "tenure_days",          -- BJ
-  case when elc.uber_tag ilike 'old%' then 'Old In Uber'
-       when elc.uber_tag ilike 'new%' then 'New In Uber' else utag.tag end as "uber_tenure_tag",    -- BK
+  coalesce(nt.tag, utag.tag)                                            as "uber_tenure_tag",    -- BK (new_to_uber, else mv_uber_ftd rule)
   coalesce(chn.src, elc.source_channel)                                 as "source_channel",       -- BL
   rcp.start_date                                                        as "car_recovery_startdate",   -- BM
   rcp.end_date                                                          as "car_recovery_enddate",     -- BN
@@ -343,5 +346,6 @@ left join bdr on bdr.partner_etm = f.partner_etm and bdr.hissab_week = f.hissab_
 left join rcp on rcp.employee_id = f.partner_etm and rcp.hw          = f.hissab_week
 left join elc on elc.employee_id = f.partner_etm
 left join utag on utag.employee_id = f.partner_etm
+left join nt  on nt.employee_id  = f.partner_etm
 left join chn on chn.employee_id = f.partner_etm
 order by f.hissab_week, f.city, f.partner_etm;
