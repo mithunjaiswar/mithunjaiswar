@@ -203,7 +203,7 @@ rcase as materialized (
 -- latest case open in the hisaab week
 rcp as materialized (
   select distinct on (c.employee_id, w.hw) c.employee_id, w.hw, c.start_date,
-         coalesce(c.close_date, current_date) as end_date
+         coalesce(c.close_date, greatest(current_date, w.hw + 7)) as end_date   -- pending: next Monday at least (as old Sheet)
   from rcase c
   join wk w on c.start_date <= w.hw + 6 and coalesce(c.close_date, current_date) >= w.hw
   order by c.employee_id, w.hw, c.start_date desc
