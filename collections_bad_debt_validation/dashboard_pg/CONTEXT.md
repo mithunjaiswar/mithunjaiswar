@@ -137,3 +137,15 @@ Known gaps to tell the user:
   of the week, deposit from mv_deposits_raw). Raw lines in sd_bucket!Z, A2 = SPLIT. 4 weeks loaded (testing).
 - Original "Deposit [At Allocation]" is wrong (SD sheet col N static/misaligned + date mismatch); ours = Query 5 logic.
 - D2O_Deposit_Bucket: #VALUE came from Raw_Data duplicate header row 2 (deleted; BX2 restored).
+
+## 10. Go-live copy (07-Nov)
+- Live sheet: `1rJigJz7tN8BW8bqfCZ6Tb1uqlXDpAf2K4KxSVwJ8HFY` ("Everest | India Collections Dashboard V2.0 - Live"),
+  copy of the verification sheet, shared with raja.samal (editor).
+- Removed test tabs (Tab_Status, Gap_Notes, Differ Reason, WBR_Original, Tab_Check) and the WBR View compare columns BA:CU.
+- Raw_Data BZ:CE helper moved to tab `Raw_Data_Helper` (A:B MV funnel lookup, D:E Uber tag fix, F old BK);
+  Raw_Data AX2 / BK2 formulas point there. The automation query writes AX and BK directly, so the helper is only a fallback.
+- Automation: SQL query Automation sheet `1uKeBnDSiKO1Lyei-vadU66P3nUFfCL_pUemyKq4r7QE`, tab collections_queries, rows 2-4
+  (every 3 hours: 8, 11, 14, 17, 20 at :15): Raw_Data!A1 (raw_data_v3.sql), sd_bucket!Z1 (sd_bucket_automation.sql),
+  OS_Surpass!A1 (os_surpass.sql). Comments removed in the sheet copies of the queries.
+- Still manual: NonFunnel_BadDebt_Collected, advance_payment_data, exception list (same data as old sheet);
+  Ownership_CR_Import needs "Allow access" (IMPORTRANGE) in the new file.
