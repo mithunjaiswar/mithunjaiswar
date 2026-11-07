@@ -13,7 +13,7 @@
 --   AD 1d_active           = car allotted on at least 1 day of the hisaab week
 --   AJ/AK attempts/connects= public.collections_calling_data_raw, week_start = hisaab week
 --   AA, AE, AF, AH, AL, AM, AO, AP..AV, AZ, BE..BI, BQ = old Sheet formulas (row 87926) as SQL
---   AX bad_debt_rec        = mv_daily_recovery paid AFTER the hisaab week and after the pilot left (jama)
+--   AX bad_debt_rec        = MV bad_debt_collected (direct from analytics.collections_bad_debt_mv, bad debt rows only); AY = MIN(AX, |AW|)
 --   BM/BN/BO car recovery  = recovery_cars: start date, close date (today if pending), days open till min(close, week end, today)
 -- =====================================================================================
 with wk as (
@@ -160,27 +160,6 @@ fw as materialized (
    and coalesce(s.jama_date, current_date) >= o.hissab_week
   group by 1, 2
 ),
--- AX bad_debt_rec: money paid after the hisaab week and after the pilot left (bad debt rows only)
-bdo as materialized (   -- bad debt rows only
-  select hissab_week, partner_etm, last_jama_date from o where bd_amt < 0
-),
-pay as materialized (     -- daily payments of those partners after the first output week
-  select employee_id, date::date as d, sum(amount) as amt
-  from mv_daily_recovery
-  where employee_id in (select partner_etm from bdo)
-    and date >= (select w0 from lim) + 7
-    and recovery_type::text in ('razorpay_recovery', 'other_positive_recovery', 'phonepe_recovery',
-                                'positive_adjustment', 'deposit_to_os')
-  group by 1, 2
-),
-bdr as materialized (
-  select bdo.hissab_week, bdo.partner_etm, sum(p.amt) as paid_after_left
-  from bdo
-  join pay p on p.employee_id = bdo.partner_etm
-            and p.d >= bdo.hissab_week + 7
-            and p.d > coalesce(bdo.last_jama_date, bdo.hissab_week + 6)
-  group by 1, 2
-),
 -- car recovery cases (recovery_cars): partner = case driver, else driver allocated to the car at activation
 rcase as materialized (
   select a.activation_date::date as start_date,
@@ -289,11 +268,11 @@ select
   f.i_tot - f.as_prev_rec - least(f.i_tot - f.as_prev_rec, abs(f.e_os - f.aq_prev_cf)) as "advance_recovery", -- AU
   f.av_net                                                              as "net_os",               -- AV
   coalesce(f.bd_amt, 0)                                        as "bad_debt",             -- AW (0 when no bad debt, as old Sheet)
-  case when f.bd_amt < 0 then coalesce(bdr.paid_after_left, 0) else 0 end as "bad_debt_rec", -- AX
+  case when f.bd_amt < 0 then coalesce(f.bad_debt_collected, 0) else 0 end as "bad_debt_rec", -- AX = MV bad_debt_collected
   case when f.bd_amt < 0
-       then least(coalesce(bdr.paid_after_left, 0), abs(f.bd_amt)) else 0 end as "bad_debt_rec_100pct", -- AY
+       then least(coalesce(f.bad_debt_collected, 0), abs(f.bd_amt)) else 0 end as "bad_debt_rec_100pct", -- AY
   coalesce(case when f.bd_amt < 0
-                then least(coalesce(bdr.paid_after_left, 0), abs(f.bd_amt)) else 0 end, 0)
+                then least(coalesce(f.bad_debt_collected, 0), abs(f.bd_amt)) else 0 end, 0)
     + coalesce(f.bd_amt, 0)                                    as "net_bad_debt",         -- AZ = AY + AW
   f.lead_id                                                             as "lead_id",              -- BA
   f.week_start_deposit                                                  as "sd_week_start",        -- BB
@@ -342,7 +321,6 @@ left join al  on al.partner_etm  = f.partner_etm and al.hissab_week  = f.hissab_
 left join cl  on cl.partner_et_id = f.partner_etm and cl.week_start  = f.hissab_week
 left join ml  on ml.partner_et_id = f.partner_etm and ml.week        = f.hissab_week
 left join fw  on fw.partner_etm  = f.partner_etm and fw.hissab_week  = f.hissab_week
-left join bdr on bdr.partner_etm = f.partner_etm and bdr.hissab_week = f.hissab_week
 left join rcp on rcp.employee_id = f.partner_etm and rcp.hw          = f.hissab_week
 left join elc on elc.employee_id = f.partner_etm
 left join utag on utag.employee_id = f.partner_etm
