@@ -313,8 +313,8 @@ select
   null::text                                                            as "bad_debt",             -- BR
   al.alloc_hub                                                          as "allocation_location",  -- BS
   null::text                                                            as "allocation_location",  -- BT
-  null::text                                                            as "OWN NOW SWASTIK",      -- BU
-  null::text                                                            as " ",                    -- BV
+  f.t_dp                                                                as "OWN NOW SWASTIK",      -- BU = T dp_to_os_100pct (old Sheet =T)
+  f.av_net + f.t_dp                                                     as " ",                    -- BV = AV net_os + BU (old Sheet =AV+BU)
   null::text                                                            as "bad_debt_attrition"    -- BW
 from f
 left join al  on al.partner_etm  = f.partner_etm and al.hissab_week  = f.hissab_week
