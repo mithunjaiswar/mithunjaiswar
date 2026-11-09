@@ -149,3 +149,15 @@ Known gaps to tell the user:
   OS_Surpass!A1 (os_surpass.sql). Comments removed in the sheet copies of the queries.
 - Still manual: NonFunnel_BadDebt_Collected, advance_payment_data, exception list (same data as old sheet);
   Ownership_CR_Import needs "Allow access" (IMPORTRANGE) in the new file.
+
+## 11. Original sheet made live (09-Nov)
+- Backup of the original before changes: `1qzRuyNJnxvnEs7xVG-jIt43z31qCroWcKudqNF03Tz8` (shared with raja.samal).
+- Original `1wkebsPPLwXnRYAuvRV_fhMGQLRxv6JwH-cYlaIEBjRw`: green tabs + sd_bucket, sd_bucket_V2, OS_Surpass, SD_Tenure_Mix View replaced
+  with the tested version (copy-paste into the same tabs, so tab ids / links stay). Formulas checked = verification sheet 1rZVul (0 diffs).
+  Kept as they were (same or live-fed): City_Targets, filter, excellent_data, advance_payment_data, NonFunnel_BadDebt_Collected,
+  Ownership_CR_Import, Readme!, Updated at, Action Items, Dash Roadmap, City Deepdive [AI], Deck_CityView, Query, notpaid_list,
+  attrition_data, ownnow_highrisk, collections_data, live_hisaab_data, last_updated, D2O_Bucket_HowToUpdate, Copy of Summary 2.
+  Added: Gap_Reason, exception list. Raw_Data BX (exception_status) + BY (potential bad debt) formulas added.
+  Deleted junk tabs (Sheet156, Copy of WBR View x2, EV Review, coc, Targets_View, OS_Raw/OS_Deepdive [WIP], NotPaid_Summary,
+  Bangalore Data, SD_Deepdive, For Deck -Int, city_comparison, Copy of Deck_CityView, Rent, Exclusions_Weekly, test_rawdata).
+- collections_queries rows 2-4 now write to the original (Raw_Data A1, sd_bucket Z1, OS_Surpass A1).
