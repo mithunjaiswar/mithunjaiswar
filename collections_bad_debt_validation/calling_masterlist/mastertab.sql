@@ -10,6 +10,14 @@
 --                             = the "stored" list. If stored = critical: still critical now -> 'Critical_Risk',
 --                             else 'Out of Critical'. Not in stored list -> ''.
 -- Sheet bugs kept as they are (so numbers match the sheet) are marked "SHEET BUG".
+--
+-- Speed (was 12 min; pieces timed separately add up to about 1.5 min - full run still to be timed):
+--   * car_allocation read ONCE (ca_all) and reused for live cars, daily cars, ELC, last jama, ND list
+--   * team of each live car: one join (ateam) instead of a lateral per allocation
+--   * driver lookup by ETM: one join instead of a lateral (the lateral walked the id index)
+--   * deposits: index-only scan (filter written exactly like the partial index) + today's deposits separately
+--   * payment habit: hypertable chunked by created_at -> read only the last 35 days of chunks
+--   * car model: index lookup per driver; remarks: snapshot_date filter
 -- =====================================================================================
 with p as (select date_trunc('week', current_date)::date as w, current_date as t,
                   date_trunc('week', current_date - 1)::date as rw),   -- rw = week of collections_raw (yesterday's week)
@@ -20,18 +28,37 @@ cl as materialized (   -- collections_list
   from analytics.collections_bad_debt_mv m, p
   where m.for_collections = 1 and m.hissab_week = p.w and m.total_os < 0
 ),
+ca_all as materialized (   -- ONE scan of car_allocation: live allocations + those jama'd in the last 15 weeks
+  select ca.id, ca.driver_id, ca.car_id, ca.allocation_date, ca.deallocation_id, cd.date as jama_dt
+  from car_allocation ca
+  left join car_deallocation cd on cd.id = ca.deallocation_id
+  where ca.deactivation_date is null
+    and (ca.deallocation_id is null or cd.date is null or cd.date >= date_trunc('week', current_date) - interval '15 weeks')
+),
 alloc_today as materialized (   -- allocations live at any time today
-  select ca.driver_id, ca.car_id, cd.date as jama_dt, ca.deallocation_id
-  from car_allocation ca left join car_deallocation cd on cd.id = ca.deallocation_id, p
-  where ca.deactivation_date is null and ca.allocation_date::date <= p.t
-    and (ca.deallocation_id is null or cd.date::date >= p.t)
+  select a.driver_id, a.car_id, a.jama_dt, a.deallocation_id
+  from ca_all a, p
+  where a.allocation_date::date <= p.t
+    and (a.deallocation_id is null or a.jama_dt::date >= p.t)
 ),
 eipset as materialized (   -- EIP plan pilots last week (active_list rule)
   select distinct flw.partner_id from fleet_leasing_weeklydata flw
   where flw.leasing_type = 'EIP' and flw.start_date = (select w from p) - 7
 ),
+ateam as materialized (   -- team of each live car (latest team by end date), one join instead of a lateral per row
+  select distinct on (a.driver_id, a.car_id, a.deallocation_id) a.driver_id,
+         coalesce(fcity.name, fcity2.name) as city, ft.payment_model_id as pm, fcar.model_id
+  from alloc_today a
+  left join fleet_car_team fct on fct.car_id = a.car_id and fct.start_date <= coalesce(a.jama_dt::date, current_date)
+  left join fleet_team ft on ft.id = fct.team_id
+  left join fleet_company_loc fcl on fcl.id = ft.loc_id
+  left join fleet_city fcity on fcity.id = fcl.city_id
+  left join fleet_car fcar on fcar.id = fct.car_id
+  left join fleet_city fcity2 on fcity2.id = fcar.city_id
+  order by a.driver_id, a.car_id, a.deallocation_id, coalesce(fct.end_date, current_date) desc
+),
 act as materialized (   -- active_list product logic (team of the car)
-  select distinct on (a.driver_id) a.driver_id, fd.employee_id as etm, team.city,
+  select distinct on (team.driver_id) team.driver_id, fd.employee_id as etm, team.city,
     case when team.pm = 3 then 'Fixed Pay'
          when team.model_id in (8,16,20,52,53,54,55,40,41,42,43) then 'EV'
          when eip.partner_id is not null then 'EIP'
@@ -44,21 +71,10 @@ act as materialized (   -- active_list product logic (team of the car)
              case when team.pm = 6 then 5 else 0 end, case when team.pm = 9 then 4 else 0 end,
              case when team.model_id in (8,16,20,52,53,54,55,40,41,42,43) then 3 else 0 end,
              case when team.pm = 1 then 2 else 0 end, 1) as rk
-  from alloc_today a
-  join fleet_driver fd on fd.id = a.driver_id
-  left join lateral (
-    select coalesce(fcity.name, fcity2.name) as city, ft.payment_model_id as pm, fcar.model_id
-    from fleet_car_team fct
-    left join fleet_team ft on ft.id = fct.team_id
-    left join fleet_company_loc fcl on fcl.id = ft.loc_id
-    left join fleet_city fcity on fcity.id = fcl.city_id
-    left join fleet_car fcar on fcar.id = fct.car_id
-    left join fleet_city fcity2 on fcity2.id = fcar.city_id
-    where fct.car_id = a.car_id and fct.start_date <= coalesce(a.jama_dt::date, current_date)
-    order by coalesce(fct.end_date, current_date) desc limit 1
-  ) team on true
-  left join eipset eip on eip.partner_id = a.driver_id
-  order by a.driver_id, rk desc
+  from ateam team
+  join fleet_driver fd on fd.id = team.driver_id
+  left join eipset eip on eip.partner_id = team.driver_id
+  order by team.driver_id, rk desc
 ),
 pop as materialized (
   select etm, city, product, 1 as in_cl from cl
@@ -73,7 +89,8 @@ leads as materialized (   -- latest lead per driver, read once (a per-row lookup
 drv as materialized (
   select pop.*, fd.id as driver_id, fd.name as partner_name, ld.lead_id
   from pop
-  join lateral (select f.id, f.name from fleet_driver f where f.employee_id = pop.etm order by f.id desc limit 1) fd on true
+  join (select distinct on (f.employee_id) f.employee_id, f.id, f.name from fleet_driver f
+        where f.employee_id in (select etm from pop) order by f.employee_id, f.id desc) fd on fd.employee_id = pop.etm
   left join leads ld on ld.hawkeye_driver_id = fd.id
 ),
 -- ---------- money ----------
@@ -91,12 +108,22 @@ rec as materialized (
     and r.employee_id in (select etm from drv)
   group by 1
 ),
-dep as materialized (
-  select d.employee_id as etm, sum(d.amount) as dep_now,
-         sum(d.amount) filter (where d.date < (select t from p)) as dep_sod
+dep_all as materialized (   -- index-only scan on idx_mdr_dep_valid_emp (filter must match the index predicate)
+  select d.employee_id as etm, sum(d.amount) as dep_now
   from mv_deposits_raw d
-  where d.deposit_type not in ('OWNNOW_TO_OWNNOW', 'SD_TO_OWNNOW') and d.employee_id in (select etm from drv)
+  where d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[])
   group by 1
+),
+dep_today as materialized (
+  select d.employee_id as etm, sum(d.amount) as amt
+  from mv_deposits_raw d
+  where d.date >= (select t from p) and d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[])
+  group by 1
+),
+dep as materialized (
+  select a.etm, a.dep_now, a.dep_now - coalesce(t.amt, 0) as dep_sod
+  from dep_all a left join dep_today t on t.etm = a.etm
+  where a.etm in (select etm from drv)
 ),
 lw_part as materialized (   -- pilots with a leasing / rev-share week row last week
   select a.partner_id as driver_id from fleet_leasing_weeklydata a
@@ -122,7 +149,8 @@ lwos as materialized (   -- total_os_raw: last week OS (account_ledger + fleet_l
 habit as materialized (
   select distinct on (h.driver_id) h.driver_id, coalesce(h.payment_habit, 'Good') as habit
   from driver_repayment_habit h
-  where h.week_start_date < (select w from p) and h.driver_id in (select driver_id from drv)
+  where h.created_at >= now() - interval '35 days'   -- chunk pruning (hypertable on created_at); 14 days missed 19 pilots (old rows), 35 days = last 5 weekly runs
+    and h.week_start_date < (select w from p)
   order by h.driver_id, h.week_start_date desc, h.id desc
 ),
 -- ---------- daily car rows (earnings_raw + nd_raw): current week till yesterday + last week (only for the 2 last-week columns) ----------
@@ -130,9 +158,8 @@ days as (select generate_series((select w from p) - 7, (select t from p) - 1, in
 cday as materialized (
   select dy.d, ca.driver_id, ca.car_id
   from days dy
-  join car_allocation ca on ca.deactivation_date is null and ca.allocation_date::date <= dy.d
-  left join car_deallocation cd on cd.id = ca.deallocation_id
-  where coalesce(cd.date::date, current_date) >= dy.d and ca.driver_id in (select driver_id from drv)
+  join ca_all ca on ca.allocation_date::date <= dy.d and coalesce(ca.jama_dt::date, current_date) >= dy.d
+  where ca.driver_id in (select driver_id from drv)
 ),
 tint as materialized (   -- team of each car as date intervals (latest start_date, then highest id)
   select fct.car_id, fct.start_date::date as sd,
@@ -221,18 +248,19 @@ cars_now as materialized (
   select a.driver_id, string_agg(distinct fc.car_number, ', ') as cars
   from alloc_today a join fleet_car fc on fc.id = a.car_id where a.deallocation_id is null group by 1
 ),
-model_now as materialized (   -- car_model_mapping: model name of the latest allocated car
-  select distinct on (ca.driver_id) ca.driver_id, fcm.name as car_model
-  from car_allocation ca join fleet_car fc on fc.id = ca.car_id left join fleet_car_model fcm on fcm.id = fc.model_id
-  where ca.deactivation_date is null and ca.driver_id in (select driver_id from drv)
-  order by ca.driver_id, ca.allocation_date desc
+model_now as materialized (   -- car_model_mapping: model name of the latest allocated car (index lookup per driver)
+  select d.driver_id, fcm.name as car_model
+  from (select distinct driver_id from drv) d
+  cross join lateral (select ca.car_id from car_allocation ca
+                      where ca.driver_id = d.driver_id and ca.deactivation_date is null
+                      order by ca.allocation_date desc limit 1) x
+  join fleet_car fc on fc.id = x.car_id left join fleet_car_model fcm on fcm.id = fc.model_id
 ),
 elc as materialized (
   select dp.driver_id from driver_profile dp
   where dp.driver_id in (select driver_id from drv)
-    and exists (select 1 from car_allocation ca left join car_deallocation cd on cd.id = ca.deallocation_id
-                where ca.driver_id = dp.driver_id and ca.deactivation_date is null
-                  and (cd.date is null or cd.date >= date_trunc('week', current_date) - interval '15 weeks'))
+    and dp.driver_id in (select a.driver_id from ca_all a
+                         where a.jama_dt is null or a.jama_dt >= date_trunc('week', current_date) - interval '15 weeks')
   group by 1 having sum(dp.tenure) < 30
 ),
 rcar as materialized (   -- car_recovery_raw: cases open today
@@ -252,11 +280,11 @@ lpaid as materialized (
   group by 1
 ),
 ljama as materialized (   -- last jama, only for partners with no live car
-  select ca.driver_id, max(cd.date)::date as d, (max(cd.date) filter (where cd.date >= (select w from p) - 7))::date as d_lw
-  from car_allocation ca join car_deallocation cd on cd.id = ca.deallocation_id
-  where ca.deactivation_date is null and cd.date >= (date_trunc('week', current_date) - interval '8 weeks')::date
+  select ca.driver_id, max(ca.jama_dt)::date as d, (max(ca.jama_dt) filter (where ca.jama_dt >= (select w from p) - 7))::date as d_lw
+  from ca_all ca
+  where ca.deallocation_id is not null and ca.jama_dt >= (date_trunc('week', current_date) - interval '8 weeks')::date
     and ca.driver_id in (select driver_id from drv)
-    and not exists (select 1 from car_allocation c2 where c2.driver_id = ca.driver_id and c2.deactivation_date is null and c2.deallocation_id is null)
+    and ca.driver_id not in (select driver_id from ca_all where deallocation_id is null and driver_id is not null)
   group by 1
 ),
 calls as materialized (
@@ -283,9 +311,9 @@ newjoin as materialized (
 ),
 ndlist as materialized (   -- nd_list: live car now, and 0 trips (Uber + Ola) yesterday on all cars held yesterday
   select ad.driver_id
-  from (select distinct ca.driver_id, ca.car_id from car_allocation ca left join car_deallocation cd on cd.id = ca.deallocation_id
-        where ca.deactivation_date is null and ca.allocation_date::date <= current_date - 1
-          and coalesce(cd.date::date, current_date) >= current_date - 1 and ca.driver_id in (select driver_id from drv)) ad
+  from (select distinct ca.driver_id, ca.car_id from ca_all ca
+        where ca.allocation_date::date <= current_date - 1
+          and coalesce(ca.jama_dt::date, current_date) >= current_date - 1 and ca.driver_id in (select driver_id from drv)) ad
   left join (select car_id, sum(trips) as tt from (
                select car_id, trips from fleet_dailytrip where car_id is not null and date = current_date - 1
                union all
@@ -307,6 +335,7 @@ remarks as materialized (
       case when coalesce(minimum_uber_trips_pitch, '') <> '' then 'Minimum Uber Trips Pitch:  ' || minimum_uber_trips_pitch end) as txt
   from public.mv_collections_calling_masterlist
   where coalesce(call_status, '') <> '' and week = date_trunc('week', current_date - 1)::date
+    and snapshot_date >= date_trunc('week', current_date - 1)::date   -- rows of a week are snapshotted inside that week
   order by partner_et_id, date desc, loaded_at desc
 ),
 l2w as materialized (   -- notpaid_last2weeks_data (ASSUMED logic, see notes): last 2 hisaab weeks
