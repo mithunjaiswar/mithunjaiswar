@@ -104,7 +104,7 @@ rec as materialized (
          sum(r.amount) filter (where r.date < (select t from p))                       as tot_sod   -- start of day
   from mv_daily_recovery r
   where r.date between (select rw from p) and (select rw from p) + 6
-    and r.recovery_type::text in ('razorpay_recovery','other_positive_recovery','phonepe_recovery','positive_adjustment','deposit_to_os')
+    and r.recovery_type in ('razorpay_recovery','other_positive_recovery','phonepe_recovery','positive_adjustment','deposit_to_os')
     and r.employee_id in (select etm from drv)
   group by 1
 ),
@@ -275,7 +275,7 @@ rcar as materialized (   -- car_recovery_raw: cases open today
 ),
 lpaid as materialized (
   select employee_id as etm, max(date) as d from mv_daily_recovery
-  where recovery_type::text in ('razorpay_recovery','other_positive_recovery','phonepe_recovery')
+  where recovery_type in ('razorpay_recovery','other_positive_recovery','phonepe_recovery')
     and date >= (date_trunc('week', current_date) - interval '8 weeks')::date and employee_id in (select etm from drv)
   group by 1
 ),
