@@ -238,7 +238,7 @@ select
        when b.dep_at_alloc <= 3000 then '1-3K' when b.dep_at_alloc <= 5000 then '3-5K'
        when b.dep_at_alloc <= 10000 then '5-10K' else '10K+' end as "SD Bucket (at allocation)",
   coalesce(dt.dep_now, 0)                                as "Current Deposit",
-  pv.dep_wk_start                                        as "Deposit at Week Start",
+  case when rc.rc_close between b.wk and b.wk + 6 then rc.rc_close end as "Car Recovery Close Date",   -- was Deposit at Week Start (unused); close date in this week
   case when g.etm is null then 'No Car' when g.gps_km > 0 then 'GPS Active' else 'GPS Inactive' end as "Week Start GPS",
   b.weekly_os                                            as "Weekly OS (dash)",
   -pv.wos_abs                                            as "Weekly OS (incl. live-only pilots)",
