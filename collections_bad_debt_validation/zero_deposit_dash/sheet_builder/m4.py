@@ -1,0 +1,86 @@
+import json
+S=113; N=21; C0=2; CL=C0+N  # C..W
+def col(i):
+    s='';i+=1
+    while i: i,m=divmod(i-1,26); s=chr(65+m)+s
+    return s
+LAST=col(CL-1)  # W
+B='raw!$A$2:$A,C$6,raw!$B$2:$B,$Y$4,raw!$DE$2:$DE,1'
+Z0=',raw!$H$2:$H,"0 Deposit"'
+def I(a,b): return f'INDEX(raw!${a}$2:${b},0,C$5)'
+live=I("AH","AN"); coll=I("AO","AU"); wos=I("AV","BB"); sur=I("BC","BI"); cam=I("DH","DN"); ceod=I("DO","DU"); att=I("BX","CD"); con=I("CE","CK")
+J=f'raw!$A$2:$A,C$6,raw!$B$2:$B,$Y$4,raw!$DE$2:$DE,1,raw!$V$2:$V,C$7,raw!$T$2:$T,"<>Existing"'
+def wtd(e=""): return f'=IFERROR(SUM(MAP(SEQUENCE(C$5),LAMBDA(i,SUMIFS(INDEX(raw!$AV$2:$BB,0,i),{B},raw!$F$2:$F,1{e}))))/-SUMIFS(raw!$L$2:$L,{B},raw!$F$2:$F,1{e}),0)'
+CLOSED='IF(raw!$J$1="Car Recovery Close Date",COUNTIFS({B},raw!$J$2:$J,C$7{e}),"after 8:15 AM")'
+M=[
+("S","A. PILOTS & JOINS","b"),
+("act","Active pilots","Has live OS that day",f'=COUNTIFS({B},{live},">-1E+15")',"n"),
+("zact","   of which 0 Deposit","Deposit at allocation = 0",f'=COUNTIFS({B},{live},">-1E+15"{Z0})',"n"),
+("join","New joins + rejoins","Car given that day",f'=COUNTIFS({J})',"n"),
+("zjoin","   of which 0 Deposit","Car given without deposit",f'=COUNTIFS({J}{Z0})',"n"),
+("S","B. RENT GENERATED vs RENT PAID","b"),
+("rg","Rent generated that day (Rs)","Daily rent of all active pilots",f'=SUMIFS(raw!$W$2:$W,{B},{live},">-1E+15")',"n"),
+("tc","Collected that day (Rs)","All payments that day",f'=SUMIFS({coll},{B})',"n"),
+("rgp","   Rent paid % (that day)","Collected / rent generated",'=IFERROR(C{tc}/C{rg},0)',"p"),
+("rgw","Rent generated - week to date (Rs)","Monday to this day",f'=SUM(MAP(SEQUENCE(C$5),LAMBDA(i,SUMIFS(raw!$W$2:$W,{B},INDEX(raw!$AH$2:$AN,0,i),">-1E+15"))))',"n"),
+("tcw","Collected - week to date (Rs)","Monday to this day",f'=SUM(MAP(SEQUENCE(C$5),LAMBDA(i,SUMIFS(INDEX(raw!$AO$2:$AU,0,i),{B}))))',"n"),
+("rgwp","   Rent paid % (week to date)","Below 100% = pilots paying less than rent",'=IFERROR(C{tcw}/C{rgw},0)',"p"),
+("S","C. WEEKLY OS & LIVE OS COLLECTION (Weekly OS = India Collections dash)","b"),
+("wos","Weekly OS (Rs)","Monday OS of dash pilots",f'=-SUMIFS(raw!$L$2:$L,{B},raw!$F$2:$F,1)',"n"),
+("wosc","Weekly OS collected that day (Rs)","Payment counted against Weekly OS",f'=SUMIFS({wos},{B},raw!$F$2:$F,1)',"n"),
+("wosp","Weekly OS collected % (week to date)","Cumulative from Monday",wtd(),"p"),
+("zwosp","   0 Deposit pilots - Weekly OS collected %","Lower than above = 0 deposit pays slower",wtd(Z0),"p"),
+("lc","Collected on Live OS (Rs)","Only after Weekly OS is fully paid",'=MAX(0,C{tc}-C{wosc})',"n"),
+("lo","Live OS owed at day end (Rs)","What pilots still owe",f'=-SUMIFS({live},{B},{live},"<0")',"n"),
+("lp","Live OS collection %","Collected on Live OS / (collected + owed)",'=IFERROR(C{lc}/(C{lc}+C{lo}),0)',"p"),
+("S","D. CRITICAL & CALLING (Critical = MasterTab rule OR Live OS >= Deposit)","b"),
+("cam","Critical - Morning (fixed list)","Start of day, includes all surpassed",f'=COUNTIFS({B},{cam},1)',"n"),
+("ceod","Critical - Day end","Still critical after today's payment",f'=COUNTIFS({B},{ceod},1)',"n"),
+("mo","Moved out of Critical %","(Morning - Day end) / Morning",'=IFERROR((C{cam}-C{ceod})/C{cam},0)',"p"),
+("cat","Critical - Attempted","Morning critical with 1+ call attempt",f'=COUNTIFS({B},{cam},1,{att},">0")',"n"),
+("ccn","   of which Connected","Pilot picked the call",f'=COUNTIFS({B},{cam},1,{con},">0")',"n"),
+("cnc","Critical - NOT called (ACT)","Morning critical, 0 attempts that day",f'=COUNTIFS({B},{cam},1,{att},0)',"a"),
+("cal","All pilots called","At least 1 attempt",f'=COUNTIFS({B},{att},">0")',"n"),
+("cp","Connect % (all called)","Connected / called",f'=IFERROR(COUNTIFS({B},{con},">0")/C{{cal}},0)',"p"),
+("S","E. CAR RECOVERY TRACKING (all cases, non-funnel)","b"),
+("rex","Existing car recovery (open at start of day)","Raised earlier, not closed yet",f'=COUNTIFS({B},raw!$Z$2:$Z,"<"&C$7)-COUNTIFS({B},raw!$Z$2:$Z,"<"&C$7,raw!$J$2:$J,"<"&C$7)',"n"),
+("rnew","New car recovery (raised that day)","New cases that day",f'=COUNTIFS({B},raw!$Z$2:$Z,C$7)',"n"),
+("rcl","Car recovered / case closed that day","",f'=COUNTIFS({B},raw!$J$2:$J,C$7)',"n"),
+("rpe","Pending car recovery (open at day end)","Existing + new - closed",f'=COUNTIFS({B},raw!$Z$2:$Z,"<="&C$7)-COUNTIFS({B},raw!$Z$2:$Z,"<="&C$7,raw!$J$2:$J,"<="&C$7)',"n"),
+("rp3","   pending 0-3 days","",f'=COUNTIFS({B},raw!$Z$2:$Z,">="&(C$7-3),raw!$Z$2:$Z,"<="&C$7)-COUNTIFS({B},raw!$Z$2:$Z,">="&(C$7-3),raw!$Z$2:$Z,"<="&C$7,raw!$J$2:$J,"<="&C$7)',"n"),
+("rp7","   pending 4-7 days","",f'=COUNTIFS({B},raw!$Z$2:$Z,">="&(C$7-7),raw!$Z$2:$Z,"<"&(C$7-3))-COUNTIFS({B},raw!$Z$2:$Z,">="&(C$7-7),raw!$Z$2:$Z,"<"&(C$7-3),raw!$J$2:$J,"<="&C$7)',"n"),
+("rp15","   pending 8-15 days","",f'=COUNTIFS({B},raw!$Z$2:$Z,">="&(C$7-15),raw!$Z$2:$Z,"<"&(C$7-7))-COUNTIFS({B},raw!$Z$2:$Z,">="&(C$7-15),raw!$Z$2:$Z,"<"&(C$7-7),raw!$J$2:$J,"<="&C$7)',"n"),
+("rp16","   pending more than 15 days (ACT)","Old cases - escalate",f'=COUNTIFS({B},raw!$Z$2:$Z,"<"&(C$7-15))-COUNTIFS({B},raw!$Z$2:$Z,"<"&(C$7-15),raw!$J$2:$J,"<="&C$7)',"a"),
+("S","F. LIVE OS >= DEPOSIT (deposit used up)","b"),
+("sur","Live OS >= Deposit (surpassed)","All of these are also Critical",f'=COUNTIFS({B},{sur},1)',"n"),
+("surr","   with car recovery raised","Case started on or before this day",f'=COUNTIFS({B},{sur},1,raw!$Z$2:$Z,"<="&C$7)',"n"),
+("surn","   NO car recovery yet (ACT)","Loss keeps growing every day",'=C{sur}-C{surr}',"a"),
+("surp","Recovery raised % of surpassed","Should be close to 100%",'=IFERROR(C{surr}/C{sur},0)',"p"),
+("ns","Newly surpassed that day","Was below deposit the day before",f'=COUNTIFS({B},raw!$DY$2:$DY,C$7)',"n"),
+("gap","Newly surpassed minus new recovery (ACT)","Positive = recovery backlog growing",'=C{ns}-C{rnew}',"a"),
+("S","G. 0 DEPOSIT CUT (deposit at allocation = 0)","z"),
+("z_lo","Live OS owed at day end (Rs)","",f'=-SUMIFS({live},{B},{live},"<0"{Z0})',"n"),
+("z_tc","Collected that day (Rs)","",f'=SUMIFS({coll},{B}{Z0})',"n"),
+("z_ceod","Critical - Day end","",f'=COUNTIFS({B},{ceod},1{Z0})',"n"),
+("z_cnc","Critical - NOT called (ACT)","",f'=COUNTIFS({B},{cam},1,{att},0{Z0})',"a"),
+("z_sur","Live OS >= Deposit (surpassed)","No deposit = any OS is unsecured",f'=COUNTIFS({B},{sur},1{Z0})',"n"),
+("z_surn","   NO car recovery yet (ACT)","",f'=C{{z_sur}}-COUNTIFS({B},{sur},1,raw!$Z$2:$Z,"<="&C$7{Z0})',"a"),
+("z_ns","Newly surpassed that day","Started owing",f'=COUNTIFS({B},raw!$DY$2:$DY,C$7{Z0})',"n"),
+("z_rr","New car recovery (raised that day)","",f'=COUNTIFS({B},raw!$Z$2:$Z,C$7{Z0})',"n"),
+("z_rc","Car recovered / case closed that day","",f'=COUNTIFS({B},raw!$J$2:$J,C$7{Z0})',"n"),
+("z_rpe","Pending car recovery (open at day end)","",f'=COUNTIFS({B},raw!$Z$2:$Z,"<="&C$7{Z0})-COUNTIFS({B},raw!$Z$2:$Z,"<="&C$7,raw!$J$2:$J,"<="&C$7{Z0})',"n"),
+("S","H. JOIN FUNNEL - column = join date; status of those joiners TILL TODAY (old days can change)","g"),
+("f_j","Joined (new + rejoin)","",f'=COUNTIFS({J})',"n"),
+("f_s","-> Live OS crossed deposit","Any day after join",f'=COUNTIFS({J},raw!$DV$2:$DV,1)',"n"),
+("f_sp","   % of joined","",'=IFERROR(C{f_s}/C{f_j},0)',"p"),
+("f_r","-> Car recovery raised","",f'=COUNTIFS({J},raw!$DW$2:$DW,1)',"n"),
+("f_c","-> Car recovered (case closed)","",f'=COUNTIFS({J},raw!$DX$2:$DX,1)',"n"),
+("f_g","Crossed deposit, NO recovery (ACT)","",f'=COUNTIFS({J},raw!$DV$2:$DV,1,raw!$DW$2:$DW,0)',"a"),
+("S","I. JOIN FUNNEL - 0 DEPOSIT JOINS","z"),
+("g_j","0 Deposit joined","",f'=COUNTIFS({J}{Z0})',"n"),
+("g_s","-> Started owing (crossed deposit)","",f'=COUNTIFS({J},raw!$DV$2:$DV,1{Z0})',"n"),
+("g_sp","   % of joined","",'=IFERROR(C{g_s}/C{g_j},0)',"p"),
+("g_r","-> Car recovery raised","",f'=COUNTIFS({J},raw!$DW$2:$DW,1{Z0})',"n"),
+("g_c","-> Car recovered (case closed)","",f'=COUNTIFS({J},raw!$DX$2:$DX,1{Z0})',"n"),
+("g_g","Started owing, NO recovery (ACT)","",f'=COUNTIFS({J},raw!$DV$2:$DV,1,raw!$DW$2:$DW,0{Z0})',"a"),
+]
