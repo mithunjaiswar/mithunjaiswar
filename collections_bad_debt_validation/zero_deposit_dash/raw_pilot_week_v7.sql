@@ -282,7 +282,7 @@ left join dep_tot dt on dt.etm = b.etm
 left join gps_mon g on g.wk = b.wk and g.etm = b.etm
 left join rc_wk rc on rc.wk = b.wk and rc.etm = b.etm
 ),
-cfg as (select date_trunc('week', current_date)::date as cur_wk, extract(isodow from current_date)::int as t,
+cfg as materialized (select date_trunc('week', current_date)::date as cur_wk, extract(isodow from current_date)::int as t,
                exists (select 1 from lod where d = current_date) as has_today),
 r1 as materialized (
   select r0.*,
@@ -352,10 +352,10 @@ bd as materialized (
       case when r4.alo[g.i] is not null and coalesce(r4.asu[g.i], 0) = 1 then 1
            when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 then
              case when r4."Join Type (this week)" <> 'Existing' and r4."Last Join Date" >= r4."Week" then 2
-                  when r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0 then 3 end
+                  when r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0 then 2 else 2 end
       end as t,
       case when r4.alo[g.i] is not null and coalesce(r4.asu[g.i], 0) = 1 then greatest(0, -r4.alo[g.i] - r4.dp)
-           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and (
+           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and (true or 
                 (r4."Join Type (this week)" <> 'Existing' and r4."Last Join Date" >= r4."Week") or
                 (r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0)) then r4.ec
       end as a
