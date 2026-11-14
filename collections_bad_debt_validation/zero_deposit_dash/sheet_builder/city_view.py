@@ -1,4 +1,4 @@
-# City_View (daily, WBR View V2 format): product segments across (last 4 days + DoD each), metric blocks down, cities in rows
+# City_View (daily, WBR View V2 format): product segments across (last 8 days + DoD each, thick black border between segments), metric blocks down, cities in rows. NOTE: live sheet uses 8 days; regenerate with ND=8 if rebuilding.
 import json
 S=121
 SEG=[("All","*"),("Leasing - Single","Leasing - Single"),("Leasing - EIP","Leasing - EIP"),("D2O","D2O"),("Own Now","Own Now"),("EV_Leasing","EV_Leasing"),("EV_D2O","EV_D2O")]
