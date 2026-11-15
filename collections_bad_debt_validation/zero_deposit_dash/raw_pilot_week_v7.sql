@@ -9,8 +9,7 @@
 --   wos_coll_dN  = part of that day's collection that clears the weekly OS (weekly OS is cleared first; the rest goes to live OS)
 --                  -> sum of the week = "Weekly OS Collected (capped)" = India Collections dashboard collection (till_sun_100pct)
 --   surpass_dN   = 1 when the pilot owes at least his deposit at end of day: live_os < 0 and -live_os >= deposit as of that day
---   crit_am_dN   = 1 when OS before that day's payment >= one day rent  (morning critical)
---   crit_pm_dN   = 1 when OS after that day's payment  >= one day rent  (still critical at day end)
+--   (old crit_am/crit_pm day columns removed 15-Nov: views use the MT Critical AM/EOD columns)
 --   att_dN / conn_dN = collection calls attempted / connected that day
 -- =====================================================================================
 -- NOTE: date filters are written with current_date directly (not a CTE value) so TimescaleDB can skip old chunks
@@ -166,11 +165,7 @@ dayf as materialized (
          greatest(0, least(d.coll, d.wos_abs - d.coll_before)) as wcoll,   -- part of today's collection that goes to the weekly OS
 
          case when d.live_os is null then null
-              when d.live_os < 0 and -d.live_os >= greatest(d.dep_asof, 0) then 1 else 0 end as surpass,
-         case when d.live_os is null or d.rent <= 0 then null
-              when -(d.live_os - d.recovery) >= d.rent then 1 else 0 end as crit_am,
-         case when d.live_os is null or d.rent <= 0 then null
-              when -d.live_os >= d.rent then 1 else 0 end as crit_pm
+              when d.live_os < 0 and -d.live_os >= greatest(d.dep_asof, 0) then 1 else 0 end as surpass
   from dayw d
 ),
 piv as materialized (
@@ -185,12 +180,6 @@ piv as materialized (
     max(surpass) filter (where dn = 4) s4, max(surpass) filter (where dn = 5) s5, max(surpass) filter (where dn = 6) s6,
     max(surpass) filter (where dn = 7) s7,
     min(dn) filter (where surpass = 1) as first_surpass_dn,
-    max(crit_am) filter (where dn = 1) a1, max(crit_am) filter (where dn = 2) a2, max(crit_am) filter (where dn = 3) a3,
-    max(crit_am) filter (where dn = 4) a4, max(crit_am) filter (where dn = 5) a5, max(crit_am) filter (where dn = 6) a6,
-    max(crit_am) filter (where dn = 7) a7,
-    max(crit_pm) filter (where dn = 1) e1, max(crit_pm) filter (where dn = 2) e2, max(crit_pm) filter (where dn = 3) e3,
-    max(crit_pm) filter (where dn = 4) e4, max(crit_pm) filter (where dn = 5) e5, max(crit_pm) filter (where dn = 6) e6,
-    max(crit_pm) filter (where dn = 7) e7,
     max(att) filter (where dn = 1) t1, max(att) filter (where dn = 2) t2, max(att) filter (where dn = 3) t3,
     max(att) filter (where dn = 4) t4, max(att) filter (where dn = 5) t5, max(att) filter (where dn = 6) t6,
     max(att) filter (where dn = 7) t7,
@@ -257,8 +246,6 @@ r0 as materialized (select
   case when pv.first_surpass_dn is not null then b.wk + pv.first_surpass_dn - 1 end as "First Surpass Date",
   case when rc.etm is null then 'No' when rc.rc_open_eow then 'Open' else 'Closed' end as "Car Recovery (week)",
   rc.rc_start                                            as "Car Recovery Start",
-  b.wk + 0 as "D1 Date", b.wk + 1 as "D2 Date", b.wk + 2 as "D3 Date", b.wk + 3 as "D4 Date",
-  b.wk + 4 as "D5 Date", b.wk + 5 as "D6 Date", b.wk + 6 as "D7 Date",
   pv.lo1 as "Live OS D1", pv.lo2 as "Live OS D2", pv.lo3 as "Live OS D3", pv.lo4 as "Live OS D4",
   pv.lo5 as "Live OS D5", pv.lo6 as "Live OS D6", pv.lo7 as "Live OS D7",
   pv.c1 as "Collection D1", pv.c2 as "Collection D2", pv.c3 as "Collection D3", pv.c4 as "Collection D4",
@@ -267,10 +254,6 @@ r0 as materialized (select
   pv.w5 as "WOS Collected D5", pv.w6 as "WOS Collected D6", pv.w7 as "WOS Collected D7",
   pv.s1 as "Surpass D1", pv.s2 as "Surpass D2", pv.s3 as "Surpass D3", pv.s4 as "Surpass D4",
   pv.s5 as "Surpass D5", pv.s6 as "Surpass D6", pv.s7 as "Surpass D7",
-  pv.a1 as "Critical AM D1", pv.a2 as "Critical AM D2", pv.a3 as "Critical AM D3", pv.a4 as "Critical AM D4",
-  pv.a5 as "Critical AM D5", pv.a6 as "Critical AM D6", pv.a7 as "Critical AM D7",
-  pv.e1 as "Critical EOD D1", pv.e2 as "Critical EOD D2", pv.e3 as "Critical EOD D3", pv.e4 as "Critical EOD D4",
-  pv.e5 as "Critical EOD D5", pv.e6 as "Critical EOD D6", pv.e7 as "Critical EOD D7",
   pv.t1 as "Attempts D1", pv.t2 as "Attempts D2", pv.t3 as "Attempts D3", pv.t4 as "Attempts D4",
   pv.t5 as "Attempts D5", pv.t6 as "Attempts D6", pv.t7 as "Attempts D7",
   pv.n1 as "Connects D1", pv.n2 as "Connects D2", pv.n3 as "Connects D3", pv.n4 as "Connects D4",
@@ -389,13 +372,6 @@ r."Week",
   r."First Surpass Date",
   r."Car Recovery (week)",
   r."Car Recovery Start",
-  r."D1 Date",
-  r."D2 Date",
-  r."D3 Date",
-  r."D4 Date",
-  r."D5 Date",
-  r."D6 Date",
-  r."D7 Date",
   r."Live OS D1",
   r."Live OS D2",
   r."Live OS D3",
@@ -424,20 +400,6 @@ r."Week",
   r."Surpass D5",
   r."Surpass D6",
   r."Surpass D7",
-  r."Critical AM D1",
-  r."Critical AM D2",
-  r."Critical AM D3",
-  r."Critical AM D4",
-  r."Critical AM D5",
-  r."Critical AM D6",
-  r."Critical AM D7",
-  r."Critical EOD D1",
-  r."Critical EOD D2",
-  r."Critical EOD D3",
-  r."Critical EOD D4",
-  r."Critical EOD D5",
-  r."Critical EOD D6",
-  r."Critical EOD D7",
   r."Attempts D1",
   r."Attempts D2",
   r."Attempts D3",
@@ -453,29 +415,11 @@ r."Week",
   r."Connects D6",
   r."Connects D7",
   r."Last Updated",
-  null::text as "Dash Status (formula in EU)",
   case when r."Product Type" = 'Leasing' then case when r."EIP / Single" = 'EIP' then 'Leasing - EIP' else 'Leasing - Single' end else r."Product Type" end as "Product (EIP split)",
-  r.co as "Latest Day #",
-  r.cp as "Active Latest Day (1/0)",
-  r.cq as "Owed Latest Day (Rs)",
-  r.cr as "Surpassed Latest Day (1/0)",
-  r.cs as "Critical AM Latest Day (MasterTab rule)",
-  r.ct as "Critical EOD Latest Day (MasterTab rule)",
-  coalesce(r.aat[r.co], 0) as "Attempts Latest Day",
-  (select coalesce(sum(v), 0) from unnest(r.aat) v) as "Attempts Week",
-  (select coalesce(sum(v), 0) from unnest(r.acn) v) as "Connects Week",
-  case when coalesce(r.cr_any, 0) > 0 then 1 else 0 end as "Surpassed Any Day (1/0)",
-  coalesce(r.aco[r.co], 0) as "Collection Latest Day",
-  greatest(r.cq - r.dp, 0) as "Unsecured Exposure (owed above deposit)",
-  r.da as "Join Week",
   case when r."Last Join Date" is not null then r."Week" + r.co - 1 - r."Last Join Date" end as "Days Since Join",
   case when r."Car Recovery (week)" = 'Closed' then '6. Car Recovery Closed' when r."Car Recovery (week)" = 'Open' then '5. In Car Recovery'
        when r.cp = 0 then '0. Not Active' when r.cr = 1 then '4. Owes >= Deposit - START RECOVERY'
        when r.ct = 1 then '3. Critical (MasterTab rule)' when r.cq > 0 then '2. Owes - not critical yet' else '1. Paid Up' end as "Stage Today",
-  null::text as "ok_1 (formula in EW)",
-  null::text as "ok_2 (formula in EX)",
-  null::text as "ok_3 (formula in EY)",
-  null::text as "ok_4 (formula in EZ)",
   r.mam[1] as "MT Critical AM D1",
   r.mam[2] as "MT Critical AM D2",
   r.mam[3] as "MT Critical AM D3",
@@ -494,12 +438,6 @@ r."Week",
   coalesce(r.dw, false)::int as "Car recovery raised after last join (4w, 1/0)",
   coalesce(r.dx, false)::int as "Car recovered / case closed after last join (4w, 1/0)",
   case when r."First Surpass Date" = r."Week" and p.etm is not null then null else r."First Surpass Date" end as "New Surpass Date (not surpassed day before)",
-  null::text as "Weekly Agent (formula in EV)",
-  r.ea as "First Active Day # (week)",
-  r.eb as "Last Live OS in week",
-  r.ec as "Owed above deposit after leaving (Rs)",
-  (r."Week" - date '1899-12-30')::text || '|' || r."Employee ID" as "Key (week|ID)",
-  r.ee as "Weekly OS pending (Rs)",
   case when r.ct = 1 then case when r."Car Recovery (week)" = 'Open' then 'P0 - Critical (In car recovery)' else 'P0 - Critical (Not in car recovery)' end
        when r.cq > 0 and r.dp - r.cq <= r.rr then 'P1 - Near surpass (<=1 day rent to deposit)'
        when r.cq > 0 or r.ee > 0 then 'P2 - OS not collected' end as "Action Tag",
