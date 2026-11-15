@@ -414,7 +414,6 @@ r."Week",
   r."Connects D5",
   r."Connects D6",
   r."Connects D7",
-  r."Last Updated",
   case when r."Product Type" = 'Leasing' then case when r."EIP / Single" = 'EIP' then 'Leasing - EIP' else 'Leasing - Single' end else r."Product Type" end as "Product (EIP split)",
   case when r."Last Join Date" is not null then r."Week" + r.co - 1 - r."Last Join Date" end as "Days Since Join",
   case when r."Car Recovery (week)" = 'Closed' then '6. Car Recovery Closed' when r."Car Recovery (week)" = 'Open' then '5. In Car Recovery'
@@ -454,7 +453,8 @@ r."Week",
   b.bda[4] as "Bad Debt Amt D4",
   b.bda[5] as "Bad Debt Amt D5",
   b.bda[6] as "Bad Debt Amt D6",
-  b.bda[7] as "Bad Debt Amt D7"
+  b.bda[7] as "Bad Debt Amt D7",
+  r."Last Updated"
 from r4 r
 left join prevs7 p on p.wk = r."Week" and p.etm = r."Employee ID"
 left join bd b on b.wk = r."Week" and b.etm = r."Employee ID"
