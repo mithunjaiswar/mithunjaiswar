@@ -235,7 +235,7 @@ r0 as materialized (select
   pv.wcoll_week                                          as "Weekly OS Collected (capped, = dash)",
   coalesce(pv.lo7, pv.lo6, pv.lo5, pv.lo4, pv.lo3, pv.lo2, pv.lo1) as "Total OS (latest live)",
   b.habit                                                as "Payment Habit",
-  case when b.tenure_days is null then 'Unknown' when b.tenure_days > 30 then 'ELC' else 'Non_ELC' end as "ELC / Non ELC",   -- as asked: ELC = more than 30 days in the organisation
+  case when b.tenure_days is null then 'Unknown' when b.tenure_days < 30 then 'ELC' else 'Non_ELC' end as "ELC / Non ELC",   -- ELC = tenure < 30 days (same as Calling Masterlist elc_raw; changed 15-Nov on request, earlier was > 30)
   b.tenure_days                                          as "Tenure Days",
   case when b.last_join_date between b.wk and b.wk + 6 then
             case when b.last_join_type = 'New Join' then 'New Join' else 'Rejoin' end
