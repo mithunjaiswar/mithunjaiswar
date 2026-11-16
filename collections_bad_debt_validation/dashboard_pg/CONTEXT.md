@@ -161,3 +161,10 @@ Known gaps to tell the user:
   Deleted junk tabs (Sheet156, Copy of WBR View x2, EV Review, coc, Targets_View, OS_Raw/OS_Deepdive [WIP], NotPaid_Summary,
   Bangalore Data, SD_Deepdive, For Deck -Int, city_comparison, Copy of Deck_CityView, Rent, Exclusions_Weekly, test_rawdata).
 - collections_queries rows 2-4 now write to the original (Raw_Data A1, sd_bucket Z1, OS_Surpass A1).
+
+## 16-Nov: Raw_Data split (sheet load)
+- Raw_Data!A1:BW12500  = CURRENT hisaab week only (collections_queries row 2, every 2 h 8-20). B2 = SUBSTITUTE(B76, "<", "=") -> raw_data_current_week.sql
+- Raw_Data!A12501:BW105000 = last 8 COMPLETED weeks, frozen (row 76, Mon & Tue 8:15 / 20:15 only) -> raw_data_last8w.sql
+  (header repeats at row 12501; all dash formulas filter by week so it is ignored)
+- Archive sheet "India Collections - Raw_Data (last 8 weeks)" 1Q0Y8ItfBFSrDSL3jCgdYYNIhCmu5eneRSJ50mLkxSE4 (row 77, B77 = B76, same schedule)
+- Raw_Data grid extended to 105,000 rows.
