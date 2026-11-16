@@ -67,7 +67,7 @@ o0 as materialized (
   from b3
   where b3.hissab_week >= (select w0 from lim)
 ),
-o as materialized (select * from o0 where hissab_week >= date_trunc('week', current_date)::date)   -- '>=' (not '='): same rows (no future weeks), but the planner estimates more rows and avoids slow nested loops,
+o as materialized (select * from o0 where hissab_week >= date_trunc('week', current_date)::date),   -- '>=' (not '='): same rows (no future weeks), but the planner estimates more rows and avoids slow nested loops
 al as materialized (
   select o.hissab_week, o.partner_etm,
          string_agg(distinct s.car_number, ',') as cars,
