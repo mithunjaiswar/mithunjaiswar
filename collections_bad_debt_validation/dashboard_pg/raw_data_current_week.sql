@@ -1,5 +1,5 @@
 -- India Collections dash > Raw_Data, CURRENT WEEK block (rows 1..12500). Automation row 2: Raw_Data!A1, clear BW12500, hourly.
--- Same logic as raw_data_v3.sql (9-week window so et_rank / last-2-week columns match), output = current hisaab week only.
+-- Full 9-week logic (same plan as raw_data_v3.sql, ~2-4 min); only the output is filtered to the current week.
 with wk as (
   select generate_series((date_trunc('week', current_date) - interval '56 days')::timestamp,
                          date_trunc('week', current_date)::timestamp, interval '7 days')::date as hw
@@ -67,7 +67,7 @@ o0 as materialized (
   from b3
   where b3.hissab_week >= (select w0 from lim)
 ),
-o as materialized (select * from o0 where hissab_week >= date_trunc('week', current_date)::date),   -- '>=' (not '='): same rows (no future weeks), but the planner estimates more rows and avoids slow nested loops
+o as materialized (select * from o0),
 al as materialized (
   select o.hissab_week, o.partner_etm,
          string_agg(distinct s.car_number, ',') as cars,
@@ -289,4 +289,5 @@ left join elc on elc.employee_id = f.partner_etm
 left join utag on utag.employee_id = f.partner_etm
 left join nt  on nt.employee_id  = f.partner_etm
 left join chn on chn.employee_id = f.partner_etm
+where f.hissab_week >= date_trunc('week', current_date)::date   -- current week only; filter at the END so the plan is the same as the proven full query
 order by f.hissab_week, f.city, f.partner_etm
