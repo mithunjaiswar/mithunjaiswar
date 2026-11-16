@@ -1,4 +1,4 @@
--- India Collections dash > Raw_Data, CURRENT WEEK block (rows 1..12000). Automation row 2: Raw_Data!A1, clear BW12000, every run.
+-- India Collections dash > Raw_Data, CURRENT WEEK block (rows 1..12500). Automation row 2: Raw_Data!A1, clear BW12500, hourly.
 -- Same logic as raw_data_v3.sql (9-week window so et_rank / last-2-week columns match), output = current hisaab week only.
 with wk as (
   select generate_series((date_trunc('week', current_date) - interval '56 days')::timestamp,
