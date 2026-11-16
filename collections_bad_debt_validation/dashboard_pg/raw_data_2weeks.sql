@@ -1,5 +1,4 @@
--- India Collections dash > Raw_Data, LAST 8 COMPLETED WEEKS block (from row 12001). Refresh Mon/Tue only (old weeks are frozen).
--- Also feeds the archive sheet "India Collections - Raw_Data (8 weeks)". Same logic as raw_data_v3.sql, current week left out.
+-- Raw data sheet 'India Collections - Raw_Data (current + last week)' (1Q0Y8ItfBFSrDSL3jCgdYYNIhCmu5eneRSJ50mLkxSE4), current + last week, hourly. collections_queries row 77.
 with wk as (
   select generate_series((date_trunc('week', current_date) - interval '56 days')::timestamp,
                          date_trunc('week', current_date)::timestamp, interval '7 days')::date as hw
@@ -67,7 +66,7 @@ o0 as materialized (
   from b3
   where b3.hissab_week >= (select w0 from lim)
 ),
-o as materialized (select * from o0 where hissab_week < date_trunc('week', current_date)::date),
+o as materialized (select * from o0 where hissab_week >= date_trunc('week', current_date)::date - 7),
 al as materialized (
   select o.hissab_week, o.partner_etm,
          string_agg(distinct s.car_number, ',') as cars,
