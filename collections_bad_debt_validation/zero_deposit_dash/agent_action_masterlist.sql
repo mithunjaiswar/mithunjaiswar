@@ -13,6 +13,8 @@
 --   * GPS_Tag also for Own Now (MasterTab checked "OWN", which never matches).
 --   * car_model keeps the year (e.g. "Wagon R - 2026") so the Own Now 20K rule can match.
 --   * L2W tag computed from collections_bad_debt_mv (the notpaid_list import is #REF!).
+-- 17-Nov speed-up: no 'IN (select .. from pop/drv)' filters inside the CTEs (those plans ran >15 min);
+--   the CTEs read all rows (1-3 s each) and b0 left-joins them to pop, so the output is the same.
 -- =====================================================================================
 with cfg as materialized (
   select date_trunc('week', current_date)::date as wk,
@@ -42,7 +44,7 @@ drv as materialized (
 ),
 lead as materialized (
   select distinct on (l.hawkeye_driver_id) l.hawkeye_driver_id as driver_id, l.lead_id
-  from crm.lead_driver l where l.hawkeye_driver_id in (select driver_id from drv) and coalesce(l.is_deleted, 0) = 0
+  from crm.lead_driver l where coalesce(l.is_deleted, 0) = 0
   order by l.hawkeye_driver_id, l.id desc
 ),
 alloc_last as materialized (
@@ -52,7 +54,7 @@ alloc_last as materialized (
               when s.product_type = 'Rev_share' then 'Revenue Share' else s.product_type end as product_type,
          s.first_allocation_date
   from analytics.ssot_alloc_dealloc_full s
-  where s.employee_id in (select etm from pop) and s.allocation_date <= current_date
+  where s.allocation_date <= current_date
   order by s.employee_id, s.allocation_date desc, s.allocation_datetime desc
 ),
 newjoin as materialized (
@@ -124,7 +126,7 @@ live as materialized (
          (array_agg(h.total_rent order by h.date desc))[1] as day_rent,
          sum(h.total_rent) filter (where h.date between date_trunc('week', current_date)::date and (current_date - 1)) as rent_cw
   from hissab_driver_live_os h
-  where h.date between date_trunc('week', current_date)::date - 1 and current_date and h.is_active = 1 and h.driver_id in (select driver_id from drv)
+  where h.date between date_trunc('week', current_date)::date - 1 and current_date and h.is_active = 1
   group by 1
 ),
 rec as materialized (
@@ -146,24 +148,23 @@ lastpaid as materialized (
 ),
 dep as materialized (
   select d.employee_id as etm, sum(d.amount) as dep from mv_deposits_raw d
-  where d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[]) and d.employee_id in (select etm from pop)
+  where d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[])
   group by 1
 ),
 habit as materialized (
   select distinct on (a.driver_id) a.driver_id, coalesce(a.payment_habit, 'Good') as habit
-  from driver_repayment_habit a, cfg
-  where a.week_start_date < (date_trunc('week', current_date) - interval '7 days')::date and a.driver_id in (select driver_id from drv)
+  from driver_repayment_habit a
+  where a.week_start_date < (date_trunc('week', current_date) - interval '7 days')::date   -- no driver_id IN (drv) filter: that plan took >15 min, all drivers = 1 s
   order by a.driver_id, a.week_start_date desc, a.id desc
 ),
 lwos as materialized (
   select fd.employee_id as etm, sum(os.total_os)::int as os
   from (select driver_id as partner_id, total_os from account_ledger
-        where date_trunc('week', week_start_date)::date = (date_trunc('week', current_date - interval '1 day') - interval '1 week')::date
+        where week_start_date >= (date_trunc('week', current_date - interval '1 day') - interval '1 week') and week_start_date < date_trunc('week', current_date - interval '1 day')
         union all
         select partner_id, total_os from fleet_leasing_total_os
-        where date_trunc('week', week_start_date)::date = (date_trunc('week', current_date - interval '1 day') - interval '1 week')::date) os
+        where week_start_date >= (date_trunc('week', current_date - interval '1 day') - interval '1 week') and week_start_date < date_trunc('week', current_date - interval '1 day')) os   -- range filter (index on week_start_date); date_trunc() on the column scanned all 14M rows
   join fleet_driver fd on fd.id = os.partner_id
-  where fd.employee_id in (select etm from pop)
   group by 1
 ),
 jama as materialized (
@@ -196,7 +197,7 @@ rcase as materialized (
                      where b.recovery_id = a.id and b.recovery_status in ('complete','failed','cancelled')
                      order by b.id desc limit 1) ls on true
   join fleet_driver fd on fd.id = a.driver_id cross join cfg
-  where a.activation_date < current_date + 1 and fd.employee_id in (select etm from pop)
+  where a.activation_date < current_date + 1
     and (ls.close_date is null or ls.close_date::date >= cfg.wk)
   group by 1
 ),
@@ -221,7 +222,7 @@ l2w as materialized (
     count(*) filter (where coalesce(m.collection_pct, 0) <= 0) as n0,
     count(*) filter (where m.collection_pct > 0 and m.collection_pct <= 0.8) as n1
   from analytics.collections_bad_debt_mv m, cfg
-  where m.for_collections = 1 and m.hissab_week in (cfg.wk - 7, cfg.wk - 14) and m.partner_etm in (select etm from pop)
+  where m.for_collections = 1 and m.hissab_week in (cfg.wk - 7, cfg.wk - 14)
   group by 1
 ),
 slab(city, min_trips, tier, add_trips) as (values
