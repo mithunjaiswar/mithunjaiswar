@@ -1,6 +1,6 @@
 -- sd_bucket!Z automation version (SQL query Automation sheet, tab collections_queries).
 -- Same logic as deposit_buckets.sql, but all 8 hisaab weeks in one run (current week + 7 old weeks).
--- Output: 1 column "raw_line" (values joined with ~). Write to sd_bucket!Z1, clear Z.
+-- Output: 1 column "raw_line" (values joined with ~). Write to sd_bucket!N1, clear N1:N1000 (tab was cut to 14 cols on 16-Nov, Z -> N).
 -- sd_bucket!A2 and sd_bucket_V2!A2 SPLIT these lines, so no other change is needed.
 -- 16-Nov: sped up (old allocations filtered before the week join, wk materialized, deposits summed per pilot-week first)
 with wk as materialized (
