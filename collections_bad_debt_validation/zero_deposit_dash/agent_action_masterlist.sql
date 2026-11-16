@@ -2,8 +2,9 @@
 -- Zero dash: Agent_action (daily calling list) = same 71 columns, same order as
 -- "[Calculation Sheet] Collections: Calling Masterlist V2.0" > MasterTab, current week only,
 -- plus "Stage Today" and "Action Tag" at the end.
--- Output tab: zero sheet > aa_raw (hidden). Agent_action tab shows it and adds
---   agent_username (agent_weekly) and actioning_type (actioning_type_list) by lookup.
+-- Output: zero sheet > Agent_action A1:BQ (69 columns, collections_queries row 75).
+--   Two formula columns at the end of that tab add agent_username (BR, from agent_weekly)
+--   and actioning_type (BS, from actioning_type_list) - they live outside the clear range.
 -- Population (same as MasterTab): this hissab week's collections list (collections_bad_debt_mv,
 --   for_collections = 1) + every partner with an open car allocation today.
 -- Differences vs MasterTab (on purpose, data is fresher / bug fixed):
@@ -389,7 +390,6 @@ select
   coalesce(b.conn_td, 0) as "conn_today",
   case when b.product in ('D2O','SINGLE','Own Now') then case when coalesce(b.gps_yd, 0) > 0 then 'GPS>0' else 'GPS=0' end else '-' end as "GPS_Tag",
   case when b.product = 'D2O' and b.is_newjoin then 'New Join + Resurrection (>= 17 Aug)' else '' end as "allocation_type",
-  case when b.product = 'D2O' then 'Penalty' else '' end as "actioning_type",
   case when coalesce(b.disp, 0) > 0 then round(b.acc::numeric / b.disp, 4)::text else '-' end as "acceptance_rate",
   coalesce(b.trip_tier, '') as "trip_tier",
   b.target_trips as "target_trips",
@@ -403,9 +403,7 @@ select
   coalesce(b.open_tat::text, '-') as "Car_Recovery Pending TAT",
   case when coalesce(b.n0, 0) >= 2 then 'L2W: 0%' when coalesce(b.n1, 0) >= 2 then 'L2W: 1%-80%' else '-' end as "L2W 1% to 80% ",
   coalesce(b.last_jama_1w::text, '-') as "last_jama_date (1w)",
-  '' as " ",
-  greatest(0, b.lw_os + b.tot_rec) as "  ",
-  '' as "   ",
+  greatest(0, b.lw_os + b.tot_rec) as "Last Week OS + Recovery",
   b.car_model as "car_model",
   case when b.rc_open then '5. In Car Recovery' when b.rc_closed_cw then '6. Car Recovery Closed'
        when not b.is_active then '0. Not Active'
