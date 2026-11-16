@@ -370,7 +370,7 @@ select
   b.cur_os as "Total Current OS",
   b.cur_os + b.dep as "Current OS Surpass SD",
   case when b.rc_open then 'Yes' else 'No' end as "Is_in Car Recovery",
-  case when b.risk_now then 'Critical_Risk' else '' end as "Risk_Type",
+  case when b.risk_now then 'Critical_Risk' else '' end as "Critical - Now (EOD)",
   coalesce(b.lw_active, 0) as "last_week_active_days",
   coalesce(b.lw_nd, 0) as "last_week_nd_days",
   coalesce(b.cw_active, 0) as "current_week_active_days",
@@ -396,7 +396,7 @@ select
   case when b.product in ('D2O','SINGLE','Own Now') then greatest(coalesce(b.target_trips, 0) - coalesce(b.trips_cw, 0), 0)::text else '-' end as "min_remaining_trips",
   case when not b.in_list then '' when b.rec_pct >= 1 or abs(b.neg_os) - b.tot_rec < 100 then 'Full Paid'
        when b.rec_pct > 0 then 'Partial Paid' else 'Not Paid' end as "Collections Tag",
-  case when b.risk_am then case when b.risk_now then 'Critical_Risk' else 'Out of Critical' end else '' end as "Critical Risk Tag",
+  case when b.risk_am then case when b.risk_now then 'Critical_Risk' else 'Out of Critical' end else '' end as "Critical - Morning List (Still / Out)",
   case when b.is_active and coalesce(b.alloc_yd, false) and coalesce(b.trips_yd, 0) = 0 then 'ND' else '' end as "ND Tag",
   row_number() over (partition by b.city order by b.product, b.neg_os, b.etm) as "RANK",
   coalesce(nullif(b.remarks, ''), '-') as "Yesterday Remarks",
