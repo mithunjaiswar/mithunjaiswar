@@ -411,7 +411,7 @@ select
        when b.cur_os < 0 and b.cur_os + b.dep <= 0 then '4. Owes >= Deposit - START RECOVERY'
        when b.risk_now then '3. Critical' when b.cur_os < 0 then '2. Owes - not critical yet' else '1. Paid Up' end as "Stage Today",
   case when b.risk_now then case when b.rc_open then 'P0 - Critical (In car recovery)' else 'P0 - Critical (Not in car recovery)' end
-       when b.rc_open then 'P1 - Cancel the car recovery (OFC)'   -- in car recovery but not critical any more
+       when b.rc_open and b.cur_os + b.dep > 0 then 'P1 - Cancel the car recovery (OFC)'   -- in car recovery, not critical, Current OS below deposit
        when b.cur_os < 0 and b.dep + b.cur_os <= coalesce(b.day_rent, 0) then 'P1 - Near surpass (<=1 day rent to deposit)'
        when b.cur_os < 0 or (b.in_list and abs(b.neg_os) - least(b.tot_rec, abs(b.neg_os)) > 0) then 'P2 - OS not collected' end as "Action Tag"
 from b4 b
