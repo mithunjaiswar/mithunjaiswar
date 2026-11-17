@@ -135,4 +135,5 @@ select
        when round(-d_a - d_b + uber_tr + rec) < 0 then 'Send' else 'Skip' end as "send_flag",
   to_char(now() at time zone 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI:SS') as "last_updated"
 from x
+where (select 1 / (count(*) / 5000) from live) is not null   -- 17-Nov guard: fail (division by zero) instead of writing 0 rent / no live OS for everyone when hissab_driver_live_os is mid-sync (< 5000 drivers)
 order by city, round(-d_a - d_b + uber_tr + rec)
