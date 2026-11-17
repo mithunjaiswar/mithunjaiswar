@@ -165,5 +165,5 @@ Known gaps to tell the user:
 ## 16-Nov: Raw_Data split (sheet load)
 - Raw_Data!A1:BW12500 = CURRENT hisaab week only, hourly 8:15-20:15 (collections_queries row 2; B2 = SUBSTITUTE(B76,"<","=")) -> raw_data_current_week.sql
 - Raw_Data!A12501:BW105000 = last 7 COMPLETED weeks, frozen; refreshed Mon & Tue 8:15 / 20:15 only (row 76) -> raw_data_old7w.sql
-  (header repeats at row 12501; dash formulas filter by week so it is ignored)
+  (automation writes no header when start is not A1, so data starts right at row 12501)
 - Raw_Data grid extended to 105,000 rows.

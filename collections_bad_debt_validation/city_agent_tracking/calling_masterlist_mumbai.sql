@@ -1,5 +1,5 @@
 -- [Mumbai Collections] Agent Tracking > Calling_Masterlist (daily calling list, MasterTab logic, current hisaab week)
--- Automation: start A2, clear BX (clears A2:BX incl. yesterday's agent captures, which the 23:00 snapshot already saved), writes A:BL = 64 data columns
+-- Automation: start A3 (automation writes NO header when start is not A1; keep the header in row 2), clear BX (clears A3:BX incl. yesterday's agent captures, which the 23:00 snapshot already saved), writes A:BL = 64 data columns
 -- Run ONCE in the morning (e.g. 7:15 AM) - an hourly refresh would re-order rows under the agents' captures.
 -- agent_username / actioning_type = latest value in mv_collections_calling_masterlist (23:00 snapshot of this sheet, last 14 days).
 with cfg as materialized (

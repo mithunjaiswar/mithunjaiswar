@@ -17,7 +17,7 @@ Add 14 rows in **SQL query Automation > collections_queries** (2 per city). Copy
 | Tab (E) | Query file (B) | C Clear | F Start | H Clear range | G Run | M (schedule formula) |
 |---|---|---|---|---|---|---|
 | `Agent_Action` | `agent_action_<city>.sql` | Yes | `A1` | `BP` | TRUE | `=AND(HOUR(NOW())>=8, HOUR(NOW())<=20, MINUTE(NOW())>=15)` (hourly 8-20) |
-| `Calling_Masterlist` | `calling_masterlist_<city>.sql` | Yes | `A2` | `BX` | TRUE | `=AND(HOUR(NOW())=7, MINUTE(NOW())>=15)` (**once a day, 7:15 AM**) |
+| `Calling_Masterlist` | `calling_masterlist_<city>.sql` | Yes | `A3` | `BX` | TRUE | `=AND(HOUR(NOW())=7, MINUTE(NOW())>=15)` (**once a day, 7:15 AM**) |
 
 ## What each query gives
 
@@ -28,7 +28,7 @@ Add 14 rows in **SQL query Automation > collections_queries** (2 per city). Copy
 - `ameyo_username` = the Ameyo id that most often called that agent's pilots in the last 28 days. `NA` when not known.
 - Kolkata test: 3,394 rows, 5 weeks (19-Oct to 16-Nov), ~1 min.
 
-**Calling_Masterlist** (64 data columns, A:BL; header row 2)
+**Calling_Masterlist** (64 data columns, A:BL; data from row 3 - keep the header in row 2, the automation writes no header when the start cell is not A1)
 - Same MasterTab logic as the zero sheet `Agent_action` (fast version, ~1.5 min), filtered to the city.
 - `agent_username` and `actioning_type` = latest value from the 23:00 snapshot (last 14 days). New pilots with no snapshot yet stay blank until the city fills `Agent_Mapping`.
 - Clear range `BX` also clears yesterday's agent captures (BM:BX). The 23:00 snapshot has already saved them to the DB, and they show up again as "Yesterday Remarks".

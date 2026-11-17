@@ -2,7 +2,7 @@
 -- Zero dash: Agent_action (daily calling list) = same 71 columns, same order as
 -- "[Calculation Sheet] Collections: Calling Masterlist V2.0" > MasterTab, current week only,
 -- plus "Stage Today" and "Action Tag" at the end.
--- Output: zero sheet > Agent_action A1:BQ (69 columns, collections_queries row 75).
+-- Output: zero sheet > Agent_action, data from A3 (row 2 = static header; automation writes no header when start is not A1), collections_queries row 75.
 --   Two formula columns at the end of that tab add agent_username (BR, from agent_weekly)
 --   and actioning_type (BS, from actioning_type_list) - they live outside the clear range.
 -- Population (same as MasterTab): this hissab week's collections list (collections_bad_debt_mv,
