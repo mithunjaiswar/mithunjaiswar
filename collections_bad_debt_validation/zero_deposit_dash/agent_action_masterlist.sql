@@ -13,6 +13,7 @@
 --   * GPS_Tag also for Own Now (MasterTab checked "OWN", which never matches).
 --   * car_model keeps the year (e.g. "Wagon R - 2026") so the Own Now 20K rule can match.
 --   * L2W tag computed from collections_bad_debt_mv (the notpaid_list import is #REF!).
+-- 17-Nov (3): habit reads recent created_at chunks only, jama = hashed anti-join, rcase = one pass over logs.
 -- 17-Nov (2): habit = last 8 weeks only, alloc_last = our pilots only, rent fixed for the 1-day booking lag.
 -- 17-Nov speed-up: no 'IN (select .. from pop/drv)' filters inside the CTEs (those plans ran >15 min);
 --   the CTEs read all rows (1-3 s each) and b0 left-joins them to pop, so the output is the same.
@@ -156,7 +157,8 @@ dep as materialized (
 habit as materialized (
   select distinct on (a.driver_id) a.driver_id, coalesce(a.payment_habit, 'Good') as habit
   from driver_repayment_habit a
-  where a.week_start_date < (date_trunc('week', current_date) - interval '7 days')::date   -- no driver_id IN (drv) filter: that plan took >15 min, all drivers = 1 s
+  where a.created_at >= current_date - 35   -- 17-Nov: table is partitioned by created_at -> reads ~5 weekly chunks instead of 108 (60 s+ -> 6 s)
+    and a.week_start_date < (date_trunc('week', current_date) - interval '7 days')::date   -- no driver_id IN (drv) filter: that plan took >15 min, all drivers = 1 s
     and a.week_start_date >= (date_trunc('week', current_date) - interval '63 days')::date  -- 17-Nov: last 8 weeks only (was all history: 11M rows sorted, the slowest step)
   order by a.driver_id, a.week_start_date desc, a.id desc
 ),
@@ -177,7 +179,7 @@ jama as materialized (
   from car_allocation ca join car_deallocation cd on cd.id = ca.deallocation_id
   join fleet_driver fd on fd.id = ca.driver_id cross join cfg
   where ca.deactivation_date is null and cd.date >= cfg.wk - 28
-    and not exists (select 1 from car_allocation c2 where c2.driver_id = ca.driver_id and c2.deactivation_date is null and c2.deallocation_id is null)
+    and ca.driver_id not in (select a.driver_id from act a where a.driver_id is not null)   -- 17-Nov: hashed anti-join on act (was a per-row NOT EXISTS, 60 s+ -> 21 s)
   group by 1
 ),
 calls as materialized (
@@ -190,15 +192,18 @@ calls as materialized (
   from collections_calling_data_raw c, cfg
   where c.week_start = cfg.wk group by 1
 ),
+rclose as materialized (   -- latest close log per recovery case
+  select distinct on (b.recovery_id) b.recovery_id, b.datetime as close_date
+  from recovery_status_logs b where b.recovery_status in ('complete','failed','cancelled')
+  order by b.recovery_id, b.id desc
+),
 rcase as materialized (
   select fd.employee_id as etm,
     max(current_date - a.activation_date::date) filter (where ls.close_date is null or ls.close_date::date >= current_date) as open_tat,
     bool_or(ls.close_date is null or ls.close_date::date >= current_date) as is_open,
     bool_or(ls.close_date::date between cfg.wk and current_date - 1) as closed_cw
   from recovery_cars a
-  left join lateral (select b.datetime as close_date from recovery_status_logs b
-                     where b.recovery_id = a.id and b.recovery_status in ('complete','failed','cancelled')
-                     order by b.id desc limit 1) ls on true
+  left join rclose ls on ls.recovery_id = a.id   -- 17-Nov: one pass over the logs instead of a lateral per case (22 s -> 2 s, same rows)
   join fleet_driver fd on fd.id = a.driver_id cross join cfg
   where a.activation_date < current_date + 1
     and (ls.close_date is null or ls.close_date::date >= cfg.wk)
