@@ -45,13 +45,15 @@ al as materialized (
          when s.product_type = 'DTO' then case when s.fuel_type ilike 'ev%' then 'EV_D2O' else 'D2O' end
          when s.product_type = 'Rev_share' then 'Revenue Share' else s.product_type end as product
   from analytics.ssot_alloc_dealloc_full s
-  where s.allocation_date <= current_date
+  where s.allocation_date <= current_date and s.employee_id in (select etm from drv)   -- 17-Nov: only our pilots (table has no index; sorting all 887K rows was the slowest step)
   order by s.employee_id, s.allocation_date desc, s.allocation_datetime desc
 ),
 live as materialized (
   select h.driver_id,
     (array_agg(h.live_os order by h.date desc))[1] as lo_last,
-    coalesce(sum(h.total_rent) filter (where h.date between date_trunc('week', current_date)::date and current_date - 1), 0) as rent_cw,
+    -- 17-Nov: rent is booked one day late in hissab_driver_live_os (Monday rows are always 0; Tue row = Monday's rent),
+    -- so rent of Mon .. yesterday = rows Tue .. today. Same as what the app's live OS has charged so far.
+    coalesce(sum(h.total_rent) filter (where h.date between date_trunc('week', current_date)::date + 1 and current_date), 0) as rent_cw,
     count(distinct h.date) filter (where h.date between date_trunc('week', current_date)::date and current_date - 1) as rent_days
   from hissab_driver_live_os h
   where h.date between date_trunc('week', current_date)::date - 1 and current_date and h.is_active = 1
