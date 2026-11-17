@@ -102,6 +102,7 @@ from b4 b
 left join agm g on g.etm = b.etm
 left join aga a2 on a2.etm = b.etm
 where b.city = '{city}'
+  and (select 1 / (count(*) / 5000) from live) is not null   -- guard: fail instead of writing wrong OS when live OS table is mid-sync
 order by b.product, b.neg_os, b.etm
 """
 cm_head = """-- [{city} Collections] Agent Tracking > Calling_Masterlist (daily calling list, MasterTab logic, current hisaab week)

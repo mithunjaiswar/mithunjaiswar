@@ -418,4 +418,5 @@ select
        when b.cur_os < 0 and b.dep + b.cur_os <= coalesce(b.day_rent, 0) then 'P1 - Near surpass (<=1 day rent to deposit)'
        when b.cur_os < 0 or (b.in_list and abs(b.neg_os) - least(b.tot_rec, abs(b.neg_os)) > 0) then 'P2 - OS not collected' end as "Action Tag"
 from b4 b
+where (select 1 / (count(*) / 5000) from live) is not null   -- 17-Nov guard: fail (division by zero) instead of writing wrong OS for everyone when hissab_driver_live_os is mid-sync (< 5000 drivers)
 order by b.city, b.product, b.neg_os, b.etm
