@@ -20,6 +20,7 @@ trip as materialized (
          string_agg(distinct t.car_number, ', ') as cars_t
   from fleet_dailytrip t
   where t.date between date_trunc('week', current_date)::date and current_date - 1 and t.driver_id is not null
+    and exists (select 1 from car_allocation ca where ca.driver_id = t.driver_id and ca.car_id = t.car_id and ca.allocation_date::date <= t.date)   -- 17-Nov: only trips on a car allotted to this driver (Uber maps some trips to the wrong driver, e.g. ETP11305 got another Ramesh's MH12VT9625 trips)
   group by 1
 ),
 drv as materialized (   -- 17-Nov: active car now  UNION  ran a car this week (earnings > 0) even with no active allocation
