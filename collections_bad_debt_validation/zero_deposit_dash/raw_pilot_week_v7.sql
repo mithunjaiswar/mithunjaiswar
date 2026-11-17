@@ -241,8 +241,8 @@ r0 as materialized (select
   b.in_dash                                              as "In Collections Dash (1/0)",
   b.dep_at_alloc                                         as "Deposit at Allocation",
   case when b.dep_at_alloc is null then 'Unknown' when b.dep_at_alloc <= 0 then '0 Deposit'
-       when b.dep_at_alloc < 3000 then '<3K' when b.dep_at_alloc <= 5000 then '3-5K'
-       else '5K+' end as "SD Bucket (at allocation)",   -- 17-Nov: buckets 0 / <3K / 3-5K / 5K+
+       when b.dep_at_alloc <= 3000 then '1-3K' when b.dep_at_alloc <= 5000 then '3-5K'
+       else '5K+' end as "SD Bucket (at allocation)",   -- 17-Nov: buckets 0 / 1-3K / 3-5K / 5K+ (dash filter '<=3K' = 0 Deposit + 1-3K)
   coalesce(dt.dep_now, 0)                                as "Current Deposit",
   case when rc.rc_close between b.wk and b.wk + 6 then rc.rc_close end as "Car Recovery Close Date",   -- was Deposit at Week Start (unused); close date in this week
   case when g.etm is null then 'No Car' when g.gps_km > 0 then 'GPS Active' else 'GPS Inactive' end as "Week Start GPS",
