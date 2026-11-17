@@ -344,14 +344,14 @@ Deliberate differences vs MasterTab:
 | 4 | Bad debt "Joined this week & left" and "Weekly collection pilot left" are both coded as type 2. | Read me! lists 3 types; the dash shows 2 (Active / Non-active). | Fine as is; update Read me! wording if needed. |
 | 5 | Read me! says raw refreshes from row 72. | Wrong reference. | Raw is row 71, dispo is row 72. |
 | 6 | Raw run during the Monday hisaab refresh gives incomplete data. | Live OS NaN for many pilots. | Re-run row 71 after `hissab_driver_live_os` is updated. |
-| 7 | Raw blanks come in as the text `NULL` (automation writes nulls as `NULL`, not empty). | A COUNTIFS with `""` never matches; "no Live OS yet" rows showed 0 every day (fixed 17-Nov). | Use `"NULL"` to find blanks, `">-1E+15"` to find numbers. |
+| 7 | Raw blanks are not empty: the automation writes nulls as `NaN`, a pgAdmin paste writes `NULL`. | A COUNTIFS with only `""` (or only one of them) never matches; "no Live OS yet" rows showed 0 (fixed 17-Nov). | Count blanks with `ARRAYFORMULA(SUM(COUNTIFS(..., {"NULL","NaN",""})))`; find numbers with `">-1E+15"`. |
 
 ---
 
 ### 17-Nov additions: joiners with no live OS yet
 
 - Raw `pop` now also takes every New Join / Rejoin / Resurrection of the 4 weeks from `ssot_alloc_dealloc_full`, so a pilot allocated today shows up even before `hissab_driver_live_os` has a row (0-deposit tracking).
-- Daily_Trend row 14 "of which allocated, no Live OS yet" = joins of that day whose Live OS for that day is `NULL`; row 15 = same and SD bucket `0 Deposit`.
+- Daily_Trend row 14 "of which allocated, no Live OS yet" = joins of that day whose Live OS for that day is blank (`NaN` / `NULL` / empty); row 15 = same and SD bucket `0 Deposit`.
 - City_View rows 107-139: three blocks (New joins + rejoins, of which 0 Deposit, Allocated that day no Live OS yet), city x day.
 - Cross-check 17-Nov vs DB (joiners with no live OS row on the join day): 10-Nov 65 / 11-Nov 28 / 12-Nov 23 / 13-Nov 42 / 14-Nov 33 / 15-Nov 6 / 16-Nov 0; City_View showed 64 / 28 / 23 / 42 / 33 / 6 / 0.
 
