@@ -45,6 +45,11 @@ pop as materialized (
   select wk, etm from mvw
   union
   select distinct wk, etm from lod_e
+  union   -- 17-Nov: pilots who joined this week but have no live OS row yet (else Daily_Trend 'New joins' showed 76 of 367)
+  select distinct date_trunc('week', s.allocation_date)::date, s.employee_id
+  from analytics.ssot_alloc_dealloc_full s
+  where s.category in ('New Join', 'Rejoin', 'Resurrection')
+    and s.allocation_date >= (date_trunc('week', current_date)::date - 21) and s.allocation_date <= current_date
 ),
 -- ---------- attributes for pilots that are only in live OS (not in the dashboard rows that week) ----------
 mv_last as materialized (   -- latest dashboard row of the pilot in the 4 weeks
