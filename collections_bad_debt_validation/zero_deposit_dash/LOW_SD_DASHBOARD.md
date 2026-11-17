@@ -355,7 +355,7 @@ Deliberate differences vs MasterTab:
 - raw H "SD Bucket (at allocation)" = `0 Deposit` (<=0) / `1-3K` (<=3,000) / `3-5K` (3,001-5,000) / `5K+` / `Unknown`.
 - Filters (lists!C2:C7, static list): All / 0 Deposit / `<=3K (incl. 0)` (= 0 Deposit + 1-3K) / 3-5K / 5K+ / Unknown.
   - Daily_Trend B3 -> raw DD maps `<=3K (incl. 0)` to H in (0 Deposit, 1-3K) and `5K+` to H in (5K+, old 5-10K / 10K+).
-  - City_View A2 -> criteria cells BP1 / BQ1 (on raw G deposit amount) and BR1 (on raw H, for Unknown), added to every City_View COUNTIFS / SUMIFS.
+  - City_View B1 (row 1 "Deposit bucket ▸") -> criteria cells BP2 / BQ2 (on raw G deposit amount) and BR2 (on raw H, for Unknown), added to every City_View COUNTIFS / SUMIFS.
   - lists!C2 used to be a SORT(UNIQUE(raw!H)) spill formula; it is now a static list (writing values under a spill gives #REF! in the dropdown).
 
 ### 17-Nov additions: joiners with no live OS yet
