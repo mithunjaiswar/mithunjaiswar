@@ -13,6 +13,7 @@
 --   * GPS_Tag also for Own Now (MasterTab checked "OWN", which never matches).
 --   * car_model keeps the year (e.g. "Wagon R - 2026") so the Own Now 20K rule can match.
 --   * L2W tag computed from collections_bad_debt_mv (the notpaid_list import is #REF!).
+-- 17-Nov (2): habit = last 8 weeks only, alloc_last = our pilots only, rent fixed for the 1-day booking lag.
 -- 17-Nov speed-up: no 'IN (select .. from pop/drv)' filters inside the CTEs (those plans ran >15 min);
 --   the CTEs read all rows (1-3 s each) and b0 left-joins them to pop, so the output is the same.
 -- =====================================================================================
@@ -54,7 +55,7 @@ alloc_last as materialized (
               when s.product_type = 'Rev_share' then 'Revenue Share' else s.product_type end as product_type,
          s.first_allocation_date
   from analytics.ssot_alloc_dealloc_full s
-  where s.allocation_date <= current_date
+  where s.allocation_date <= current_date and s.employee_id in (select etm from pop)   -- 17-Nov: only our pilots (no index; sorting all 887K rows was slow)
   order by s.employee_id, s.allocation_date desc, s.allocation_datetime desc
 ),
 newjoin as materialized (
@@ -123,8 +124,9 @@ live as materialized (
   select h.driver_id,
          (array_agg(h.live_os order by h.date desc))[1] as lo_last,
          (array_agg(h.live_os order by h.date desc) filter (where h.date <= (current_date - 1)))[1] as lo_yd,
-         (array_agg(h.total_rent order by h.date desc))[1] as day_rent,
-         sum(h.total_rent) filter (where h.date between date_trunc('week', current_date)::date and (current_date - 1)) as rent_cw
+         (array_agg(h.total_rent order by h.date desc) filter (where h.total_rent <> 0))[1] as day_rent,   -- latest non-zero (Monday rows are always 0)
+         -- 17-Nov: rent is booked one day late (Monday row 0, Tue row = Monday's rent) -> rent of Mon .. yesterday = rows Tue .. today
+         sum(h.total_rent) filter (where h.date between date_trunc('week', current_date)::date + 1 and current_date) as rent_cw
   from hissab_driver_live_os h
   where h.date between date_trunc('week', current_date)::date - 1 and current_date and h.is_active = 1
   group by 1
@@ -155,6 +157,7 @@ habit as materialized (
   select distinct on (a.driver_id) a.driver_id, coalesce(a.payment_habit, 'Good') as habit
   from driver_repayment_habit a
   where a.week_start_date < (date_trunc('week', current_date) - interval '7 days')::date   -- no driver_id IN (drv) filter: that plan took >15 min, all drivers = 1 s
+    and a.week_start_date >= (date_trunc('week', current_date) - interval '63 days')::date  -- 17-Nov: last 8 weeks only (was all history: 11M rows sorted, the slowest step)
   order by a.driver_id, a.week_start_date desc, a.id desc
 ),
 lwos as materialized (
