@@ -1,10 +1,10 @@
 -- Driver dues comms (WhatsApp template) - LIGHT version: one row per pilot with a car now OR who ran a car this week, current hisaab week (Mon .. yesterday), Rs.
 -- 17-Nov: + Start / End date columns, car_status, os_status, trip_days; 'Check' flag when the car ran but no live OS row (rent not charged)
 --  {{1}} date  {{2}} vehicle  {{3}} A earnings (fare + tip)  {{4}} B subscription  {{5}} C cash collected  {{6}} Uber transfer = A - B - C
---  {{7}} current deposit  {{8}} rent days  {{9}} A last week pending arrears  {{10}} B rent (current week)  {{11}} C Uber transfer (credit, negative)
---  {{12}} D pending arrears = A + B + C  {{13}} E recovered (current week)  {{14}} overall due = D - E
+--  {{7}} current deposit  {{8}} rent days  {{9}} A last week pending arrears (due -ve)  {{10}} B rent current week (-ve)  {{11}} C Uber transfer (credit, +ve)
+--  {{12}} D pending arrears = A + B + C  {{13}} E recovered current week (+ve)  {{14}} overall = D + E (-ve = due, +ve = credit)
 -- No driver phone in the reporting DB (crm.lead_lead_view is empty) -> lead_id + partner_et_id for the comms tool.
--- Dues positive, credits negative. Every source is aggregated once for the week (no per-pilot IN filters, no car-day expansion).
+-- 17-Nov: SAME SIGN AS THE SYSTEM (live OS): due / owes = NEGATIVE, credit / payment = POSITIVE. {{12}} = {{9}} + {{10}} + {{11}}, {{14}} = {{12}} + {{13}}; Send when {{14}} < 0. Every source is aggregated once for the week (no per-pilot IN filters, no car-day expansion).
 with cfg as materialized (select date_trunc('week', current_date)::date as wk, current_date - 1 as yd),
 act as materialized (
   select ca.driver_id, string_agg(distinct fc.car_number, ', ') as cars
@@ -109,12 +109,12 @@ select
   round(uber_tr) as "{{6}} Uber Transfer (A-B-C)",
   round(dep) as "{{7}} Current Deposit",
   rent_days as "{{8}} Rent Days",
-  round(d_a) as "{{9}} Last Week Pending Arrears",
-  round(d_b) as "{{10}} Rent Amount (Current Week)",
-  round(-uber_tr) as "{{11}} Uber Transfer",
-  round(d_a + d_b - uber_tr) as "{{12}} Pending Arrears (A+B+C)",
+  round(-d_a) as "{{9}} Last Week Pending Arrears",
+  round(-d_b) as "{{10}} Rent Amount (Current Week)",
+  round(uber_tr) as "{{11}} Uber Transfer",
+  round(-d_a - d_b + uber_tr) as "{{12}} Pending Arrears (A+B+C)",
   round(rec) as "{{13}} Recovered Amount (Current Week)",
-  round(d_a + d_b - uber_tr - rec) as "{{14}} Overall Due (D-E)",
+  round(-d_a - d_b + uber_tr + rec) as "{{14}} Overall Due (D+E)",
   to_char(date_trunc('week', current_date), 'DD-Mon-YYYY') as "Start Date",
   to_char(current_date - 1, 'DD-Mon-YYYY') as "End Date (earnings, rent)",
   to_char(current_date, 'DD-Mon-YYYY') as "Recovery till",
@@ -123,13 +123,13 @@ select
   lead_id as "lead_id",
   city as "city",
   product as "product_type",
-  round(-lo_last) as "check: live OS due",
-  round(d_a + d_b - uber_tr - rec + coalesce(lo_last, 0)) as "check: diff vs live OS",
+  round(lo_last) as "check: live OS",
+  round(-d_a - d_b + uber_tr + rec - coalesce(lo_last, 0)) as "check: diff vs live OS",
   case when has_car then 'Active car' else 'No active car (ran this week)' end as "car_status",
   case when has_live then 'Live OS' else 'No Live OS (rent not charged)' end as "os_status",
   trip_days as "trip_days (this week)",
   case when not has_live and trip_days > 0 then 'Check - car ran, OS not generated'
-       when round(d_a + d_b - uber_tr - rec) > 0 then 'Send' else 'Skip' end as "send_flag",
+       when round(-d_a - d_b + uber_tr + rec) < 0 then 'Send' else 'Skip' end as "send_flag",
   to_char(now() at time zone 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI:SS') as "last_updated"
 from x
-order by city, round(d_a + d_b - uber_tr - rec) desc
+order by city, round(-d_a - d_b + uber_tr + rec)
