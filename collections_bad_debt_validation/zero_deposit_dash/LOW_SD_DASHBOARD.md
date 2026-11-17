@@ -348,6 +348,13 @@ Deliberate differences vs MasterTab:
 
 ---
 
+### 17-Nov: Deposit at Allocation + SD buckets
+
+- raw G "Deposit at Allocation" = deposit balance at the END of the allocation day (deposit already held from before + paid that day) = deposit now - deposits dated after the allocation day. Before it was only `sd_amount` paid on that allocation, so a rejoiner who paid 0 but already had a deposit showed 0.
+  The higher of this balance and `sd_amount` is used (sd_amount is sometimes booked a day late).
+- raw H "SD Bucket (at allocation)" = `0 Deposit` / `<3K` / `3-5K` (3,000-5,000) / `5K+` / `Unknown` (lists!C).
+- City_View A2 = deposit bucket filter (All / 0 Deposit / <3K / 3-5K / 5K+ / Unknown); BP1 holds the COUNTIFS criterion (`*` or `=<bucket>`), added to every City_View formula.
+
 ### 17-Nov additions: joiners with no live OS yet
 
 - Raw `pop` now also takes every New Join / Rejoin / Resurrection of the 4 weeks from `ssot_alloc_dealloc_full`, so a pilot allocated today shows up even before `hissab_driver_live_os` has a row (0-deposit tracking).

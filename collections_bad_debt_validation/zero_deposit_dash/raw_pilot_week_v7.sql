@@ -204,6 +204,16 @@ join_wk as materialized (   -- latest join event up to the week end
   from pop pp join joins x on x.etm = pp.etm and x.allocation_date <= pp.wk + 6
   order by pp.wk, pp.etm, x.allocation_date desc
 ),
+dep_join as materialized (   -- 17-Nov: deposit AT ALLOCATION = balance at the end of the allocation day
+  -- (deposit already held from before + paid that day), not only the amount paid on the allocation itself.
+  -- = deposit now - deposits dated after the allocation day (refunds / forfeits are negative, so they are added back)
+  select ja.etm, ja.allocation_date, coalesce(t.dep_now, 0) - coalesce(sum(d.amount), 0) as bal
+  from (select distinct etm, allocation_date from join_wk) ja
+  left join dep_tot t on t.etm = ja.etm
+  left join mv_deposits_raw d on d.employee_id = ja.etm and d.date > ja.allocation_date
+       and d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[])
+  group by ja.etm, ja.allocation_date, t.dep_now
+),
 base as materialized (
   select pp.wk, pp.etm,
     case when m.etm is not null then 1 else 0 end as in_dash,
@@ -213,12 +223,14 @@ base as materialized (
     coalesce(m.habit, ml.habit, 'Unknown') as habit,
     coalesce(m.tenure_days, ml.tenure_days, (pp.wk + 6) - al.first_allocation_date) as tenure_days,
     m.weekly_os,
-    j.allocation_date as last_join_date, j.category as last_join_type, j.sd_amount as dep_at_alloc
+    j.allocation_date as last_join_date, j.category as last_join_type,
+    case when j.etm is not null then greatest(coalesce(dj.bal, 0), coalesce(j.sd_amount, 0)) end as dep_at_alloc
   from pop pp
   left join mvw m on m.wk = pp.wk and m.etm = pp.etm
   left join mv_last ml on ml.etm = pp.etm
   left join alloc_last al on al.etm = pp.etm
   left join join_wk j on j.wk = pp.wk and j.etm = pp.etm
+  left join dep_join dj on dj.etm = j.etm and dj.allocation_date = j.allocation_date
 ),
 r0 as materialized (select
   b.wk                                                   as "Week",
@@ -229,8 +241,8 @@ r0 as materialized (select
   b.in_dash                                              as "In Collections Dash (1/0)",
   b.dep_at_alloc                                         as "Deposit at Allocation",
   case when b.dep_at_alloc is null then 'Unknown' when b.dep_at_alloc <= 0 then '0 Deposit'
-       when b.dep_at_alloc <= 3000 then '1-3K' when b.dep_at_alloc <= 5000 then '3-5K'
-       when b.dep_at_alloc <= 10000 then '5-10K' else '10K+' end as "SD Bucket (at allocation)",
+       when b.dep_at_alloc < 3000 then '<3K' when b.dep_at_alloc <= 5000 then '3-5K'
+       else '5K+' end as "SD Bucket (at allocation)",   -- 17-Nov: buckets 0 / <3K / 3-5K / 5K+
   coalesce(dt.dep_now, 0)                                as "Current Deposit",
   case when rc.rc_close between b.wk and b.wk + 6 then rc.rc_close end as "Car Recovery Close Date",   -- was Deposit at Week Start (unused); close date in this week
   case when g.etm is null then 'No Car' when g.gps_km > 0 then 'GPS Active' else 'GPS Inactive' end as "Week Start GPS",
