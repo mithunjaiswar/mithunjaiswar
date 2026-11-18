@@ -38,10 +38,17 @@ alloc_last as materialized (
          case when s.product_type = 'leasing' then case when s.fuel_type ilike 'ev%' then 'EV_Leasing' else 'Leasing' end
               when s.product_type = 'DTO' then case when s.fuel_type ilike 'ev%' then 'EV_D2O' else 'D2O' end
               when s.product_type = 'Rev_share' then 'Revenue Share' else s.product_type end as product_type,
-         s.first_allocation_date, s.allocation_date as last_alloc_date
+         s.first_allocation_date
   from analytics.ssot_alloc_dealloc_full s
   where s.allocation_date <= current_date and s.employee_id in (select etm from pop)   -- 17-Nov: only our pilots (no index; sorting all 887K rows was slow)
   order by s.employee_id, s.allocation_date desc, s.allocation_datetime desc
+),
+lastjoin as materialized (   -- 18-Nov: latest New Join / Rejoin / Resurrection date (swaps and EIP add-on cars excluded)
+  select s.employee_id as etm, max(s.allocation_date) as d
+  from analytics.ssot_alloc_dealloc_full s
+  where s.category in ('New Join', 'Rejoin', 'Resurrection') and s.allocation_date <= current_date
+    and s.employee_id in (select etm from pop)
+  group by 1
 ),
 newjoin as materialized (
   select distinct s.employee_id as etm from analytics.ssot_alloc_dealloc_full s
@@ -253,7 +260,7 @@ b0 as materialized (
     coalesce(rc.is_open, false) as rc_open, coalesce(rc.closed_cw, false) as rc_closed_cw, rc.open_tat,
     rm.txt as remarks, l.n0, l.n1,
     (nj.etm is not null) as is_newjoin,
-    al.last_alloc_date
+    lj.d as last_alloc_date
   from pop p cross join cfg
   left join mvw m on m.etm = p.etm
   left join drv d on d.etm = p.etm
@@ -274,6 +281,7 @@ b0 as materialized (
   left join remarks rm on rm.etm = p.etm
   left join l2w l on l.etm = p.etm
   left join newjoin nj on nj.etm = p.etm
+  left join lastjoin lj on lj.etm = p.etm
 ),
 b1 as materialized (
   select b.*,
