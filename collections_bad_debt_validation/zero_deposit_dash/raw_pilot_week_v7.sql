@@ -475,4 +475,5 @@ r."Week",
 from r4 r
 left join prevs7 p on p.wk = r."Week" and p.etm = r."Employee ID"
 left join bd b on b.wk = r."Week" and b.etm = r."Employee ID"
+where (select 1 / (count(*) / 100) from rec_day where d = current_date - 1) is not null   -- 18-Nov guard: fail instead of writing 0 collection when mv_daily_recovery is not refreshed yet (< 100 payments yesterday)
 order by r."Week", r."City", r."Employee ID"
