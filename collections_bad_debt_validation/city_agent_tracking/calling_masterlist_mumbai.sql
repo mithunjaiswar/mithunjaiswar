@@ -47,12 +47,12 @@ alloc_last as materialized (
   where s.allocation_date <= current_date and s.employee_id in (select etm from pop)   -- 17-Nov: only our pilots (no index; sorting all 887K rows was slow)
   order by s.employee_id, s.allocation_date desc, s.allocation_datetime desc
 ),
-lastjoin as materialized (   -- 18-Nov: latest New Join / Rejoin / Resurrection date (swaps and EIP add-on cars excluded)
-  select s.employee_id as etm, max(s.allocation_date) as d
+lastjoin as materialized (   -- 18-Nov: latest New Join / Rejoin / Resurrection (swaps and EIP add-on cars excluded) + deposit paid on it
+  select distinct on (s.employee_id) s.employee_id as etm, s.allocation_date as d, coalesce(s.sd_amount, 0) as sd_amount
   from analytics.ssot_alloc_dealloc_full s
   where s.category in ('New Join', 'Rejoin', 'Resurrection') and s.allocation_date <= current_date
     and s.employee_id in (select etm from pop)
-  group by 1
+  order by s.employee_id, s.allocation_date desc, s.allocation_datetime desc
 ),
 newjoin as materialized (
   select distinct s.employee_id as etm from analytics.ssot_alloc_dealloc_full s
@@ -148,6 +148,38 @@ dep as materialized (
   select d.employee_id as etm, sum(d.amount) as dep from mv_deposits_raw d
   where d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[])
   group by 1
+),
+-- ---------- 18-Nov: same numbers the dash (raw / Daily_Trend) uses, so Agent_action matches it ----------
+co as materialized (   -- the dash "today": today if the live OS table already has today's rows, else yesterday (= raw cfg.has_today)
+  select case when exists (select 1 from hissab_driver_live_os h where h.date = current_date and h.is_active = 1)
+              then current_date else current_date - 1 end as d
+),
+lv_co as materialized (   -- live OS on the dash day + daily rent (= raw "Daily Rent": max rent row of this week)
+  select h.driver_id,
+         max(h.live_os) filter (where h.date = (select d from co)) as lo_co,
+         max(h.total_rent) as rent_max
+  from hissab_driver_live_os h
+  where h.date between date_trunc('week', current_date)::date and current_date and h.is_active = 1
+  group by 1
+),
+rec_co as materialized (   -- collection on the dash day (= raw Collection Dn)
+  select r.employee_id as etm, sum(r.amount) as amt from mv_daily_recovery r
+  where r.date = (select d from co)
+    and r.recovery_type in ('razorpay_recovery','other_positive_recovery','phonepe_recovery','positive_adjustment','deposit_to_os')
+  group by 1
+),
+dep_after_co as materialized (   -- deposits dated after the dash day (deposit as of that day = total - this)
+  select d.employee_id as etm, sum(d.amount) as amt from mv_deposits_raw d
+  where d.date > (select d from co) and d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[])
+  group by 1
+),
+dep_join as materialized (   -- deposit AT ALLOCATION = balance at the end of the last join day (= raw "Deposit at Allocation")
+  select lj.etm, coalesce(t.dep, 0) - coalesce(sum(x.amount), 0) as bal
+  from lastjoin lj
+  left join dep t on t.etm = lj.etm
+  left join mv_deposits_raw x on x.employee_id = lj.etm and x.date > lj.d
+       and x.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[])
+  group by lj.etm, t.dep
 ),
 habit as materialized (
   select distinct on (a.driver_id) a.driver_id, coalesce(a.payment_habit, 'Good') as habit
@@ -264,7 +296,10 @@ b0 as materialized (
     coalesce(rc.is_open, false) as rc_open, coalesce(rc.closed_cw, false) as rc_closed_cw, rc.open_tat,
     rm.txt as remarks, l.n0, l.n1,
     (nj.etm is not null) as is_newjoin,
-    lj.d as last_alloc_date
+    lj.d as last_alloc_date,
+    lc.lo_co, lc.rent_max, coalesce(rco.amt, 0) as coll_co,
+    coalesce(dp.dep, 0) - coalesce(dac.amt, 0) as dep_asof_co,
+    case when lj.etm is not null then greatest(coalesce(dj.bal, 0), lj.sd_amount) end as dep_at_alloc
   from pop p cross join cfg
   left join mvw m on m.etm = p.etm
   left join drv d on d.etm = p.etm
@@ -286,6 +321,10 @@ b0 as materialized (
   left join l2w l on l.etm = p.etm
   left join newjoin nj on nj.etm = p.etm
   left join lastjoin lj on lj.etm = p.etm
+  left join lv_co lc on lc.driver_id = d.driver_id
+  left join rec_co rco on rco.etm = p.etm
+  left join dep_after_co dac on dac.etm = p.etm
+  left join dep_join dj on dj.etm = p.etm
 ),
 b1 as materialized (
   select b.*,
@@ -295,7 +334,11 @@ b1 as materialized (
     case when b.city = 'Delhi' then 'Delhi NCR' else b.city end as slab_city,
     case when lower(coalesce(b.car_model, '')) ~ 'wagon ?r.*2026' then 20000
          when lower(coalesce(b.car_model, '')) ~ 'wagon ?r|celerio|s-?presso' then 15000
-         when lower(coalesce(b.car_model, '')) ~ 'rumion' then 45000 else 30000 end as own_thr
+         when lower(coalesce(b.car_model, '')) ~ 'rumion' then 45000 else 30000 end as own_thr,
+    case when left(coalesce(b.product, ''), 2) = 'EV' then 'EV' else b.product end as pk,   -- raw pk (EV_D2O counts as EV)
+    greatest(coalesce(b.dep, 0), 0) as dpr,
+    coalesce(b.coll_co, 0) - b.lo_co as oa,                 -- OS before that day's payment (= raw oa)
+    (b.lo_co < 0 and -b.lo_co >= greatest(b.dep_asof_co, 0)) as surp_co
   from b0 b
 ),
 b2 as materialized (
@@ -306,23 +349,18 @@ b2 as materialized (
 ),
 b3 as materialized (
   select b.*,
-    -- MasterTab Risk_Type rule, on live OS now (risk_now) and on yesterday end-of-day OS (risk_am = morning list)
-    case when b.product <> 'Own Now' and b.cur_os > 0 then false
-         when b.product = 'D2O' then b.dep > 0 and abs(b.cur_os) / b.dep >= 0.7
-         when b.product = 'Own Now' then b.net_os <= -b.own_thr
-         when b.product in ('SINGLE','EV') then case when coalesce(b.rented_days, 0) = 0 then b.dep > 0 and abs(b.cur_os) / b.dep >= 0.8
-                                                     else (b.cur_os + b.dep) <= abs(coalesce(b.rent_cw, 0) / b.rented_days) end
-         when b.product in ('Revenue Share','Fixed Pay') then b.dep > 0 and abs(b.cur_os) / b.dep >= 1
-         when b.product = 'EIP' then case when coalesce(b.car_count, 0) >= 10 then b.cur_os <= -50000 else b.cur_os <= -25000 end
-         else false end as risk_now,
-    case when b.product <> 'Own Now' and b.am_os > 0 then false
-         when b.product = 'D2O' then b.dep > 0 and abs(b.am_os) / b.dep >= 0.7
-         when b.product = 'Own Now' then b.net_os <= -b.own_thr
-         when b.product in ('SINGLE','EV') then case when coalesce(b.rented_days, 0) = 0 then b.dep > 0 and abs(b.am_os) / b.dep >= 0.8
-                                                     else (b.am_os + b.dep) <= abs(coalesce(b.rent_cw, 0) / b.rented_days) end
-         when b.product in ('Revenue Share','Fixed Pay') then b.dep > 0 and abs(b.am_os) / b.dep >= 1
-         when b.product = 'EIP' then case when coalesce(b.car_count, 0) >= 10 then b.am_os <= -50000 else b.am_os <= -25000 end
-         else false end as risk_am,
+    -- 18-Nov: Critical = exactly the dash rule (raw "MT Critical EOD Dn" / "MT Critical AM Dn") on the dash day,
+    -- so Agent_action and Daily_Trend give the same pilots. (Before: MasterTab rule on rent_cw / rented_days and yesterday EOD OS.)
+    coalesce(b.lo_co is not null and ((case when b.pk = 'Own Now' then -b.lo_co >= 30000 when -b.lo_co <= 0 then false
+          when b.pk = 'D2O' then b.dpr > 0 and -b.lo_co >= 0.7 * b.dpr
+          when b.pk in ('SINGLE','EV') then (b.dpr + b.lo_co) <= coalesce(b.rent_max, 0)
+          when b.pk in ('Revenue Share','Fixed Pay') then b.dpr > 0 and -b.lo_co >= b.dpr
+          when b.pk = 'EIP' then -b.lo_co >= 25000 else false end) or b.surp_co), false) as risk_now,
+    coalesce(b.lo_co is not null and ((case when b.pk = 'Own Now' then b.oa >= 30000 when b.oa <= 0 then false
+          when b.pk = 'D2O' then b.dpr > 0 and b.oa >= 0.7 * b.dpr
+          when b.pk in ('SINGLE','EV') then (b.dpr - b.oa) <= coalesce(b.rent_max, 0)
+          when b.pk in ('Revenue Share','Fixed Pay') then b.dpr > 0 and b.oa >= b.dpr
+          when b.pk = 'EIP' then b.oa >= 25000 else false end) or (b.oa > 0 and b.oa >= b.dpr) or b.surp_co), false) as risk_am,
     case when b.product in ('SINGLE','Own Now') then 'Base Tier'
          when b.product = 'D2O' then case when b.is_newjoin then 'Base Tier'
               else (select s.tier from slab s where s.city = b.slab_city and s.min_trips <= coalesce(b.trips_lw, 0) order by s.min_trips desc limit 1) end

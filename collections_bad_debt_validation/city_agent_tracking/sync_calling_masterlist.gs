@@ -1,6 +1,6 @@
 // Zero sheet > Agent_action  ->  city Agent Tracking sheet > Calling_Masterlist
 // 18-Nov: Agent_action got a new column BR "allocation_date (last join)", so
-//   source  = A:BT (72 cols)  -> agent_username moved BR -> BS, actioning_type BS -> BT
+//   source  = A:BU (73 cols): BR allocation_date, BS SD Bucket (at allocation, not printed), BT agent_username, BU actioning_type
 //   dest    = A:BS (new BS = allocation_date), remarks BS:CC -> BT:CD
 // BEFORE the first run in each city sheet: insert 1 column to the LEFT of BS in Calling_Masterlist,
 // so the old remarks (BS:CC) move to BT:CD. Otherwise the remarks are read from the wrong columns.
@@ -60,7 +60,7 @@ function syncHyderabadCallingMasterlist() {
   }
 
   const FIRST_DATA_ROW = 3;
-  const SOURCE_COLS = 72;       // A:BT   (was 71 = A:BS)
+  const SOURCE_COLS = 73;       // A:BU   (18-Nov: + BS SD Bucket; agent BT, actioning BU)
   const REMARK_START_COL = 72;  // BT     (was 71 = BS)
   const REMARK_COLS = 11;       // BT:CD  (was BS:CC)
   const LAST_OUTPUT_COL = 82;   // CD     (was 81 = CC)
@@ -81,7 +81,7 @@ function syncHyderabadCallingMasterlist() {
       result[sourceCol] = row[sourceCol - 1];
     }
 
-    result[54] = row[71]; // Source BT (actioning_type, was BS) → destination BC
+    result[54] = row[72]; // Source BU (actioning_type) → destination BC
 
     // Source BB:BI → destination BD:BK
     for (let sourceCol = 54; sourceCol <= 61; sourceCol++) {
