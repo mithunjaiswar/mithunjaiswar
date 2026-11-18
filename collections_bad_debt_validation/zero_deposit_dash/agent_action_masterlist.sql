@@ -39,7 +39,11 @@ act as materialized (
   where ca.deactivation_date is null and ca.deallocation_id is null and ca.allocation_date::date <= current_date
 ),
 act_e as materialized (select distinct fd.employee_id as etm from act a join fleet_driver fd on fd.id = a.driver_id),
-pop as materialized (select etm from mvw union select etm from act_e),
+pop as materialized (select etm from mvw union select etm from act_e
+  union   -- 18-Nov: + every New Join / Rejoin / Resurrection of this hisaab week (and yesterday), also if the car is already returned (else 17-Nov showed 344 of 349)
+  select s.employee_id from analytics.ssot_alloc_dealloc_full s
+  where s.category in ('New Join', 'Rejoin', 'Resurrection')
+    and s.allocation_date >= least(date_trunc('week', current_date)::date, current_date - 1) and s.allocation_date <= current_date),   -- also yesterday on a Monday
 drv as materialized (
   select distinct on (fd.employee_id) fd.employee_id as etm, fd.id as driver_id, fd.name
   from fleet_driver fd where fd.employee_id in (select etm from pop)
