@@ -117,13 +117,16 @@ gps_mon as materialized (
   group by 1, 2
 ),
 -- ---------- car recovery cases (non-funnel: every case, from recovery_cars) ----------
+rclose as materialized (   -- latest close log per recovery case
+  select distinct on (b.recovery_id) b.recovery_id, b.datetime as close_date
+  from recovery_status_logs b where b.recovery_status in ('complete','failed','cancelled')
+  order by b.recovery_id, b.id desc
+),
 rcase as materialized (
   select fd.employee_id as etm, a.activation_date::date as start_date,
          case when a.rec_tags_id in (111, 112, 113) then coalesce(ls.close_date::date, (a.updated_at at time zone 'Asia/Kolkata')::date) end as close_date
   from recovery_cars a
-  left join lateral (select b.datetime as close_date from recovery_status_logs b
-                     where b.recovery_id = a.id and b.recovery_status in ('complete','failed','cancelled')
-                     order by b.id desc limit 1) ls on true
+  left join rclose ls on ls.recovery_id = a.id   -- 18-Nov: one pass over the logs instead of a lateral per case (same rows, 22 s -> 2 s)
   join fleet_driver fd on fd.id = a.driver_id
   where a.activation_date < date_trunc('week', current_date)::date + 7
     and fd.employee_id in (select etm from pop)
