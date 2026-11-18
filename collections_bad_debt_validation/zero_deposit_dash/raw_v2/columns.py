@@ -28,6 +28,7 @@ COLS = [
 ('3. Join & Deposit','Days Since Join','Days from last join to the week day shown','raw',W),
 ('3. Join & Deposit','Deposit at Allocation (Rs)','Deposit balance at the end of the join day (old deposit + paid that day)','raw',W),
 ('3. Join & Deposit','Deposit Bucket at Allocation','0 Deposit / 1-3K / 3-5K / 5K+ / Unknown (dash filter)','raw',W),
+('3. Join & Deposit','Joined This Week at 0 Deposit','Yes = joined in this week (Joined This Week is not Existing) AND Deposit Bucket at Allocation = 0 Deposit, else No. Use this to filter that week 0-deposit joiners','raw',W),
 ('3. Join & Deposit','Deposit Now (Rs)','Current deposit balance','raw',N),
 ('3. Join & Deposit','Deposit Bucket Now','Bucket of the current deposit','Agent_action',N),
 # 4. Weekly OS & Collection
