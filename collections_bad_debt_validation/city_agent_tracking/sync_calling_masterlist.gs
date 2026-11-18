@@ -4,7 +4,8 @@
 //   dest    = A:BS (new BS = allocation_date), remarks BS:CC -> BT:CD
 // BEFORE the first run in each city sheet: insert 1 column to the LEFT of BS in Calling_Masterlist,
 // so the old remarks (BS:CC) move to BT:CD. Otherwise the remarks are read from the wrong columns.
-// 18-Nov: runs only when Agent_action!C1 says READY and the source refresh is new for this city (else skips; next trigger retries).
+// 18-Nov: runs only when the SQL query Automation status for Agent_action says GSHEET: SUCCESS with the same row count,
+//   and the source refresh (B3) is new for this city; else skips and the next trigger retries.
 function syncHyderabadCallingMasterlist() {
   const SOURCE_ID = '1zsGMzqah8XCVfDM7f7R-BeNmK5DU5MxqTJ89xPJ25Sw';
   const DEST_ID = '1AcbZbEU7UBPOgqNDIchN026w8CesbQlWKn61lrMy_ow';
@@ -23,39 +24,33 @@ function syncHyderabadCallingMasterlist() {
 
   const clean = value => String(value ?? '').trim();
 
-  // ---------- Source ready check (Agent_action!C1) ----------
-  // C1 formula shows "READY | <rows> rows | <refresh time>" only when the refresh is complete;
-  // while the automation is clearing / writing it shows "UPDATING | <rows> rows".
-  // Not READY            -> stop now, the next trigger run will try again.
-  // Same refresh time as the last successful sync of this city -> nothing new, stop (set FORCE = true to re-print anyway).
-  const FORCE = false;
-  const status = clean(source.getRange('C1').getDisplayValue());
-  if (!status.startsWith('READY')) {
-    Logger.log(`Source abhi update ho raha hai (${status}). Skip - next run me try hoga.`);
-    return;
-  }
-  const parts = status.split('|').map(s => s.trim());
-  const expectedRows = parseInt(parts[1], 10);   // "11243 rows" -> 11243
-  const refreshTime = parts[2] || '';
-
-  // ---------- Automation finished check ----------
-  // C1 alone can say READY halfway through a write (automation writes in chunks, 6K rows > 5K check).
-  // So also require SQL query Automation > collections_queries (row with this sheet id + tab Agent_action)
-  // to say "GSHEET: SUCCESS (N rows" and N = rows in the tab. RUNNING / FAILED / count mismatch -> skip.
+  // ---------- Source ready check (SQL query Automation status) ----------
+  // Run only when SQL query Automation > collections_queries (row with this sheet id + tab Agent_action)
+  // says "GSHEET: SUCCESS (N rows" - i.e. the automation has finished writing - and the tab has exactly N rows.
+  // RUNNING / FAILED / count mismatch -> skip; the next trigger run tries again.
   // (Rows in collections_queries move around, so the row is found by sheet id + tab name, not by row number.)
   // Manual pgAdmin paste does not update that status -> run once with FORCE = true.
+  // Same refresh time (Agent_action!B3) as the last successful sync of this city -> nothing new, skip.
+  const FORCE = false;
   const AUTO_ID = '1uKeBnDSiKO1Lyei-vadU66P3nUFfCL_pUemyKq4r7QE';
-  if (!FORCE) {
+  const readAutoStatus = () => {
     const auto = SpreadsheetApp.openById(AUTO_ID).getSheetByName('collections_queries');
     const av = auto.getRange(1, 1, auto.getLastRow(), 10).getValues(); // A:J
     const ar = av.find(r => clean(r[3]) === SOURCE_ID && clean(r[4]) === 'Agent_action'); // D = sheet id, E = tab
-    const runText = ar ? clean(ar[9]) : '';                                                // J = status
+    return ar ? clean(ar[9]) : '';                                                         // J = status
+  };
+  let expectedRows = null;
+  let runText = '';
+  if (!FORCE) {
+    runText = readAutoStatus();
     const m = runText.match(/GSHEET: SUCCESS \((\d+) rows/);
-    if (!m || parseInt(m[1], 10) !== expectedRows) {
-      Logger.log(`Automation ne abhi likhna khatam nahi kiya (${runText || 'row nahi mili'}; tab me ${expectedRows} rows). Skip - next run me try hoga.`);
+    if (!m) {
+      Logger.log(`Automation ne abhi likhna khatam nahi kiya (${runText || 'row nahi mili'}). Skip - next run me try hoga.`);
       return;
     }
+    expectedRows = parseInt(m[1], 10);
   }
+  const refreshTime = clean(source.getRange('B3').getDisplayValue()); // refresh time written by the query in every row
 
   const props = PropertiesService.getScriptProperties();
   const propKey = 'last_sync_' + DEST_ID;
@@ -160,11 +155,15 @@ function syncHyderabadCallingMasterlist() {
         .getValues()
     : [];
 
-  // Second check: rows actually read must match C1 (refresh could have started while we were reading).
+  // Second check: rows read must equal the automation row count, and the status must not have changed
+  // while we were reading (a new refresh could have started).
   const readIds = sourceRows.filter(r => clean(r[2]) !== '').length;
-  if (!expectedRows || readIds !== expectedRows ||
-      clean(source.getRange('C1').getDisplayValue()) !== status) {
-    Logger.log(`Read ke time source badal gaya (C1 ${expectedRows} rows, read ${readIds}). Skip - next run me try hoga.`);
+  if (!FORCE && (readIds !== expectedRows || readAutoStatus() !== runText)) {
+    Logger.log(`Read ke time source badal gaya / rows match nahi (automation ${expectedRows}, read ${readIds}). Skip - next run me try hoga.`);
+    return;
+  }
+  if (readIds === 0) {
+    Logger.log('Agent_action khaali hai. Skip.');
     return;
   }
 
