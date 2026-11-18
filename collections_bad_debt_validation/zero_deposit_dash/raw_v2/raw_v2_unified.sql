@@ -5,6 +5,7 @@
 -- and the "after last join" flags have history) + the Agent_action CTEs made per week.
 -- Agent / Actioning Type come from public.mv_collections_calling_masterlist (the calling sheet snapshot), not sheet formulas.
 -- "Now" columns (name, car now, deposit now, last paid, yesterday, today calls, remarks) are the same in both week rows.
+-- 18-Nov: Bad Debt Type 2 (left) only on days that already have data (was also set on future days of this week).
 -- Guards: fails (division by zero) instead of writing wrong data when mv_daily_recovery is not refreshed
 --   (< 100 payments yesterday) or hissab_driver_live_os is mid-sync (< 5000 drivers for today / yesterday).
 -- =====================================================================================
@@ -356,12 +357,12 @@ bd as materialized (
   from r4 cross join lateral (
     select g.i,
       case when r4.alo[g.i] is not null and coalesce(r4.asu[g.i], 0) = 1 then 1
-           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 then
+           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and r4."Week" + g.i - 1 < (select case when has_today then current_date + 1 else current_date end from cfg) then
              case when r4."Join Type (this week)" <> 'Existing' and r4."Last Join Date" >= r4."Week" then 2
                   when r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0 then 2 else 2 end
       end as t,
       case when r4.alo[g.i] is not null and coalesce(r4.asu[g.i], 0) = 1 then greatest(0, -r4.alo[g.i] - r4.dp)
-           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and (true or 
+           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and r4."Week" + g.i - 1 < (select case when has_today then current_date + 1 else current_date end from cfg) and (true or 
                 (r4."Join Type (this week)" <> 'Existing' and r4."Last Join Date" >= r4."Week") or
                 (r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0)) then r4.ec
       end as a
