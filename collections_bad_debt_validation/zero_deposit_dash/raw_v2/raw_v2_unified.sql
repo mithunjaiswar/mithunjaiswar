@@ -8,7 +8,7 @@
 -- 18-Nov: Bad Debt Type 2 (left) only on days that already have data (was also set on future days of this week).
 -- 18-Nov: + Rent D1..D7 at the end (FG:FM) = rent charged for that day (next day's live OS row; blank until booked).
 -- 18-Nov: + Days Not Paid D1..D7 (FN:FT) = days since the last Razorpay / PhonePe / other payment as of that day.
--- 18-Nov: Bad Debt Type 2 (left) only when the pilot held no car that day (was: any day without a live OS row).
+-- 18-Nov: Bad Debt Type 2 (left) = no car that day and last live OS (any earlier day, else weekly OS) owes more than the deposit; counted every day (non-funnel).
 -- Guards: fails (division by zero) instead of writing wrong data when mv_daily_recovery is not refreshed
 --   (< 100 payments yesterday) or hissab_driver_live_os is mid-sync (< 5000 drivers for today / yesterday).
 -- =====================================================================================
@@ -553,10 +553,10 @@ nopay0 as materialized (   -- last payment on or before each day (join + group, 
 ),
 nopay as materialized (   -- days since the last payment, as of each day of the shown weeks (0 = paid that day; no payment in 8 weeks = 60)
   select wk, etm,
-    max(d - coalesce(lp, d - 60)) filter (where dn = 1) n1, max(d - coalesce(lp, d - 60)) filter (where dn = 2) n2,
-    max(d - coalesce(lp, d - 60)) filter (where dn = 3) n3, max(d - coalesce(lp, d - 60)) filter (where dn = 4) n4,
-    max(d - coalesce(lp, d - 60)) filter (where dn = 5) n5, max(d - coalesce(lp, d - 60)) filter (where dn = 6) n6,
-    max(d - coalesce(lp, d - 60)) filter (where dn = 7) n7
+    max(d - coalesce(lp, d - 60)) filter (where dn = 1) dnp1, max(d - coalesce(lp, d - 60)) filter (where dn = 2) dnp2,
+    max(d - coalesce(lp, d - 60)) filter (where dn = 3) dnp3, max(d - coalesce(lp, d - 60)) filter (where dn = 4) dnp4,
+    max(d - coalesce(lp, d - 60)) filter (where dn = 5) dnp5, max(d - coalesce(lp, d - 60)) filter (where dn = 6) dnp6,
+    max(d - coalesce(lp, d - 60)) filter (where dn = 7) dnp7
   from nopay0 group by 1, 2
 ),
 car_wk as materialized (   -- car held on day 1..7 of each week (array, for the bad debt type)
@@ -565,24 +565,43 @@ car_wk as materialized (   -- car held on day 1..7 of each week (array, for the 
           bool_or(extract(isodow from d) = 5), bool_or(extract(isodow from d) = 6), bool_or(extract(isodow from d) = 7)] as hc
   from car_day group by 1, 2
 ),
-bd as materialized (
+ll0 as materialized (   -- 18-Nov: last live OS on or before each day (also from earlier weeks) + deposit as of that day
+  select g.wk, g.etm, g.dn, (array_agg(l.live_os order by l.d desc))[1] as lo
+  from grid g join lod_e l on l.etm = g.etm and l.d <= g.d
+  where g.wk >= date_trunc('week', current_date)::date - 7
+  group by 1, 2, 3
+),
+llw as materialized (
+  select x.wk, x.etm,
+    array[max(x.lo) filter (where x.dn = 1), max(x.lo) filter (where x.dn = 2), max(x.lo) filter (where x.dn = 3), max(x.lo) filter (where x.dn = 4),
+          max(x.lo) filter (where x.dn = 5), max(x.lo) filter (where x.dn = 6), max(x.lo) filter (where x.dn = 7)] as llo,
+    array[max(x.dep) filter (where x.dn = 1), max(x.dep) filter (where x.dn = 2), max(x.dep) filter (where x.dn = 3), max(x.dep) filter (where x.dn = 4),
+          max(x.dep) filter (where x.dn = 5), max(x.dep) filter (where x.dn = 6), max(x.dep) filter (where x.dn = 7)] as ldp
+  from (select a.wk, a.etm, a.dn, a.lo, dr.dep_asof as dep
+        from ll0 a left join dep_run dr on dr.wk = a.wk and dr.etm = a.etm and dr.dn = a.dn) x
+  group by 1, 2
+),
+bd as materialized (   -- 18-Nov: 1 = active bad debt (live OS that day and owes >= deposit);
+  -- 2 = left bad debt (no car that day and the last live OS - from any earlier day, else the weekly OS - owes more than the deposit). Non-funnel: every pilot in raw_v2.
   select r4."Week" as wk, r4."Employee ID" as etm,
-         array_agg(t order by i) as bdt, array_agg(a order by i) as bda
-  from r4 left join car_wk cw on cw.wk = r4."Week" and cw.etm = r4."Employee ID" cross join lateral (
+         array_agg(z.t order by z.i) as bdt, array_agg(z.a order by z.i) as bda
+  from r4
+  left join car_wk cw on cw.wk = r4."Week" and cw.etm = r4."Employee ID"
+  left join llw lw on lw.wk = r4."Week" and lw.etm = r4."Employee ID"
+  cross join lateral (
     select g.i,
-      case when r4.alo[g.i] is not null and coalesce(r4.asu[g.i], 0) = 1 then 1
-           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and r4."Week" + g.i - 1 < (select case when has_today then current_date + 1 else current_date end from cfg)
-                and not coalesce(cw.hc[g.i], false) then
-             case when r4."Join Type (this week)" <> 'Existing' and r4."Last Join Date" >= r4."Week" then 2
-                  when r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0 then 2 else 2 end
-      end as t,
-      case when r4.alo[g.i] is not null and coalesce(r4.asu[g.i], 0) = 1 then greatest(0, -r4.alo[g.i] - r4.dp)
-           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and r4."Week" + g.i - 1 < (select case when has_today then current_date + 1 else current_date end from cfg)
-                and not coalesce(cw.hc[g.i], false) and (true or 
-                (r4."Join Type (this week)" <> 'Existing' and r4."Last Join Date" >= r4."Week") or
-                (r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0)) then r4.ec
-      end as a
-    from generate_series(1, 7) g(i)) z
+      coalesce(lw.llo[g.i], r4."Weekly OS (dash)") as lo_last,
+      greatest(coalesce(lw.ldp[g.i], r4.dp), 0) as dep_d,
+      (r4."Week" + g.i - 1 < (select case when has_today then current_date + 1 else current_date end from cfg)) as day_ok
+    from generate_series(1, 7) g(i)) y
+  cross join lateral (
+    select y.i,
+      case when r4.alo[y.i] is not null and coalesce(r4.asu[y.i], 0) = 1 then 1
+           when y.day_ok and r4.alo[y.i] is null and not coalesce(cw.hc[y.i], false) and y.lo_last + y.dep_d < 0 then 2 end as t,
+      case when r4.alo[y.i] is not null and coalesce(r4.asu[y.i], 0) = 1 then greatest(0, -r4.alo[y.i] - r4.dp)
+           when y.day_ok and r4.alo[y.i] is null and not coalesce(cw.hc[y.i], false) and y.lo_last + y.dep_d < 0 then -(y.lo_last + y.dep_d) end as a
+  ) z
+  where r4."Week" >= date_trunc('week', current_date)::date - 7
   group by 1, 2
 ),
 u as materialized (   -- raw row + Agent_action fields, shown weeks only (last week + this week)
@@ -607,7 +626,7 @@ u as materialized (   -- raw row + Agent_action fields, shown weeks only (last w
     l2.n0, l2.n1, (nj.etm is not null) as is_newjoin, rn.open_tat,
     coalesce(cdt.att, 0) as att_td, coalesce(cdt.conn, 0) as conn_td,
     rp.r1, rp.r2, rp.r3, rp.r4, rp.r5, rp.r6, rp.r7,
-    np.n1, np.n2, np.n3, np.n4, np.n5, np.n6, np.n7,
+    np.dnp1, np.dnp2, np.dnp3, np.dnp4, np.dnp5, np.dnp6, np.dnp7,
     case when r."City" = 'Delhi' then 'Delhi NCR' else r."City" end as slab_city
   from r4 r
   left join prevs7 p on p.wk = r."Week" and p.etm = r."Employee ID"
@@ -828,13 +847,13 @@ select
   v.r5 as "Rent D5",
   v.r6 as "Rent D6",
   v.r7 as "Rent D7",
-  v.n1 as "Days Not Paid D1",
-  v.n2 as "Days Not Paid D2",
-  v.n3 as "Days Not Paid D3",
-  v.n4 as "Days Not Paid D4",
-  v.n5 as "Days Not Paid D5",
-  v.n6 as "Days Not Paid D6",
-  v.n7 as "Days Not Paid D7"
+  v.dnp1 as "Days Not Paid D1",
+  v.dnp2 as "Days Not Paid D2",
+  v.dnp3 as "Days Not Paid D3",
+  v.dnp4 as "Days Not Paid D4",
+  v.dnp5 as "Days Not Paid D5",
+  v.dnp6 as "Days Not Paid D6",
+  v.dnp7 as "Days Not Paid D7"
 from v
 where (select 1 / (count(*) / 100) from rec_day where d = current_date - 1) is not null
   and (select 1 / (count(distinct driver_id) / 5000) from lod where d >= current_date - 1) is not null
