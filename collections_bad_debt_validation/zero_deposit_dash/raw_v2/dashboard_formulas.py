@@ -150,3 +150,35 @@ cond=(f'calc!B4:B{N}=1,IF($B$2="All",raw_v2!Q4:Q{N}<>"",raw_v2!Q4:Q{N}=$B$2),'
 AL['A5']=f'=IFERROR(SORT(FILTER({arr},{cond}),6,TRUE,8,TRUE),"No pilots for these filters")'
 json.dump({'calc':calc,'Dashboard':D,'Action_List':AL,'fmt':fmt,'actions':ACTIONS},open(sys.argv[1],'w'))
 print(len(calc),len(D),len(AL))
+
+# ---- 18-Nov fix: the automation resizes raw_v2 (deletes the extra rows), which shrank fixed ranges (#VALUE! / #REF!).
+# Every range now goes through INDIRECT with the live row count in calc!N1, so raw_v2 and calc ranges always have the same size.
+import re as _re
+def _fix(f):
+    if not f.startswith('='): return f
+    f=_re.sub(r'raw_v2!\$?([A-Z]+)\$?4:\$?([A-Z]+)\$?'+str(N), lambda m: f'INDIRECT("raw_v2!{m.group(1)}4:{m.group(2)}"&calc!$N$1)', f)
+    f=_re.sub(r'calc!\$?([A-Z]+)\$?4:\$?([A-Z]+)\$?'+str(N), lambda m: f'INDIRECT("calc!{m.group(1)}4:{m.group(2)}"&calc!$N$1)', f)
+    f=_re.sub(r'(?<![!A-Z$])([A-D])4:\1(?:'+str(N)+')', lambda m: f'INDIRECT("calc!{m.group(1)}4:{m.group(1)}"&calc!$N$1)', f)   # own calc columns
+    f=f.replace('raw_v2!B4','INDIRECT("raw_v2!B4")')
+    assert str(N) not in f, f
+    return f
+calc['N1']='=ROWS(INDIRECT("raw_v2!A:A"))'
+for _t in (calc, D, AL):
+    for _k in list(_t): _t[_k]=_fix(_t[_k])
+# ---- 18-Nov additions (written straight to the sheet): refresh time as date-time, city-wise unassigned agents, not-paid by OS bucket
+_RI=lambda c: f'INDIRECT("raw_v2!{c}4:{c}"&calc!$N$1)'
+_MI='INDIRECT("calc!A4:A"&calc!$N$1)'
+D['A2']='=IF(INDIRECT("raw_v2!B4")="","No data yet - raw_v2 is empty","Data refreshed: "&IFERROR(TEXT(INDIRECT("raw_v2!B4"),"dd-mmm-yyyy hh:mm"),INDIRECT("raw_v2!B4"))&"     |     Week shown (Mon): "&IFERROR(TEXT(calc!B2,"dd-mmm-yyyy"),"")&"     |     Source: raw_v2 tab only")'
+D['K42']='Agent not mapped (Unassigned)'
+D['K43']=f'=ARRAYFORMULA(IF(A43:A54="","",COUNTIFS({_RI("F")},A43:A54,{_RI("N")},"Unassigned",{_MI},1)))'
+D['K55']='=SUM(K43:K54)'
+D['G58']='NOT PAID - by OS bucket (weekly OS to collect)'
+for _i,_h in enumerate(['OS Bucket','Not paid (pilots)','Not paid OS (Rs)','All pilots in bucket']): D[f'{"GHIJ"[_i]}59']=_h
+for _j,_b in enumerate(['0-500','500-1K','1-2K','2-3K','3-5K','5-10K','10-15K','15-20K','20-25K','25-30K','30K+']):
+    _r=60+_j; D[f'G{_r}']=_b
+    D[f'H{_r}']=f'=COUNTIFS({_RI("AO")},"Not Paid",{_RI("AE")},$G{_r},{_MI},1)'
+    D[f'I{_r}']=f'=-SUMIFS({_RI("AC")},{_RI("AO")},"Not Paid",{_RI("AE")},$G{_r},{_MI},1)'
+    D[f'J{_r}']=f'=COUNTIFS({_RI("AE")},$G{_r},{_MI},1)'
+D['G71']='TOTAL'
+for _c in 'HIJ': D[f'{_c}71']=f'=SUM({_c}60:{_c}70)'
+json.dump({'calc':calc,'Dashboard':D,'Action_List':AL,'fmt':fmt,'actions':ACTIONS},open(sys.argv[1],'w'))
