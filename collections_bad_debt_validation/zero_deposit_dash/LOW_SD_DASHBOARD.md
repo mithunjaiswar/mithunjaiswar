@@ -208,7 +208,7 @@ One row per **pilot per hisaab week**, last 4 weeks including the current one (~
 | CT:CZ | Bad Debt Amt D1-D7 | |
 | DA | Last Updated | IST time of the SQL run |
 | **DB** | Dash Status (exception list) | **formula** — `Exclude` if (week date, ID) is in `dash_exclusions`, else `Include` |
-| **DC** | Weekly Agent | **formula** — agent from `agent_weekly` for (week, ID), else `Unassigned` |
+| **DC** | Weekly Agent | **formula** — agent from `agent_weekly` for (week, ID); if that week is not mapped yet, the pilot's latest earlier mapping (18-Nov); else `Unassigned` |
 | **DD** | ok_2_Daily_Trend | **formula** — 1 if Include and passes Daily_Trend filters B2:B5 |
 
 The SQL fills A:DA, and automation clears only up to DA, so the formula columns DB:DD survive every refresh.
@@ -301,7 +301,7 @@ Same columns and order as **[Calculation Sheet] Collections: Calling Masterlist 
 | Trips & Actioning | GPS_Tag, allocation_type, acceptance_rate, trip_tier, target_trips, min_remaining_trips |
 | Partner Tag | Collections Tag, **Critical - Morning List (Still / Out)**, ND Tag, RANK, Yesterday Remarks, Car_Recovery Pending TAT, L2W tag, last_jama_date (1w), Last Week OS + Recovery, car_model |
 | Today Action | **Stage Today**, **Action Tag** |
-| Agent (formula) | **BR agent_username** (from agent_weekly; `Agent Missing` if none), **BS actioning_type** (D2O: from actioning_type_list, default Penalty) |
+| Agent (formula) | **BR agent_username** (from agent_weekly, same fallback to the latest earlier week; `Agent Missing` if none), **BS actioning_type** (D2O: from actioning_type_list, default Penalty) |
 
 Bucket definitions:
 - **OS_Bucket:** 0-500, 500-1K, 1-2K, 2-3K, 3-5K, 5-10K, 10-15K, 15-20K, 20-25K, 25-30K, 30K+
