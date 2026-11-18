@@ -42,7 +42,7 @@ COLS = [
 ('4. Weekly OS & Collection','Other Payment (Rs)','Other positive recovery','Agent_action',W),
 ('4. Weekly OS & Collection','Positive Adjustment (Rs)','Positive adjustment','Agent_action',W),
 ('4. Weekly OS & Collection','Deposit to OS (Rs)','Deposit moved to OS','Agent_action',W),
-('4. Weekly OS & Collection','Weekly OS Collected (Rs)','Part of the collection that cleared the weekly OS (= dash collection)','raw',W),
+('4. Weekly OS & Collection','Weekly OS Collected (100% cap) (Rs)','Only the part of the week collection that cleared the weekly OS - stops at 100% of the weekly OS; extra goes to new rent (= dash collection)','raw',W),
 ('4. Weekly OS & Collection','Weekly OS Left (Rs)','Weekly OS + collected (capped), negative = still to collect','Agent_action',W),
 ('4. Weekly OS & Collection','Collection %','Collected / weekly OS (max 100%)','Agent_action',W),
 ('4. Weekly OS & Collection','Collection Status','Full Paid / Partial Paid / Not Paid','Agent_action',W),
@@ -106,7 +106,7 @@ COLS = [
 DAY_BLOCKS = [  # 10. Day-wise, Mon = D1 ... Sun = D7 (risk morning and that day next to each other)
 ('Live OS','End of day live OS'),
 ('Collection','Payment that day'),
-('Weekly OS Collected','Part of that day payment that cleared the weekly OS'),
+('Weekly OS Collected (100% cap)','Part of that day payment that cleared the weekly OS - stops once 100% of the weekly OS is collected; extra goes to new rent'),
 ('Risk Morning','1 = critical in the morning'),
 ('Risk That Day','1 = critical at end of day'),
 ('Owes >= Deposit','1 = owed >= deposit at end of day'),
