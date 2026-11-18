@@ -114,6 +114,7 @@ DAY_BLOCKS = [  # 10. Day-wise, Mon = D1 ... Sun = D7 (risk morning and that day
 ('Calls Connected','Connects that day'),
 ('Bad Debt Type','1 = active, 2 = left / inactive'),
 ('Bad Debt (Rs)','Owed above the deposit'),
+('Rent','Rent charged for that day (live OS row of the next day; blank until it is booked)'),
 ]
 for name, mean in DAY_BLOCKS:
     for d in range(1, 8):

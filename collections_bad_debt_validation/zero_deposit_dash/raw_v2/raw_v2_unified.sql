@@ -6,6 +6,7 @@
 -- Agent / Actioning Type come from public.mv_collections_calling_masterlist (the calling sheet snapshot), not sheet formulas.
 -- "Now" columns (name, car now, deposit now, last paid, yesterday, today calls, remarks) are the same in both week rows.
 -- 18-Nov: Bad Debt Type 2 (left) only on days that already have data (was also set on future days of this week).
+-- 18-Nov: + Rent D1..D7 at the end (FG:FM) = rent charged for that day (next day's live OS row; blank until booked).
 -- Guards: fails (division by zero) instead of writing wrong data when mv_daily_recovery is not refreshed
 --   (< 100 payments yesterday) or hissab_driver_live_os is mid-sync (< 5000 drivers for today / yesterday).
 -- =====================================================================================
@@ -435,6 +436,18 @@ ydd as materialized (   -- yesterday (Now)
   where c.d = current_date - 1
   group by 1
 ),
+rent_day as materialized (   -- 18-Nov: rent charged FOR a day = total_rent of the next day's live OS row (booked one day late)
+  select etm, d - 1 as d, sum(rent) as amt from lod_e group by 1, 2
+),
+rent_piv as materialized (
+  select g.wk, g.etm,
+    max(r.amt) filter (where g.dn = 1) r1, max(r.amt) filter (where g.dn = 2) r2, max(r.amt) filter (where g.dn = 3) r3,
+    max(r.amt) filter (where g.dn = 4) r4, max(r.amt) filter (where g.dn = 5) r5, max(r.amt) filter (where g.dn = 6) r6,
+    max(r.amt) filter (where g.dn = 7) r7
+  from grid g join rent_day r on r.etm = g.etm and r.d = g.d
+  where g.wk >= date_trunc('week', current_date)::date - 7
+  group by 1, 2
+),
 rentw as materialized (   -- rent is booked one day late (Monday row = last Sunday's rent) -> week of (date - 1 day)
   select etm, date_trunc('week', d - 1)::date as wk, sum(rent) as rent_w
   from lod_e group by 1, 2
@@ -558,6 +571,7 @@ u as materialized (   -- raw row + Agent_action fields, shown weeks only (last w
     j.last_jama_4w, j.last_jama_1w, cl.last_att, cl.last_conn, cl.last_dispo, rm.txt as remarks,
     l2.n0, l2.n1, (nj.etm is not null) as is_newjoin, rn.open_tat,
     coalesce(cdt.att, 0) as att_td, coalesce(cdt.conn, 0) as conn_td,
+    rp.r1, rp.r2, rp.r3, rp.r4, rp.r5, rp.r6, rp.r7,
     case when r."City" = 'Delhi' then 'Delhi NCR' else r."City" end as slab_city
   from r4 r
   left join prevs7 p on p.wk = r."Week" and p.etm = r."Employee ID"
@@ -583,6 +597,7 @@ u as materialized (   -- raw row + Agent_action fields, shown weeks only (last w
   left join newjoin nj on nj.etm = r."Employee ID"
   left join rc_now rn on rn.etm = r."Employee ID"
   left join call_day cdt on cdt.etm = r."Employee ID" and cdt.d = current_date
+  left join rent_piv rp on rp.wk = r."Week" and rp.etm = r."Employee ID"
   where r."Week" >= date_trunc('week', current_date)::date - 7
 ),
 v as materialized (
@@ -768,7 +783,14 @@ select
   v.bda[4] as "Bad Debt (Rs) D4",
   v.bda[5] as "Bad Debt (Rs) D5",
   v.bda[6] as "Bad Debt (Rs) D6",
-  v.bda[7] as "Bad Debt (Rs) D7"
+  v.bda[7] as "Bad Debt (Rs) D7",
+  v.r1 as "Rent D1",
+  v.r2 as "Rent D2",
+  v.r3 as "Rent D3",
+  v.r4 as "Rent D4",
+  v.r5 as "Rent D5",
+  v.r6 as "Rent D6",
+  v.r7 as "Rent D7"
 from v
 where (select 1 / (count(*) / 100) from rec_day where d = current_date - 1) is not null
   and (select 1 / (count(distinct driver_id) / 5000) from lod where d >= current_date - 1) is not null
