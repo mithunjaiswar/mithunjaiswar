@@ -24,13 +24,13 @@ COLS = [
 # 3. Join & Deposit
 ('3. Join & Deposit','Last Join Type','New Join / Rejoin / Resurrection (swap and EIP add-on not counted)','raw',W),
 ('3. Join & Deposit','Last Join Date','Date of that join','raw',W),
-('3. Join & Deposit','Joined This Week','New Join / Rejoin if the last join is in this week, else Existing','raw',W),
+('3. Join & Deposit','Joined This Week','New Join / Rejoin if the last join is in this week (Resurrection shown as Rejoin), else Existing','raw',W),
 ('3. Join & Deposit','Days Since Join','Days from last join to the week day shown','raw',W),
 ('3. Join & Deposit','Deposit at Allocation (Rs)','Deposit balance at the end of the join day (old deposit + paid that day)','raw',W),
 ('3. Join & Deposit','Deposit Bucket at Allocation','0 Deposit / 1-3K / 3-5K / 5K+ / Unknown (dash filter)','raw',W),
-('3. Join & Deposit','Joined This Week at 0 Deposit','Yes = joined in this week (Joined This Week is not Existing) AND Deposit Bucket at Allocation = 0 Deposit, else No. Use this to filter that week 0-deposit joiners','raw',W),
 ('3. Join & Deposit','Deposit Now (Rs)','Current deposit balance','raw',N),
 ('3. Join & Deposit','Deposit Bucket Now','Bucket of the current deposit','Agent_action',N),
+('3. Join & Deposit','Joined This Week at 0 Deposit','Yes = joined in this week (Joined This Week is not Existing) AND Deposit Bucket at Allocation = 0 Deposit, else No. Use this to filter that week 0-deposit joiners','raw',W),
 # 4. Weekly OS & Collection
 ('4. Weekly OS & Collection','Last Week Closing OS (Rs)','Previous hisaab week closing OS (ledger)','Agent_action',W),
 ('4. Weekly OS & Collection','Weekly OS to Collect (Rs)','Weekly OS from the collections dashboard (negative = owes)','raw',W),
@@ -53,7 +53,7 @@ COLS = [
 ('5. Rent','Rent This Week (Rs)','Rent charged in the week (negative)','Agent_action',W),
 ('5. Rent','Daily Rent (Rs)','Rent of one day','raw',W),
 # 6. RISK
-('6. RISK (morning + that day)','Live OS Now (Rs)','Latest live OS (negative = owes)','raw',W),
+('6. RISK (morning + that day)','Live OS Now (Rs)','Latest live OS in the week: this week = today (or yesterday before the sync), last week = Sunday (negative = owes)','raw',W),
 ('6. RISK (morning + that day)','Live OS + Deposit (Rs)','Live OS + deposit; negative = owes more than the deposit','Agent_action',W),
 ('6. RISK (morning + that day)','Risk - Morning','Critical in the morning (before that day payment) - dash rule','raw + Agent_action (same rule)',W),
 ('6. RISK (morning + that day)','Risk - That Day (EOD)','Critical at end of that day - dash rule','raw + Agent_action (same rule)',W),
@@ -68,9 +68,9 @@ COLS = [
 ('7. Car Recovery & Jama','Recovery Start Date','Car recovery case start','raw',W),
 ('7. Car Recovery & Jama','Recovery Close Date','Case closed in this week','raw',W),
 ('7. Car Recovery & Jama','Recovery Pending Days','Days the open case is pending','Agent_action',N),
-('7. Car Recovery & Jama','Surpassed After Last Join','1 = owed >= deposit at least once after the last join (4 weeks)','raw',W),
-('7. Car Recovery & Jama','Recovery Raised After Last Join','1 = car recovery case after the last join','raw',W),
-('7. Car Recovery & Jama','Recovered After Last Join','1 = case closed / car recovered after the last join','raw',W),
+('7. Car Recovery & Jama','Surpassed After Last Join','1 = owed >= deposit at least once after the last join (last 3 weeks)','raw',W),
+('7. Car Recovery & Jama','Recovery Raised After Last Join','1 = car recovery case after the last join (last 3 weeks)','raw',W),
+('7. Car Recovery & Jama','Recovered After Last Join','1 = case closed / car recovered after the last join (last 3 weeks)','raw',W),
 ('7. Car Recovery & Jama','Last Jama Date (4 weeks)','Last car return date (pilots with no car now)','Agent_action',N),
 ('7. Car Recovery & Jama','Last Jama Date (this + last week)','Same, only if in the last 2 weeks','Agent_action',N),
 # 8. Uber & Driving
