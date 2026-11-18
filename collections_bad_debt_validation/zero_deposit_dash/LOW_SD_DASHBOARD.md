@@ -376,3 +376,11 @@ Deliberate differences vs MasterTab:
 | raw `DA` (Last Updated) | Within the last 3–4 hours |
 | raw `DC` | No `Unassigned` for pilots that are in `agent_weekly` |
 | Collection D*n* for yesterday | Non-zero (if 0, see issue 1) |
+
+## 18-Nov: moved to raw_v2 (one table)
+- Zero sheet now has only: Dashboard, Daily_Trend, Action_List, raw_v2, Column Guide, Queries (+ hidden calc, lists).
+- raw_v2 = raw + Agent_action merged, last week + this week, A:FT (176 cols). Query: `raw_v2/raw_v2_unified.sql`, automation `collections_queries` row 78 (data from A4, clear FT30000, odd hours 9-21 at :15).
+- Old tabs (raw, Agent_action, agent_weekly, actioning_type_list, City_View, Agent_DoD/WoW, City_Daily, Read me!, ...) removed; automation rows 4/5 stopped (G = FALSE).
+  Backup of the old sheet: "BACKUP 18-Nov (before raw_v2)" = 1ebg2cmq8SNOO9fyiAlnf1EJHnx8CTdiis98OyYgr5P4.
+- The Hyderabad Calling_Masterlist Apps Script (`city_agent_tracking/sync_calling_masterlist.gs`) read zero!Agent_action -> it stops until it is re-pointed to raw_v2.
+- Formulas use INDIRECT with calc!N1 (row count) because the automation resizes raw_v2.
