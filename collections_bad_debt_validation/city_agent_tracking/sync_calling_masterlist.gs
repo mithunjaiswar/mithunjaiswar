@@ -21,6 +21,8 @@ function syncHyderabadCallingMasterlist() {
     throw new Error('Source ya destination tab nahi mila.');
   }
 
+  const clean = value => String(value ?? '').trim();
+
   // ---------- Source ready check (Agent_action!C1) ----------
   // C1 formula shows "READY | <rows> rows | <refresh time>" only when the refresh is complete;
   // while the automation is clearing / writing it shows "UPDATING | <rows> rows".
@@ -35,6 +37,26 @@ function syncHyderabadCallingMasterlist() {
   const parts = status.split('|').map(s => s.trim());
   const expectedRows = parseInt(parts[1], 10);   // "11243 rows" -> 11243
   const refreshTime = parts[2] || '';
+
+  // ---------- Automation finished check ----------
+  // C1 alone can say READY halfway through a write (automation writes in chunks, 6K rows > 5K check).
+  // So also require SQL query Automation > collections_queries (row with this sheet id + tab Agent_action)
+  // to say "GSHEET: SUCCESS (N rows" and N = rows in the tab. RUNNING / FAILED / count mismatch -> skip.
+  // (Rows in collections_queries move around, so the row is found by sheet id + tab name, not by row number.)
+  // Manual pgAdmin paste does not update that status -> run once with FORCE = true.
+  const AUTO_ID = '1uKeBnDSiKO1Lyei-vadU66P3nUFfCL_pUemyKq4r7QE';
+  if (!FORCE) {
+    const auto = SpreadsheetApp.openById(AUTO_ID).getSheetByName('collections_queries');
+    const av = auto.getRange(1, 1, auto.getLastRow(), 10).getValues(); // A:J
+    const ar = av.find(r => clean(r[3]) === SOURCE_ID && clean(r[4]) === 'Agent_action'); // D = sheet id, E = tab
+    const runText = ar ? clean(ar[9]) : '';                                                // J = status
+    const m = runText.match(/GSHEET: SUCCESS \((\d+) rows/);
+    if (!m || parseInt(m[1], 10) !== expectedRows) {
+      Logger.log(`Automation ne abhi likhna khatam nahi kiya (${runText || 'row nahi mili'}; tab me ${expectedRows} rows). Skip - next run me try hoga.`);
+      return;
+    }
+  }
+
   const props = PropertiesService.getScriptProperties();
   const propKey = 'last_sync_' + DEST_ID;
   if (!FORCE && props.getProperty(propKey) === refreshTime) {
@@ -50,8 +72,6 @@ function syncHyderabadCallingMasterlist() {
   const DEST_DATA_COLS = 71;    // A:BS   (was 70 = A:BR)
   const DEST_D_TO_LAST = DEST_DATA_COLS - 3;          // D:BS = 68 cols (was 67)
   const DEST_D_TO_REMARK_END = DEST_D_TO_LAST + REMARK_COLS; // D:CD = 79 cols (was 78)
-
-  const clean = value => String(value ?? '').trim();
 
   // Source row ko destination A:BS ki mapping mein convert karo.
   // Destination C blank rakha jaata hai; script kabhi C mein write nahi karega.
