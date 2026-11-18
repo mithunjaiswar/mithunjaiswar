@@ -2,7 +2,8 @@
 -- Zero dash: Agent_action (daily calling list) = same 71 columns, same order as
 -- "[Calculation Sheet] Collections: Calling Masterlist V2.0" > MasterTab, current week only,
 -- plus "Stage Today" and "Action Tag" at the end.
--- Output: zero sheet > Agent_action, data from A3 (row 2 = static header; automation writes no header when start is not A1), collections_queries row 75.
+-- Output: zero sheet > Agent_action, data from A3 (row 2 = static header; automation writes no header when start is not A1), collections_queries row 4 (moved from 75 on 18-Nov), clear BR15000.
+-- 18-Nov: + allocation_date (BR, latest car allocation date). agent_username / actioning_type formulas moved to BS / BT.
 --   Two formula columns at the end of that tab add agent_username (BR, from agent_weekly)
 --   and actioning_type (BS, from actioning_type_list) - they live outside the clear range.
 -- Population (same as MasterTab): this hissab week's collections list (collections_bad_debt_mv,
@@ -54,7 +55,7 @@ alloc_last as materialized (
          case when s.product_type = 'leasing' then case when s.fuel_type ilike 'ev%' then 'EV_Leasing' else 'Leasing' end
               when s.product_type = 'DTO' then case when s.fuel_type ilike 'ev%' then 'EV_D2O' else 'D2O' end
               when s.product_type = 'Rev_share' then 'Revenue Share' else s.product_type end as product_type,
-         s.first_allocation_date
+         s.first_allocation_date, s.allocation_date as last_alloc_date
   from analytics.ssot_alloc_dealloc_full s
   where s.allocation_date <= current_date and s.employee_id in (select etm from pop)   -- 17-Nov: only our pilots (no index; sorting all 887K rows was slow)
   order by s.employee_id, s.allocation_date desc, s.allocation_datetime desc
@@ -268,7 +269,8 @@ b0 as materialized (
     cl.att, cl.conn, cl.last_att, cl.last_conn, cl.last_dispo, cl.att_td, cl.conn_td,
     coalesce(rc.is_open, false) as rc_open, coalesce(rc.closed_cw, false) as rc_closed_cw, rc.open_tat,
     rm.txt as remarks, l.n0, l.n1,
-    (nj.etm is not null) as is_newjoin
+    (nj.etm is not null) as is_newjoin,
+    al.last_alloc_date
   from pop p cross join cfg
   left join mvw m on m.etm = p.etm
   left join drv d on d.etm = p.etm
@@ -421,7 +423,8 @@ select
   case when b.risk_now then case when b.rc_open then 'P0 - Critical (In car recovery)' else 'P0 - Critical (Not in car recovery)' end
        when b.rc_open and b.cur_os + b.dep > 0 then 'P1 - Cancel the car recovery (OFC)'   -- in car recovery, not critical, Current OS below deposit
        when b.cur_os < 0 and b.dep + b.cur_os <= coalesce(b.day_rent, 0) then 'P1 - Near surpass (<=1 day rent to deposit)'
-       when b.cur_os < 0 or (b.in_list and abs(b.neg_os) - least(b.tot_rec, abs(b.neg_os)) > 0) then 'P2 - OS not collected' end as "Action Tag"
+       when b.cur_os < 0 or (b.in_list and abs(b.neg_os) - least(b.tot_rec, abs(b.neg_os)) > 0) then 'P2 - OS not collected' end as "Action Tag",
+  b.last_alloc_date as "allocation_date"   -- 18-Nov: latest car allocation date of the pilot (daily check)
 from b4 b
 where (select 1 / (count(*) / 5000) from live) is not null   -- 17-Nov guard: fail (division by zero) instead of writing wrong OS for everyone when hissab_driver_live_os is mid-sync (< 5000 drivers)
 order by b.city, b.product, b.neg_os, b.etm
