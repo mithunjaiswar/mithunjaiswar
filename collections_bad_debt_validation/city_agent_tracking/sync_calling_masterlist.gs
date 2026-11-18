@@ -4,6 +4,7 @@
 //   dest    = A:BS (new BS = allocation_date), remarks BS:CC -> BT:CD
 // BEFORE the first run in each city sheet: insert 1 column to the LEFT of BS in Calling_Masterlist,
 // so the old remarks (BS:CC) move to BT:CD. Otherwise the remarks are read from the wrong columns.
+// 18-Nov: runs only when Agent_action!C1 says READY and the source refresh is new for this city (else skips; next trigger retries).
 function syncHyderabadCallingMasterlist() {
   const SOURCE_ID = '1zsGMzqah8XCVfDM7f7R-BeNmK5DU5MxqTJ89xPJ25Sw';
   const DEST_ID = '1AcbZbEU7UBPOgqNDIchN026w8CesbQlWKn61lrMy_ow';
@@ -18,6 +19,27 @@ function syncHyderabadCallingMasterlist() {
 
   if (!source || !dest) {
     throw new Error('Source ya destination tab nahi mila.');
+  }
+
+  // ---------- Source ready check (Agent_action!C1) ----------
+  // C1 formula shows "READY | <rows> rows | <refresh time>" only when the refresh is complete;
+  // while the automation is clearing / writing it shows "UPDATING | <rows> rows".
+  // Not READY            -> stop now, the next trigger run will try again.
+  // Same refresh time as the last successful sync of this city -> nothing new, stop (set FORCE = true to re-print anyway).
+  const FORCE = false;
+  const status = clean(source.getRange('C1').getDisplayValue());
+  if (!status.startsWith('READY')) {
+    Logger.log(`Source abhi update ho raha hai (${status}). Skip - next run me try hoga.`);
+    return;
+  }
+  const parts = status.split('|').map(s => s.trim());
+  const expectedRows = parseInt(parts[1], 10);   // "11243 rows" -> 11243
+  const refreshTime = parts[2] || '';
+  const props = PropertiesService.getScriptProperties();
+  const propKey = 'last_sync_' + DEST_ID;
+  if (!FORCE && props.getProperty(propKey) === refreshTime) {
+    Logger.log(`Source me naya data nahi hai (last refresh ${refreshTime} pehle hi print ho chuka). Skip.`);
+    return;
   }
 
   const FIRST_DATA_ROW = 3;
@@ -118,6 +140,14 @@ function syncHyderabadCallingMasterlist() {
         .getValues()
     : [];
 
+  // Second check: rows actually read must match C1 (refresh could have started while we were reading).
+  const readIds = sourceRows.filter(r => clean(r[2]) !== '').length;
+  if (!expectedRows || readIds !== expectedRows ||
+      clean(source.getRange('C1').getDisplayValue()) !== status) {
+    Logger.log(`Read ke time source badal gaya (C1 ${expectedRows} rows, read ${readIds}). Skip - next run me try hoga.`);
+    return;
+  }
+
   const dataAB = [];
   const dataDToCD = [];
   const seenSourceIds = new Set();
@@ -189,5 +219,6 @@ function syncHyderabadCallingMasterlist() {
       .setValues(dataDToCD);
   }
 
-  Logger.log(`${seenSourceIds.size} Hyderabad IDs print hui.`);
+  props.setProperty(propKey, refreshTime);   // remember which refresh this city already has
+  Logger.log(`${seenSourceIds.size} Hyderabad IDs print hui (source refresh ${refreshTime}).`);
 }
