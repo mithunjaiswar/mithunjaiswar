@@ -112,9 +112,10 @@ DAY_BLOCKS = [  # 10. Day-wise, Mon = D1 ... Sun = D7 (risk morning and that day
 ('Owes >= Deposit','1 = owed >= deposit at end of day'),
 ('Calls Attempted','Attempts that day'),
 ('Calls Connected','Connects that day'),
-('Bad Debt Type','1 = active, 2 = left / inactive'),
+('Bad Debt Type','1 = active (owes >= deposit), 2 = left (no car that day, last OS owed above the deposit)'),
 ('Bad Debt (Rs)','Owed above the deposit'),
 ('Rent','Rent charged for that day (live OS row of the next day; blank until it is booked)'),
+('Days Not Paid','Days since the last Razorpay / PhonePe / other payment, as of that day (0 = paid that day, 60 = nothing in 8 weeks)'),
 ]
 for name, mean in DAY_BLOCKS:
     for d in range(1, 8):

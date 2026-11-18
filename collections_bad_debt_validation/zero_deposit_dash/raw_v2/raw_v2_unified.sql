@@ -7,6 +7,8 @@
 -- "Now" columns (name, car now, deposit now, last paid, yesterday, today calls, remarks) are the same in both week rows.
 -- 18-Nov: Bad Debt Type 2 (left) only on days that already have data (was also set on future days of this week).
 -- 18-Nov: + Rent D1..D7 at the end (FG:FM) = rent charged for that day (next day's live OS row; blank until booked).
+-- 18-Nov: + Days Not Paid D1..D7 (FN:FT) = days since the last Razorpay / PhonePe / other payment as of that day.
+-- 18-Nov: Bad Debt Type 2 (left) only when the pilot held no car that day (was: any day without a live OS row).
 -- Guards: fails (division by zero) instead of writing wrong data when mv_daily_recovery is not refreshed
 --   (< 100 payments yesterday) or hissab_driver_live_os is mid-sync (< 5000 drivers for today / yesterday).
 -- =====================================================================================
@@ -352,24 +354,6 @@ r4 as materialized (
   from (select r3.*, (select max(v) from unnest(asu) v) as cr_any from r3) r3
 ),
 prevs7 as materialized (select "Week" + 7 as wk, "Employee ID" as etm from r0 where r0."Surpass D7" = 1),
-bd as materialized (
-  select r4."Week" as wk, r4."Employee ID" as etm,
-         array_agg(t order by i) as bdt, array_agg(a order by i) as bda
-  from r4 cross join lateral (
-    select g.i,
-      case when r4.alo[g.i] is not null and coalesce(r4.asu[g.i], 0) = 1 then 1
-           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and r4."Week" + g.i - 1 < (select case when has_today then current_date + 1 else current_date end from cfg) then
-             case when r4."Join Type (this week)" <> 'Existing' and r4."Last Join Date" >= r4."Week" then 2
-                  when r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0 then 2 else 2 end
-      end as t,
-      case when r4.alo[g.i] is not null and coalesce(r4.asu[g.i], 0) = 1 then greatest(0, -r4.alo[g.i] - r4.dp)
-           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and r4."Week" + g.i - 1 < (select case when has_today then current_date + 1 else current_date end from cfg) and (true or 
-                (r4."Join Type (this week)" <> 'Existing' and r4."Last Join Date" >= r4."Week") or
-                (r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0)) then r4.ec
-      end as a
-    from generate_series(1, 7) g(i)) z
-  group by 1, 2
-),
 -- =================== Agent_action fields, per week (18-Nov unified raw_v2) ===================
 cw as materialized (select date_trunc('week', current_date)::date as wk, current_date - 1 as yd),
 drv as materialized (   -- name (latest driver id of the ETM)
@@ -550,6 +534,57 @@ slab(city, min_trips, tier) as (values
   ('Delhi NCR',0,'0 - 14'),('Delhi NCR',15,'15 - 34'),('Delhi NCR',35,'Base Tier'),
   ('Bangalore',0,'0 - 14'),('Bangalore',15,'15 - 44'),('Bangalore',45,'Base Tier')
 ),
+car_day as materialized (   -- 18-Nov: days the pilot held a car (car-day rows till yesterday + open allocation today)
+  select distinct etm, d from cday
+  union
+  select etm, current_date from act_e
+),
+pay_day as materialized (   -- actual payments (Razorpay / PhonePe / other), last 8 weeks
+  select r.employee_id as etm, r.date as d from mv_daily_recovery r
+  where r.recovery_type in ('razorpay_recovery','other_positive_recovery','phonepe_recovery')
+    and r.date >= date_trunc('week', current_date)::date - 56 and r.date <= current_date and r.amount > 0 and r.employee_id is not null
+  group by 1, 2
+),
+nopay0 as materialized (   -- last payment on or before each day (join + group, no per-row lookup)
+  select g.wk, g.etm, g.dn, g.d, max(p.d) as lp
+  from grid g left join pay_day p on p.etm = g.etm and p.d <= g.d
+  where g.wk >= date_trunc('week', current_date)::date - 7
+  group by 1, 2, 3, 4
+),
+nopay as materialized (   -- days since the last payment, as of each day of the shown weeks (0 = paid that day; no payment in 8 weeks = 60)
+  select wk, etm,
+    max(d - coalesce(lp, d - 60)) filter (where dn = 1) n1, max(d - coalesce(lp, d - 60)) filter (where dn = 2) n2,
+    max(d - coalesce(lp, d - 60)) filter (where dn = 3) n3, max(d - coalesce(lp, d - 60)) filter (where dn = 4) n4,
+    max(d - coalesce(lp, d - 60)) filter (where dn = 5) n5, max(d - coalesce(lp, d - 60)) filter (where dn = 6) n6,
+    max(d - coalesce(lp, d - 60)) filter (where dn = 7) n7
+  from nopay0 group by 1, 2
+),
+car_wk as materialized (   -- car held on day 1..7 of each week (array, for the bad debt type)
+  select date_trunc('week', d)::date as wk, etm,
+    array[bool_or(extract(isodow from d) = 1), bool_or(extract(isodow from d) = 2), bool_or(extract(isodow from d) = 3), bool_or(extract(isodow from d) = 4),
+          bool_or(extract(isodow from d) = 5), bool_or(extract(isodow from d) = 6), bool_or(extract(isodow from d) = 7)] as hc
+  from car_day group by 1, 2
+),
+bd as materialized (
+  select r4."Week" as wk, r4."Employee ID" as etm,
+         array_agg(t order by i) as bdt, array_agg(a order by i) as bda
+  from r4 left join car_wk cw on cw.wk = r4."Week" and cw.etm = r4."Employee ID" cross join lateral (
+    select g.i,
+      case when r4.alo[g.i] is not null and coalesce(r4.asu[g.i], 0) = 1 then 1
+           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and r4."Week" + g.i - 1 < (select case when has_today then current_date + 1 else current_date end from cfg)
+                and not coalesce(cw.hc[g.i], false) then
+             case when r4."Join Type (this week)" <> 'Existing' and r4."Last Join Date" >= r4."Week" then 2
+                  when r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0 then 2 else 2 end
+      end as t,
+      case when r4.alo[g.i] is not null and coalesce(r4.asu[g.i], 0) = 1 then greatest(0, -r4.alo[g.i] - r4.dp)
+           when r4.ea > 0 and r4.ea < g.i and r4.alo[g.i] is null and r4.ec > 0 and r4."Week" + g.i - 1 < (select case when has_today then current_date + 1 else current_date end from cfg)
+                and not coalesce(cw.hc[g.i], false) and (true or 
+                (r4."Join Type (this week)" <> 'Existing' and r4."Last Join Date" >= r4."Week") or
+                (r4."Join Type (this week)" = 'Existing' and r4."In Collections Dash (1/0)" = 1 and coalesce(r4."Weekly OS (dash)", 0) < 0)) then r4.ec
+      end as a
+    from generate_series(1, 7) g(i)) z
+  group by 1, 2
+),
 u as materialized (   -- raw row + Agent_action fields, shown weeks only (last week + this week)
   select r.*, p.etm as prev_s7,
     bd.bdt, bd.bda,
@@ -572,6 +607,7 @@ u as materialized (   -- raw row + Agent_action fields, shown weeks only (last w
     l2.n0, l2.n1, (nj.etm is not null) as is_newjoin, rn.open_tat,
     coalesce(cdt.att, 0) as att_td, coalesce(cdt.conn, 0) as conn_td,
     rp.r1, rp.r2, rp.r3, rp.r4, rp.r5, rp.r6, rp.r7,
+    np.n1, np.n2, np.n3, np.n4, np.n5, np.n6, np.n7,
     case when r."City" = 'Delhi' then 'Delhi NCR' else r."City" end as slab_city
   from r4 r
   left join prevs7 p on p.wk = r."Week" and p.etm = r."Employee ID"
@@ -598,6 +634,7 @@ u as materialized (   -- raw row + Agent_action fields, shown weeks only (last w
   left join rc_now rn on rn.etm = r."Employee ID"
   left join call_day cdt on cdt.etm = r."Employee ID" and cdt.d = current_date
   left join rent_piv rp on rp.wk = r."Week" and rp.etm = r."Employee ID"
+  left join nopay np on np.wk = r."Week" and np.etm = r."Employee ID"
   where r."Week" >= date_trunc('week', current_date)::date - 7
 ),
 v as materialized (
@@ -790,7 +827,14 @@ select
   v.r4 as "Rent D4",
   v.r5 as "Rent D5",
   v.r6 as "Rent D6",
-  v.r7 as "Rent D7"
+  v.r7 as "Rent D7",
+  v.n1 as "Days Not Paid D1",
+  v.n2 as "Days Not Paid D2",
+  v.n3 as "Days Not Paid D3",
+  v.n4 as "Days Not Paid D4",
+  v.n5 as "Days Not Paid D5",
+  v.n6 as "Days Not Paid D6",
+  v.n7 as "Days Not Paid D7"
 from v
 where (select 1 / (count(*) / 100) from rec_day where d = current_date - 1) is not null
   and (select 1 / (count(distinct driver_id) / 5000) from lod where d >= current_date - 1) is not null
