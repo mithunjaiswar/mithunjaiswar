@@ -4,10 +4,11 @@
 //   - Columns are picked by raw_v2 header NAME (row 2), so a column move in raw_v2 does not break the sync.
 //     If a header is not found the script stops with the missing names (nothing is written).
 //   - Destination: rows 1-3 header (section / name / meaning, like raw_v2), data from row 4.
-//     A:BS data (C = agent, never written), BT:CD agent input (kept by Employee ID).
+//     A:BT data (C = agent, never written; BT = Yesterday Remarks), BU:CE agent input (kept by Employee ID),
+//     CF = Actioning Tag formula (not touched).
 //     Destination header rows 1-2 are kept as they are (not overwritten).
 //   - target_trips (BF) and min_remaining_trips (BG) are not in raw_v2 -> left blank.
-// Runs every time it is called (manual or trigger): re-prints raw_v2 and matches the BT:CD remarks by ID.
+// Runs every time it is called (manual or trigger): re-prints raw_v2 and matches the BU:CE agent input by ID.
 //   Skips only while the SQL query Automation is still writing raw_v2 (status not "GSHEET: SUCCESS" or
 //   row count mismatch), so half-written data never wipes rows / remarks.
 function syncHyderabadCallingMasterlist() {
@@ -96,6 +97,7 @@ function syncHyderabadCallingMasterlist() {
     /* BQ Stage Today                   */ 'Stage Today',
     /* BR Action Tag                    */ 'Action To Take',
     /* BS allocation_date (last join)   */ 'Last Join Date',
+    /* BT Yesterday Remarks             */ 'Yesterday Remarks',   // 20-Nov: from raw_v2 (DB snapshot of yesterday's calls)
   ];
 
   const HEADER_ROW = 2;          // raw_v2 header row
@@ -104,12 +106,14 @@ function syncHyderabadCallingMasterlist() {
   //   Old layout (2 header rows, data from row 3) still works: row 3 col D holding an ID (or blank) = data row.
   const d3 = clean(dest.getRange(3, 4).getValue());
   const FIRST_DATA_ROW = (d3 === '' || /^ET[A-Z]*\d/i.test(d3)) ? 3 : 4;
-  const DEST_DATA_COLS = 71;     // A:BS
-  const REMARK_START_COL = 72;   // BT
-  const REMARK_COLS = 11;        // BT:CD
-  const LAST_OUTPUT_COL = 82;    // CD
-  const DEST_D_TO_LAST = DEST_DATA_COLS - 3;                 // D:BS = 68 cols
-  const DEST_D_TO_REMARK_END = DEST_D_TO_LAST + REMARK_COLS; // D:CD = 79 cols
+  // 20-Nov: BT = Yesterday Remarks (written from raw_v2); agent input = BU:CE (Call Status ... Follow-up Date, CE Remarks).
+  //   CF = Actioning Tag (sheet formula, never written by the script).
+  const DEST_DATA_COLS = 72;     // A:BT
+  const REMARK_START_COL = 73;   // BU
+  const REMARK_COLS = 11;        // BU:CE
+  const LAST_OUTPUT_COL = 83;    // CE
+  const DEST_D_TO_LAST = DEST_DATA_COLS - 3;                 // D:BT = 69 cols
+  const DEST_D_TO_REMARK_END = DEST_D_TO_LAST + REMARK_COLS; // D:CE = 80 cols
   if (DEST_MAP.length !== DEST_DATA_COLS) throw new Error(`DEST_MAP me ${DEST_MAP.length} cols, ${DEST_DATA_COLS} chahiye.`);
 
   // ---------- Source ready check (SQL query Automation status) ----------
@@ -136,7 +140,7 @@ function syncHyderabadCallingMasterlist() {
   }
   const refreshTime = clean(source.getRange(SRC_FIRST_ROW, 2).getDisplayValue()); // raw_v2!B4
   // 20-Nov: no "same refresh -> skip" any more. Every run re-prints the latest raw_v2 data and
-  // re-attaches the BT:CD remarks by partner_et_id. Only skips while the automation is still writing raw_v2.
+  // re-attaches the BU:CE agent input by partner_et_id. Only skips while the automation is still writing raw_v2.
 
   // ---------- raw_v2 header -> column index ----------
   const lastSrcCol = source.getLastColumn();
@@ -179,7 +183,7 @@ function syncHyderabadCallingMasterlist() {
     });
   }
 
-  // ---------- Existing destination IDs + BT:CD remarks ----------
+  // ---------- Existing destination IDs + BU:CE agent input ----------
   const oldCount = Math.max(0, dest.getLastRow() - FIRST_DATA_ROW + 1);
   const remarksById = new Map();
   if (oldCount > 0) {
@@ -213,7 +217,7 @@ function syncHyderabadCallingMasterlist() {
     const mapped = mapSourceRow(row);
     const savedRemarks = remarksById.get(id) || Array(REMARK_COLS).fill('');
     dataAB.push(mapped.slice(0, 2));                    // A:B
-    dataDToCD.push([...mapped.slice(3), ...savedRemarks]); // D:BS + BT:CD
+    dataDToCD.push([...mapped.slice(3), ...savedRemarks]); // D:BT + BU:CE
   });
 
   const rowsToWrite = Math.max(oldCount, dataAB.length);
