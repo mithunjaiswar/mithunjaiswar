@@ -6,8 +6,9 @@
 //   - Destination layout is NOT changed: A:BS data (C = agent_username, never written), BT:CD agent remarks.
 //     Destination header rows 1-2 are kept as they are (not overwritten).
 //   - target_trips (BF) and min_remaining_trips (BG) are not in raw_v2 -> left blank.
-// Runs only when SQL query Automation status for raw_v2 says GSHEET: SUCCESS with the same row count,
-//   and the source refresh (raw_v2!B4) is new for this city; else skips and the next trigger retries.
+// Runs every time it is called (manual or trigger): re-prints raw_v2 and matches the BT:CD remarks by ID.
+//   Skips only while the SQL query Automation is still writing raw_v2 (status not "GSHEET: SUCCESS" or
+//   row count mismatch), so half-written data never wipes rows / remarks.
 function syncHyderabadCallingMasterlist() {
   const SOURCE_ID = '1zsGMzqah8XCVfDM7f7R-BeNmK5DU5MxqTJ89xPJ25Sw';
   const SOURCE_TAB = 'raw_v2';
@@ -130,13 +131,8 @@ function syncHyderabadCallingMasterlist() {
     expectedRows = parseInt(m[1], 10);
   }
   const refreshTime = clean(source.getRange(SRC_FIRST_ROW, 2).getDisplayValue()); // raw_v2!B4
-
-  const props = PropertiesService.getScriptProperties();
-  const propKey = 'last_sync_' + DEST_ID;
-  if (!FORCE && props.getProperty(propKey) === refreshTime) {
-    Logger.log(`Source me naya data nahi hai (last refresh ${refreshTime} pehle hi print ho chuka). Skip.`);
-    return;
-  }
+  // 20-Nov: no "same refresh -> skip" any more. Every run re-prints the latest raw_v2 data and
+  // re-attaches the BT:CD remarks by partner_et_id. Only skips while the automation is still writing raw_v2.
 
   // ---------- raw_v2 header -> column index ----------
   const lastSrcCol = source.getLastColumn();
@@ -231,6 +227,5 @@ function syncHyderabadCallingMasterlist() {
     dest.getRange(FIRST_DATA_ROW, 4, rowsToWrite, DEST_D_TO_REMARK_END).setValues(dataDToCD);
   }
 
-  props.setProperty(propKey, refreshTime);
   Logger.log(`${seen.size} Hyderabad IDs print hui (week ${curWeek}, source refresh ${refreshTime}).`);
 }
