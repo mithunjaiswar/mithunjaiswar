@@ -9,6 +9,7 @@
 -- 18-Nov: + Rent D1..D7 at the end (FG:FM) = rent charged for that day (next day's live OS row; blank until booked).
 -- 18-Nov: + Days Not Paid D1..D7 (FN:FT) = days since the last Razorpay / PhonePe / other payment as of that day.
 -- 18-Nov: Bad Debt Type 2 (left) = no car that day and last live OS (any earlier day, else weekly OS) owes more than the deposit; counted every day (non-funnel).
+-- 19-Nov: Days Not Paid counts from the later of last payment / last join (new joiners were showing 60).
 -- Guards: fails (division by zero) instead of writing wrong data when mv_daily_recovery is not refreshed
 --   (< 100 payments yesterday) or hissab_driver_live_os is mid-sync (< 5000 drivers for today / yesterday).
 -- =====================================================================================
@@ -551,13 +552,24 @@ nopay0 as materialized (   -- last payment on or before each day (join + group, 
   where g.wk >= date_trunc('week', current_date)::date - 7
   group by 1, 2, 3, 4
 ),
-nopay as materialized (   -- days since the last payment, as of each day of the shown weeks (0 = paid that day; no payment in 8 weeks = 60)
-  select wk, etm,
-    max(d - coalesce(lp, d - 60)) filter (where dn = 1) dnp1, max(d - coalesce(lp, d - 60)) filter (where dn = 2) dnp2,
-    max(d - coalesce(lp, d - 60)) filter (where dn = 3) dnp3, max(d - coalesce(lp, d - 60)) filter (where dn = 4) dnp4,
-    max(d - coalesce(lp, d - 60)) filter (where dn = 5) dnp5, max(d - coalesce(lp, d - 60)) filter (where dn = 6) dnp6,
-    max(d - coalesce(lp, d - 60)) filter (where dn = 7) dnp7
-  from nopay0 group by 1, 2
+joind as materialized (   -- 19-Nov: latest join (New Join / Rejoin / Resurrection) on or before each day
+  select g.wk, g.etm, g.dn, max(x.allocation_date) as jd
+  from grid g join joins x on x.etm = g.etm and x.allocation_date <= g.d
+  where g.wk >= date_trunc('week', current_date)::date - 7
+  group by 1, 2, 3
+),
+nopay as materialized (   -- days since the last payment OR the last join (whichever is later), as of each day.
+  -- 0 = paid / joined that day; no payment and no join in 8 weeks = 60. 19-Nov: was counted from the payment only, so new joiners showed 60.
+  select a.wk, a.etm,
+    max(a.d - greatest(coalesce(a.lp, a.d - 60), coalesce(b.jd, a.d - 60))) filter (where a.dn = 1) dnp1,
+    max(a.d - greatest(coalesce(a.lp, a.d - 60), coalesce(b.jd, a.d - 60))) filter (where a.dn = 2) dnp2,
+    max(a.d - greatest(coalesce(a.lp, a.d - 60), coalesce(b.jd, a.d - 60))) filter (where a.dn = 3) dnp3,
+    max(a.d - greatest(coalesce(a.lp, a.d - 60), coalesce(b.jd, a.d - 60))) filter (where a.dn = 4) dnp4,
+    max(a.d - greatest(coalesce(a.lp, a.d - 60), coalesce(b.jd, a.d - 60))) filter (where a.dn = 5) dnp5,
+    max(a.d - greatest(coalesce(a.lp, a.d - 60), coalesce(b.jd, a.d - 60))) filter (where a.dn = 6) dnp6,
+    max(a.d - greatest(coalesce(a.lp, a.d - 60), coalesce(b.jd, a.d - 60))) filter (where a.dn = 7) dnp7
+  from nopay0 a left join joind b on b.wk = a.wk and b.etm = a.etm and b.dn = a.dn
+  group by 1, 2
 ),
 car_wk as materialized (   -- car held on day 1..7 of each week (array, for the bad debt type)
   select date_trunc('week', d)::date as wk, etm,
