@@ -697,7 +697,11 @@ select
   v.agent as "Agent (this week)",
   v.act_type as "Actioning Type",
   row_number() over (partition by v."Week", v."City" order by v.pk, v.neg_os, v."Employee ID") as "Rank in City",
-  coalesce(case when v.ct = 1 then case when v."Car Recovery (week)" = 'Open' then 'P0 - Critical (In car recovery)' else 'P0 - Critical (Not in car recovery)' end
+  -- 19-Nov: P0 - Critical (Not in car recovery) only from the 2nd day after the last join (joined 16th -> P0 from 18th);
+  -- before that the pilot falls to the next action (OFC / Near surpass / OS not collected).
+  coalesce(case when v.ct = 1 and (v."Car Recovery (week)" = 'Open' or v."Last Join Date" is null
+                                   or v."Week" + v.co - 1 - v."Last Join Date" >= 2)
+                then case when v."Car Recovery (week)" = 'Open' then 'P0 - Critical (In car recovery)' else 'P0 - Critical (Not in car recovery)' end
        when v."Car Recovery (week)" = 'Open' and v.dp - v.cq > 0 then 'P1 - Cancel the car recovery (OFC)'
        when v.cq > 0 and v.dp - v.cq <= v.rr then 'P1 - Near surpass (<=1 day rent to deposit)'
        when v.cq > 0 or v.ee > 0 then 'P2 - OS not collected' end, 'No action') as "Action To Take",
