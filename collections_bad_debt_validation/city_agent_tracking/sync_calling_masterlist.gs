@@ -3,7 +3,8 @@
 //   - raw_v2: header in row 2, data from row 4, 2 weeks of rows -> only the current (latest) week is printed.
 //   - Columns are picked by raw_v2 header NAME (row 2), so a column move in raw_v2 does not break the sync.
 //     If a header is not found the script stops with the missing names (nothing is written).
-//   - Destination layout is NOT changed: A:BS data (C = agent_username, never written), BT:CD agent remarks.
+//   - Destination: rows 1-3 header (section / name / meaning, like raw_v2), data from row 4.
+//     A:BS data (C = agent, never written), BT:CD agent input (kept by Employee ID).
 //     Destination header rows 1-2 are kept as they are (not overwritten).
 //   - target_trips (BF) and min_remaining_trips (BG) are not in raw_v2 -> left blank.
 // Runs every time it is called (manual or trigger): re-prints raw_v2 and matches the BT:CD remarks by ID.
@@ -99,7 +100,10 @@ function syncHyderabadCallingMasterlist() {
 
   const HEADER_ROW = 2;          // raw_v2 header row
   const SRC_FIRST_ROW = 4;       // raw_v2 data starts here
-  const FIRST_DATA_ROW = 3;      // Calling_Masterlist data starts here
+  // 20-Nov: Calling_Masterlist header = 3 rows like raw_v2 (section / name / meaning) -> data from row 4.
+  //   Old layout (2 header rows, data from row 3) still works: row 3 col D holding an ID (or blank) = data row.
+  const d3 = clean(dest.getRange(3, 4).getValue());
+  const FIRST_DATA_ROW = (d3 === '' || /^ET[A-Z]*\d/i.test(d3)) ? 3 : 4;
   const DEST_DATA_COLS = 71;     // A:BS
   const REMARK_START_COL = 72;   // BT
   const REMARK_COLS = 11;        // BT:CD
