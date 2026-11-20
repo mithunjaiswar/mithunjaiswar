@@ -28,18 +28,21 @@ lv as materialized (
     sum(uber_rev) as uber_tr, sum(fare) as fare, sum(abs(subs)) as subs, sum(cash) as cash
   from lv0 group by 1
 ),
-act as materialized (
-  select ca.driver_id, string_agg(distinct fc.car_number, ', ') as cars
+act as materialized (   -- 20-Nov: active cars now; if none, the last car the pilot had (car returned this week) so {{2}} is never blank
+  select ca.driver_id,
+    string_agg(distinct fc.car_number, ', ') filter (where ca.deallocation_id is null) as cars,
+    (array_agg(fc.car_number order by ca.allocation_date desc))[1] as last_car,
+    bool_or(ca.deallocation_id is null) as has_car
   from car_allocation ca join fleet_car fc on fc.id = ca.car_id
-  where ca.deactivation_date is null and ca.deallocation_id is null and ca.allocation_date::date <= current_date
+  where ca.deactivation_date is null and ca.allocation_date::date <= current_date
     and ca.driver_id in (select driver_id from lv)
   group by 1
 ),
 drv as materialized (
-  select l.*, fd.employee_id as etm, fd.name, a.cars, (a.driver_id is not null) as has_car
+  select l.*, fd.employee_id as etm, fd.name, coalesce(a.cars, a.last_car) as cars, coalesce(a.has_car, false) as has_car
   from lv l join fleet_driver fd on fd.id = l.driver_id
   left join act a on a.driver_id = l.driver_id
-  where a.driver_id is not null or l.fare > 0
+  where coalesce(a.has_car, false) or l.fare > 0
 ),
 mvw as materialized (   -- group by (not distinct on .. order by id: that is 20x slower on this MV)
   select m.partner_etm as etm, max(m.city) as city, max(m.lead_id) as lead_id,
@@ -99,7 +102,7 @@ select
   lead_id as "lead_id",
   city as "city",
   'Leasing - Single' as "product",
-  case when has_car then 'Active car' else 'No active car (ran this week)' end as "car_status",
+  case when has_car then 'Active car' else 'No active car (ran this week, last car shown)' end as "car_status",
   to_char(last_row, 'DD-Mon-YYYY') as "live_os_row_date",
   to_char(now() at time zone 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI:SS') as "last_updated"
 from x
