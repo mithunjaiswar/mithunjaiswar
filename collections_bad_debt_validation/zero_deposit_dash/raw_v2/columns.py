@@ -30,6 +30,8 @@ COLS = [
 ('3. Join & Deposit','Deposit Bucket at Allocation','0 Deposit / 1-3K / 3-5K / 5K+ / Unknown (dash filter)','raw',W),
 ('3. Join & Deposit','Deposit Now (Rs)','Current deposit balance','raw',N),
 ('3. Join & Deposit','Deposit Bucket Now','Bucket of the current deposit','Agent_action',N),
+('3. Join & Deposit','Deposit for Dash (Rs)',"Joined in this week -> current deposit (last week row: deposit at that week's end). Everyone else -> deposit at Monday EOD of the week, so a pilot who leaves mid-week and gets the deposit adjusted does not jump into 0 deposit",'raw',W),
+('3. Join & Deposit','Deposit Bucket for Dash','0 Deposit / 1-3K / 3-5K / 5K+ of Deposit for Dash. All 0-deposit dash filters use this column','raw',W),
 ('3. Join & Deposit','Joined This Week at 0 Deposit','Yes = joined in this week (Joined This Week is not Existing) AND Deposit Bucket at Allocation = 0 Deposit, else No. Use this to filter that week 0-deposit joiners','raw',W),
 # 4. Weekly OS & Collection
 ('4. Weekly OS & Collection','Last Week Closing OS (Rs)','Previous hisaab week closing OS (ledger)','Agent_action',W),
@@ -120,6 +122,3 @@ DAY_BLOCKS = [  # 10. Day-wise, Mon = D1 ... Sun = D7 (risk morning and that day
 for name, mean in DAY_BLOCKS:
     for d in range(1, 8):
         COLS.append(('10. Day-wise (D1 = Mon ... D7 = Sun)', f'{name} D{d}', mean, 'raw', W))
-# 12. Deposit for Dash (20-Nov, FU:FV) - all 0-deposit filters (Leadership, Daily_Trend, Dashboard_WIP/calc, Action lists) use FV
-COLS.append(('12. Deposit for Dash','Deposit for Dash (Rs)',"Joined in this week -> current deposit (last week row: deposit at that week's end). Everyone else -> deposit at Monday EOD of the week, so a pilot who leaves mid-week and gets the deposit adjusted does not jump into 0 deposit",'raw',W))
-COLS.append(('12. Deposit for Dash','Deposit Bucket for Dash','0 Deposit / 1-3K / 3-5K / 5K+ of Deposit for Dash. All 0-deposit dash filters use this column','raw',W))

@@ -10,7 +10,8 @@
 -- 18-Nov: + Days Not Paid D1..D7 (FN:FT) = days since the last Razorpay / PhonePe / other payment as of that day.
 -- 18-Nov: Bad Debt Type 2 (left) = no car that day and last live OS (any earlier day, else weekly OS) owes more than the deposit; counted every day (non-funnel).
 -- 19-Nov: Days Not Paid counts from the later of last payment / last join (new joiners were showing 60).
--- 20-Nov: + Deposit for Dash (FU) / Deposit Bucket for Dash (FV): joined this week -> current deposit, else Monday EOD deposit.
+-- 20-Nov: + Deposit for Dash (AA) / Deposit Bucket for Dash (AB): joined this week -> current deposit, else Monday EOD deposit.
+-- 20-Nov perf: big tables read once / only for the population (mdr, calls, mcl, pop_drv; dep_tot, lwos, cday, lead filtered).
 -- Guards: fails (division by zero) instead of writing wrong data when mv_daily_recovery is not refreshed
 --   (< 100 payments yesterday) or hissab_driver_live_os is mid-sync (< 5000 drivers for today / yesterday).
 -- =====================================================================================
@@ -61,6 +62,27 @@ pop as materialized (
     and s.allocation_date >= (date_trunc('week', current_date)::date - 14) and s.allocation_date <= current_date
 ),
 -- ---------- attributes for pilots that are only in live OS (not in the dashboard rows that week) ----------
+pop_drv as materialized (   -- 20-Nov perf: every fleet_driver id of the population (to read big tables only for these pilots)
+  select f.id as driver_id, f.employee_id as etm from fleet_driver f where f.employee_id in (select distinct etm from pop)
+),
+mdr as materialized (   -- 20-Nov perf: mv_daily_recovery read ONCE (8 weeks, 5 types); rec_day / recw / lastpaid / pay_day come from here
+  select r.employee_id, r.date, r.recovery_type, r.amount
+  from mv_daily_recovery r
+  where r.date >= date_trunc('week', current_date)::date - 56
+    and r.recovery_type in ('razorpay_recovery','other_positive_recovery','phonepe_recovery','positive_adjustment','deposit_to_os')
+),
+calls as materialized (   -- 20-Nov perf: collections_calling_data_raw read ONCE (3 weeks); call_day / callw come from here
+  select c.partner_et_id, c.date, c.week_start, c.attempt_count, c.connect_count, c.last_attempt_time, c.last_connect_time, c.last_subdisposition
+  from public.collections_calling_data_raw c
+  where c.week_start >= date_trunc('week', current_date)::date - 14
+),
+mcl as materialized (   -- 20-Nov perf: calling masterlist read ONCE (4 weeks); cml / remarks come from here
+  select m.week, m.partner_et_id, m.date, m.snapshot_date, m.loaded_at, m.agent_username, m.actioning_type,
+         m.remarks, m.follow_up_date, m.call_status, m.collections_disposition, m.nd_disposition, m.critical_risk_disposition,
+         m.driver_confirmation, m.minimum_uber_trips_pitch
+  from public.mv_collections_calling_masterlist m
+  where m.week >= date_trunc('week', current_date)::date - 28
+),
 mv_last as materialized (   -- latest dashboard row of the pilot in the 4 weeks
   select distinct on (etm) etm, city, product_type, habit, tenure_days, eip_filter from mvw order by etm, wk desc
 ),
@@ -86,6 +108,7 @@ dep_tot as materialized (   -- index-only scan (filter must match idx_mdr_dep_va
   select d.employee_id as etm, sum(d.amount) as dep_now
   from mv_deposits_raw d
   where d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[])
+    and d.employee_id in (select etm from pop)   -- 20-Nov perf: only the population (was every pilot ever, ~15 s)
   group by 1
 ),
 dep_day as materialized (   -- deposits dated inside the 4 weeks (to rebuild the deposit on each day)
@@ -96,15 +119,13 @@ dep_day as materialized (   -- deposits dated inside the 4 weeks (to rebuild the
 ),
 rec_day as materialized (
   select r.employee_id as etm, r.date as d, sum(r.amount) as amt
-  from mv_daily_recovery r
+  from mdr r
   where r.date >= (date_trunc('week', current_date)::date - 14) and r.date <= current_date
-    and r.recovery_type in ('razorpay_recovery','other_positive_recovery','phonepe_recovery','positive_adjustment','deposit_to_os')
   group by 1, 2
 ),
 call_day as materialized (
   select c.partner_et_id as etm, c.date as d, sum(c.attempt_count) as att, sum(c.connect_count) as conn
-  from public.collections_calling_data_raw c
-  where c.week_start >= date_trunc('week', current_date)::date - 14
+  from calls c
   group by 1, 2
 ),
 -- ---------- GPS at week start (Monday) on the cars the pilot held that day ----------
@@ -367,7 +388,7 @@ drv as materialized (   -- name (latest driver id of the ETM)
 ),
 lead as materialized (
   select distinct on (l.hawkeye_driver_id) l.hawkeye_driver_id as driver_id, l.lead_id
-  from crm.lead_driver l where coalesce(l.is_deleted, 0) = 0
+  from crm.lead_driver l where coalesce(l.is_deleted, 0) = 0 and l.hawkeye_driver_id in (select driver_id from drv)
   order by l.hawkeye_driver_id, l.id desc
 ),
 lead_mv as materialized (select distinct on (etm) etm, lead_id from mvw where lead_id is not null order by etm, wk desc),
@@ -387,6 +408,7 @@ cday as materialized (   -- one row per allocated car per day, from 2 weeks ago 
                                      least(coalesce(cd.date::date, current_date), current_date - 1), interval '1 day') d(dd)
   where ca.deactivation_date is null and ca.allocation_date::date <= current_date - 1
     and coalesce(cd.date::date, current_date) >= date_trunc('week', current_date)::date - 14
+    and ca.driver_id in (select driver_id from pop_drv)   -- 20-Nov perf: only the population
 ),
 trip as materialized (
   select t.car_id, t.date as d, sum(t.trips) as trips, sum(t.dispatch_trips) as disp, sum(t.accepted_trips) as acc,
@@ -447,23 +469,24 @@ recw as materialized (
     coalesce(sum(r.amount) filter (where r.recovery_type = 'phonepe_recovery'), 0) as pp,
     coalesce(sum(r.amount) filter (where r.recovery_type = 'positive_adjustment'), 0) as adj,
     coalesce(sum(r.amount) filter (where r.recovery_type = 'deposit_to_os'), 0) as dpo
-  from mv_daily_recovery r
+  from mdr r
   where r.date >= date_trunc('week', current_date)::date - 7 and r.date <= current_date
-    and r.recovery_type in ('razorpay_recovery','other_positive_recovery','phonepe_recovery','positive_adjustment','deposit_to_os')
   group by 1, 2
 ),
 lastpaid as materialized (
-  select r.employee_id as etm, max(r.date) as d from mv_daily_recovery r
+  select r.employee_id as etm, max(r.date) as d from mdr r
   where r.recovery_type in ('razorpay_recovery','other_positive_recovery','phonepe_recovery')
-    and r.date >= date_trunc('week', current_date)::date - 56 and r.employee_id is not null group by 1
+    and r.employee_id is not null group by 1
 ),
 lwos as materialized (   -- previous hisaab week closing OS (ledger) -> row week = ledger week + 7
   select fd.employee_id as etm, (os.week_start_date::date + 7) as wk, sum(os.total_os)::int as os
   from (select driver_id as partner_id, week_start_date, total_os from account_ledger
         where week_start_date >= date_trunc('week', current_date) - interval '14 days' and week_start_date < date_trunc('week', current_date)
+          and driver_id in (select driver_id from pop_drv)   -- 20-Nov perf
         union all
         select partner_id, week_start_date, total_os from fleet_leasing_total_os
-        where week_start_date >= date_trunc('week', current_date) - interval '14 days' and week_start_date < date_trunc('week', current_date)) os
+        where week_start_date >= date_trunc('week', current_date) - interval '14 days' and week_start_date < date_trunc('week', current_date)
+          and partner_id in (select driver_id from pop_drv)) os   -- 20-Nov perf
   join fleet_driver fd on fd.id = os.partner_id
   group by 1, 2
 ),
@@ -481,7 +504,7 @@ callw as materialized (
   select c.partner_et_id as etm, c.week_start as wk,
     max(c.last_attempt_time) as last_att, max(c.last_connect_time) as last_conn,
     (array_agg(c.last_subdisposition order by c.last_connect_time desc nulls last) filter (where coalesce(c.last_subdisposition, '') <> ''))[1] as last_dispo
-  from public.collections_calling_data_raw c
+  from calls c
   where c.week_start >= date_trunc('week', current_date)::date - 7
   group by 1, 2
 ),
@@ -497,15 +520,14 @@ remarks as materialized (   -- latest remarks of the calling sheet (23:00 snapsh
       case when coalesce(driver_confirmation, '') <> '' then 'Driver Confirmation:  ' || driver_confirmation end,
       case when coalesce(minimum_uber_trips_pitch, '') <> '' then 'Minimum Uber Trips Pitch:  ' || minimum_uber_trips_pitch end
     ) as txt
-  from public.mv_collections_calling_masterlist
+  from mcl
   where coalesce(call_status, '') <> '' and week = date_trunc('week', current_date - 1)::date
   order by partner_et_id, date desc, loaded_at desc
 ),
 cml as materialized (   -- calling sheet snapshot: agent + actioning type per week (latest snapshot of the week)
   select distinct on (week, partner_et_id) week as wk, partner_et_id as etm,
          nullif(nullif(nullif(trim(agent_username), ''), 'NA'), 'NaN') as agent, nullif(trim(actioning_type), '') as act_type
-  from public.mv_collections_calling_masterlist
-  where week >= date_trunc('week', current_date)::date - 28
+  from mcl
   order by week, partner_et_id, snapshot_date desc, loaded_at desc
 ),
 agent_wk as materialized (   -- agent of the week, else latest earlier week (like raw!DC), else Unassigned
@@ -544,9 +566,9 @@ car_day as materialized (   -- 18-Nov: days the pilot held a car (car-day rows t
   select etm, current_date from act_e
 ),
 pay_day as materialized (   -- actual payments (Razorpay / PhonePe / other), last 8 weeks
-  select r.employee_id as etm, r.date as d from mv_daily_recovery r
+  select r.employee_id as etm, r.date as d from mdr r
   where r.recovery_type in ('razorpay_recovery','other_positive_recovery','phonepe_recovery')
-    and r.date >= date_trunc('week', current_date)::date - 56 and r.date <= current_date and r.amount > 0 and r.employee_id is not null
+    and r.date <= current_date and r.amount > 0 and r.employee_id is not null
   group by 1, 2
 ),
 nopay0 as materialized (   -- last payment on or before each day (join + group, no per-row lookup)
@@ -725,6 +747,8 @@ select
   v."SD Bucket (at allocation)" as "Deposit Bucket at Allocation",
   v.dp as "Deposit Now (Rs)",
   case when v.dp <= 0 then '0 Deposit' when v.dp <= 3000 then '1-3K' when v.dp <= 5000 then '3-5K' else '5K+' end as "Deposit Bucket Now",
+  v.dep_dash as "Deposit for Dash (Rs)",   -- 20-Nov: moved here (AA:AB) from the end
+  case when v.dep_dash <= 0 then '0 Deposit' when v.dep_dash <= 3000 then '1-3K' when v.dep_dash <= 5000 then '3-5K' else '5K+' end as "Deposit Bucket for Dash",
   case when v."Join Type (this week)" <> 'Existing' and v."SD Bucket (at allocation)" = '0 Deposit' then 'Yes' else 'No' end as "Joined This Week at 0 Deposit",
   v.lw_os as "Last Week Closing OS (Rs)",
   v."Weekly OS (dash)" as "Weekly OS to Collect (Rs)",
@@ -878,9 +902,7 @@ select
   v.dnp4 as "Days Not Paid D4",
   v.dnp5 as "Days Not Paid D5",
   v.dnp6 as "Days Not Paid D6",
-  v.dnp7 as "Days Not Paid D7",
-  v.dep_dash as "Deposit for Dash (Rs)",
-  case when v.dep_dash <= 0 then '0 Deposit' when v.dep_dash <= 3000 then '1-3K' when v.dep_dash <= 5000 then '3-5K' else '5K+' end as "Deposit Bucket for Dash"
+  v.dnp7 as "Days Not Paid D7"
 from v
 where (select 1 / (count(*) / 100) from rec_day where d = current_date - 1) is not null
   and (select 1 / (count(distinct driver_id) / 5000) from lod where d >= current_date - 1) is not null
