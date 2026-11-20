@@ -1,5 +1,10 @@
 # Call Details App - host on Mithun's own Vercel account
 
+**DONE 20-Nov:** live at https://call-details-app.vercel.app (Vercel project `call-details-app`,
+`prj_1DqRFRjhb7L9fEcDeQMC7DMqmh1O`, account mithun-jaiswar). DATABASE_URL set as encrypted env
+(production + preview). Verified: /api/health -> ok, 85 users; APK sha256 matches; login refuses bad creds.
+Redeploy: upload files with POST /v2/files, then POST /v13/deployments (target production).
+
 Goal: run the Call Details backend + an APK download page on the Vercel account
 **mithun-jaiswar's projects** (Hobby), using the SAME Neon database as today (option A:
 keep all 85 users and all call data). The old project lives under the Vercel team
