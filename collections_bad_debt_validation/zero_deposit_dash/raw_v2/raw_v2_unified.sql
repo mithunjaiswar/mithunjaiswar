@@ -10,6 +10,7 @@
 -- 18-Nov: + Days Not Paid D1..D7 (FN:FT) = days since the last Razorpay / PhonePe / other payment as of that day.
 -- 18-Nov: Bad Debt Type 2 (left) = no car that day and last live OS (any earlier day, else weekly OS) owes more than the deposit; counted every day (non-funnel).
 -- 19-Nov: Days Not Paid counts from the later of last payment / last join (new joiners were showing 60).
+-- 20-Nov: + Deposit for Dash (FU) / Deposit Bucket for Dash (FV): joined this week -> current deposit, else Monday EOD deposit.
 -- Guards: fails (division by zero) instead of writing wrong data when mv_daily_recovery is not refreshed
 --   (< 100 payments yesterday) or hissab_driver_live_os is mid-sync (< 5000 drivers for today / yesterday).
 -- =====================================================================================
@@ -207,6 +208,7 @@ piv as materialized (
     max(wcoll) filter (where dn = 7) w7,
     sum(wcoll) as wcoll_week, sum(coll) as coll_week, max(wos_abs) as wos_abs,
     max(dep_asof) filter (where dn = 1) as dep_wk_start,
+    (array_agg(dep_asof order by dn desc))[1] as dep_wk_last,   -- deposit at the end of the latest day of the week with data
     max(rent) as day_rent
   from dayf group by 1, 2
 ),
@@ -274,6 +276,7 @@ r0 as materialized (select
   case when pv.first_surpass_dn is not null then b.wk + pv.first_surpass_dn - 1 end as "First Surpass Date",
   case when rc.etm is null then 'No' when rc.rc_open_eow then 'Open' else 'Closed' end as "Car Recovery (week)",
   rc.rc_start                                            as "Car Recovery Start",
+  pv.dep_wk_start as dep_mon_eod, pv.dep_wk_last as dep_wk_last,   -- 20-Nov: for Deposit for Dash
   pv.lo1 as "Live OS D1", pv.lo2 as "Live OS D2", pv.lo3 as "Live OS D3", pv.lo4 as "Live OS D4",
   pv.lo5 as "Live OS D5", pv.lo6 as "Live OS D6", pv.lo7 as "Live OS D7",
   pv.c1 as "Collection D1", pv.c2 as "Collection D2", pv.c3 as "Collection D3", pv.c4 as "Collection D4",
@@ -676,7 +679,13 @@ v as materialized (
     case when u."Product Type" in ('Leasing') and u."EIP / Single" <> 'EIP' or u."Product Type" = 'Own Now' then 'Base Tier'
          when u."Product Type" = 'D2O' then case when u.is_newjoin then 'Base Tier'
               else (select s.tier from slab s where s.city = u.slab_city and s.min_trips <= u.trips_lw order by s.min_trips desc limit 1) end
-    end as trip_tier
+    end as trip_tier,
+    -- 20-Nov: Deposit for Dash = joined in this week -> current deposit (past week: end of that week);
+    -- else deposit at Monday EOD of the week, so a pilot who leaves mid-week and gets the deposit adjusted
+    -- does not move into the 0-deposit count.
+    greatest(case when u."Last Join Date" between u."Week" and u."Week" + 6
+                  then case when u."Week" = date_trunc('week', current_date)::date then u.dp else coalesce(u.dep_wk_last, u.dp) end
+                  else coalesce(u.dep_mon_eod, u.dp) end, 0) as dep_dash
   from u
 )
 
@@ -869,7 +878,9 @@ select
   v.dnp4 as "Days Not Paid D4",
   v.dnp5 as "Days Not Paid D5",
   v.dnp6 as "Days Not Paid D6",
-  v.dnp7 as "Days Not Paid D7"
+  v.dnp7 as "Days Not Paid D7",
+  v.dep_dash as "Deposit for Dash (Rs)",
+  case when v.dep_dash <= 0 then '0 Deposit' when v.dep_dash <= 3000 then '1-3K' when v.dep_dash <= 5000 then '3-5K' else '5K+' end as "Deposit Bucket for Dash"
 from v
 where (select 1 / (count(*) / 100) from rec_day where d = current_date - 1) is not null
   and (select 1 / (count(distinct driver_id) / 5000) from lod where d >= current_date - 1) is not null
