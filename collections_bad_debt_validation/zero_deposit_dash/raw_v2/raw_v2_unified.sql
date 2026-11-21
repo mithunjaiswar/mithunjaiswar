@@ -49,22 +49,16 @@ fdr as materialized (   -- driver id <-> ETM
   select f.id, f.employee_id from fleet_driver f where f.employee_id in (select etm from mvw)
 ),
 lod_e as materialized (select l.*, f.etm from lod l join fdr f on f.driver_id = l.driver_id),
-ca_all as materialized (   -- 21-Nov perf: car_allocation (668 MB) + car_deallocation read ONCE: open allocations
-  -- + allocations returned in the last 4 weeks. act / car_pop / cday / jama come from here (was 4 full scans).
-  select ca.driver_id, ca.car_id, ca.allocation_date, ca.deallocation_id, cd.date::date as dd
-  from car_allocation ca
-  left join car_deallocation cd on cd.id = ca.deallocation_id
-  where ca.deactivation_date is null and coalesce(cd.date::date, current_date) >= date_trunc('week', current_date)::date - 28
-),
 act as materialized (   -- open car allocations now (Agent_action population + Has Car Now)
   select ca.driver_id, ca.car_id, ca.allocation_date
-  from ca_all ca
-  where ca.deallocation_id is null and ca.allocation_date::date <= current_date
+  from car_allocation ca   -- 21-Nov perf: index on deallocation_id IS NULL (~1 s); the car history comes from ss
+  where ca.deallocation_id is null and ca.deactivation_date is null and ca.allocation_date::date <= current_date
 ),
 act_e as materialized (select distinct fd.employee_id as etm from act a join fleet_driver fd on fd.id = a.driver_id),
 ss as materialized (   -- 21-Nov perf: analytics.ssot_alloc_dealloc_full (314 MB, no index) read ONCE (was 4 full scans):
   -- every allocation of the dashboard / car / live OS pilots + every join of the last 3 weeks. pop / joins / alloc_last / newjoin come from here.
-  select s.employee_id, s.allocation_date, s.allocation_datetime, s.category, s.sd_amount, s.city, s.product_type, s.fuel_type, s.first_allocation_date
+  select s.employee_id, s.allocation_date, s.allocation_datetime, s.category, s.sd_amount, s.city, s.product_type, s.fuel_type, s.first_allocation_date,
+         case when s.car_id ~ '^[0-9]+$' then s.car_id::bigint end as car_id, s.jama_date   -- 21-Nov: car history for car_pop / cday / jama
   from analytics.ssot_alloc_dealloc_full s
   where s.allocation_date <= date_trunc('week', current_date)::date + 6
     and (s.employee_id in (select etm from mvw union select etm from act_e union select etm from lod_e)
@@ -149,14 +143,11 @@ call_day as materialized (
   group by 1, 2
 ),
 -- ---------- GPS at week start (Monday) on the cars the pilot held that day ----------
-car_pop as materialized (   -- allocations of the population (read once)
-  -- 21-Nov: from car_allocation / car_deallocation instead of analytics.ssot_alloc_dealloc_base: the ETL drops and
-  -- rebuilds the ssot tables, so a query waiting on them failed with 'canceling statement due to lock timeout'.
-  select pd.etm, ca.car_id::bigint as car_id, ca.allocation_date::date as allocation_date, ca.dd as jama_date
-  from ca_all ca
-  join pop_drv pd on pd.driver_id = ca.driver_id
-  where ca.car_id is not null
-    and coalesce(ca.dd, current_date) >= (date_trunc('week', current_date)::date - 14)
+car_pop as materialized (   -- allocations of the population, from ss (ssot read once; was car_allocation)
+  select s.employee_id as etm, s.car_id, s.allocation_date, s.jama_date
+  from ss s
+  where s.car_id is not null and s.employee_id in (select etm from pop)
+    and coalesce(s.jama_date, current_date) >= (date_trunc('week', current_date)::date - 14)
 ),
 car_mon as materialized (
   select w.wk, s.etm, s.car_id
@@ -422,14 +413,12 @@ cars_now as materialized (
   join fleet_car fc on fc.id = a.car_id left join fleet_car_model cm on cm.id = fc.model_id
   group by 1
 ),
-cday as materialized (   -- one row per allocated car per day, from 2 weeks ago Monday .. yesterday (same base as Agent_action)
-  select d.dd::date as d, date_trunc('week', d.dd)::date as wk, ca.car_id, pd.etm
-  from ca_all ca
-  join pop_drv pd on pd.driver_id = ca.driver_id   -- only the population
-  cross join lateral generate_series(greatest(ca.allocation_date::date, date_trunc('week', current_date)::date - 14),
-                                     least(coalesce(ca.dd, current_date), current_date - 1), interval '1 day') d(dd)
-  where ca.allocation_date::date <= current_date - 1
-    and coalesce(ca.dd, current_date) >= date_trunc('week', current_date)::date - 14
+cday as materialized (   -- one row per allocated car per day, 2 weeks ago Monday .. yesterday; 21-Nov: from car_pop (ssot) instead of car_allocation
+  select d.dd::date as d, date_trunc('week', d.dd)::date as wk, c.car_id, c.etm
+  from car_pop c
+  cross join lateral generate_series(greatest(c.allocation_date, date_trunc('week', current_date)::date - 14),
+                                     least(coalesce(c.jama_date, current_date), current_date - 1), interval '1 day') d(dd)
+  where c.allocation_date <= current_date - 1
 ),
 trip as materialized (
   select t.car_id, t.date as d, sum(t.trips) as trips, sum(t.dispatch_trips) as disp, sum(t.accepted_trips) as acc,
@@ -511,14 +500,13 @@ lwos as materialized (   -- previous hisaab week closing OS (ledger) -> row week
   join fleet_driver fd on fd.id = os.partner_id
   group by 1, 2
 ),
-jama as materialized (   -- last car return (only pilots with no car now)
-  select fd.employee_id as etm,
-         max(ca.dd) as last_jama_4w,
-         max(ca.dd) filter (where ca.dd >= date_trunc('week', current_date)::date - 7) as last_jama_1w
-  from ca_all ca
-  join fleet_driver fd on fd.id = ca.driver_id
-  where ca.dd >= date_trunc('week', current_date)::date - 28
-    and ca.driver_id not in (select a.driver_id from act a where a.driver_id is not null)
+jama as materialized (   -- last car return (only pilots with no car now); 21-Nov: from ss (ssot) instead of car_allocation
+  select s.employee_id as etm,
+         max(s.jama_date) as last_jama_4w,
+         max(s.jama_date) filter (where s.jama_date >= date_trunc('week', current_date)::date - 7) as last_jama_1w
+  from ss s
+  where s.jama_date >= date_trunc('week', current_date)::date - 28
+    and s.employee_id not in (select etm from act_e where etm is not null)
   group by 1
 ),
 callw as materialized (
