@@ -58,13 +58,17 @@ act as materialized (   -- open car allocations now (Agent_action population + H
   where ca.deallocation_id is null and ca.deactivation_date is null and ca.allocation_date::date <= current_date
 ),
 act_e as materialized (select distinct fd.employee_id as etm from act a join fleet_driver fd on fd.id = a.driver_id),
+ss_ids as materialized (   -- 21-Nov perf: distinct pilot list for ss; joined by HASH (IN ... OR ... became a non-hashed SubPlan = 10^11 comparisons)
+  select etm::text as etm from mvw union select etm::text from act_e union select etm::text from lod_e
+),
 ss as materialized (   -- 21-Nov perf: analytics.ssot_alloc_dealloc_full (314 MB, no index) read ONCE (was 4 full scans):
   -- every allocation of the dashboard / car / live OS pilots + every join of the last 3 weeks. pop / joins / alloc_last / newjoin come from here.
   select s.employee_id, s.allocation_date, s.allocation_datetime, s.category, s.sd_amount, s.city, s.product_type, s.fuel_type, s.first_allocation_date,
          case when s.car_id ~ '^[0-9]+$' then s.car_id::bigint end as car_id, s.jama_date   -- 21-Nov: car history for car_pop / cday / jama
   from analytics.ssot_alloc_dealloc_full s
+  left join ss_ids i on i.etm = s.employee_id
   where s.allocation_date <= date_trunc('week', current_date)::date + 6
-    and (s.employee_id in (select etm from mvw union select etm from act_e union select etm from lod_e)
+    and (i.etm is not null
          or (s.category in ('New Join', 'Rejoin', 'Resurrection') and s.allocation_date >= date_trunc('week', current_date)::date - 14))
 ),
 pop as materialized (
