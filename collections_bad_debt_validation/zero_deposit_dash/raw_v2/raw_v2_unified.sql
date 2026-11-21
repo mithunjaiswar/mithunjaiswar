@@ -12,6 +12,9 @@
 -- 19-Nov: Days Not Paid counts from the later of last payment / last join (new joiners were showing 60).
 -- 20-Nov: + Deposit for Dash (AA) / Deposit Bucket for Dash (AB): joined this week -> current deposit, else Monday EOD deposit.
 -- 20-Nov perf: big tables read once / only for the population (mdr, calls, mcl, pop_drv; dep_tot, lwos, cday, lead filtered).
+-- 21-Nov perf: TimescaleDB hypertables (mv_daily_recovery, fleet_dailytrip, car_dead_km, fleet_leasing_total_os) get a fixed floor date
+--   so the planner drops old chunks at PLAN time (current_date alone => all ~1000 chunks planned, minutes of index metapage reads).
+--   Floor only needs to be <= the oldest date used (cur-56); move it forward once a year to keep planning fast.
 -- Guards: fails (division by zero) instead of writing wrong data when mv_daily_recovery is not refreshed
 --   (< 100 payments yesterday) or hissab_driver_live_os is mid-sync (< 5000 drivers for today / yesterday).
 -- =====================================================================================
@@ -83,7 +86,7 @@ pop_drv as materialized (   -- 20-Nov perf: every fleet_driver id of the populat
 mdr as materialized (   -- 20-Nov perf: mv_daily_recovery read ONCE (8 weeks, 5 types); rec_day / recw / lastpaid / pay_day come from here
   select r.employee_id, r.date, r.recovery_type, r.amount
   from mv_daily_recovery r
-  where r.date >= date_trunc('week', current_date)::date - 56
+  where r.date >= date '2026-09-01' and r.date >= date_trunc('week', current_date)::date - 56
     and r.recovery_type in ('razorpay_recovery','other_positive_recovery','phonepe_recovery','positive_adjustment','deposit_to_os')
 ),
 calls as materialized (   -- 20-Nov perf: collections_calling_data_raw read ONCE (3 weeks); call_day / callw come from here
@@ -157,7 +160,7 @@ gps_mon as materialized (
   select c.wk, c.etm, sum(coalesce(k.gps_km, 0)) as gps_km
   from car_mon c
   left join (select k0.car_id, k0.date, k0.gps_km from car_dead_km k0
-             where k0.date in (date_trunc('week', current_date)::date, date_trunc('week', current_date)::date - 7, date_trunc('week', current_date)::date - 14, date_trunc('week', current_date)::date - 14)) k on k.car_id = c.car_id and k.date = c.wk   -- only the 4 Mondays (date index)
+             where k0.date >= date '2026-09-01' and k0.date in (date_trunc('week', current_date)::date, date_trunc('week', current_date)::date - 7, date_trunc('week', current_date)::date - 14, date_trunc('week', current_date)::date - 14)) k on k.car_id = c.car_id and k.date = c.wk   -- only the 4 Mondays (date index)
   group by 1, 2
 ),
 -- ---------- car recovery cases (non-funnel: every case, from recovery_cars) ----------
@@ -424,7 +427,7 @@ trip as materialized (
   select t.car_id, t.date as d, sum(t.trips) as trips, sum(t.dispatch_trips) as disp, sum(t.accepted_trips) as acc,
          sum(t.fare_total) as fare, sum(t.tip_amount) as tip, sum(t.cash_collected) as cash, sum(t.subscription_charges) as subs
   from fleet_dailytrip t
-  where t.date between date_trunc('week', current_date)::date - 14 and (current_date - 1) and t.trips > 0 and t.car_id is not null
+  where t.date >= date '2026-09-01' and t.date between date_trunc('week', current_date)::date - 14 and (current_date - 1) and t.trips > 0 and t.car_id is not null
   group by 1, 2
 ),
 ola_yd as materialized (
@@ -433,7 +436,7 @@ ola_yd as materialized (
 ),
 kms as materialized (
   select k.car_id, k.date as d, sum(k.gps_km) as gps, sum(k.uber_km) as uber, sum(k.dead_km) as dead
-  from car_dead_km k where k.date between date_trunc('week', current_date)::date - 7 and (current_date - 1) and coalesce(k.is_deleted, 0) = 0 group by 1, 2
+  from car_dead_km k where k.date >= date '2026-09-01' and k.date between date_trunc('week', current_date)::date - 7 and (current_date - 1) and coalesce(k.is_deleted, 0) = 0 group by 1, 2
 ),
 drivew as materialized (   -- per pilot per week
   select c.etm, c.wk,
@@ -495,7 +498,7 @@ lwos as materialized (   -- previous hisaab week closing OS (ledger) -> row week
           and driver_id in (select driver_id from pop_drv)   -- 20-Nov perf
         union all
         select partner_id, week_start_date, total_os from fleet_leasing_total_os
-        where week_start_date >= date_trunc('week', current_date) - interval '14 days' and week_start_date < date_trunc('week', current_date)
+        where created_at >= timestamptz '2026-09-01' and created_at >= date_trunc('week', current_date) - interval '14 days' and week_start_date >= date_trunc('week', current_date) - interval '14 days' and week_start_date < date_trunc('week', current_date)
           and partner_id in (select driver_id from pop_drv)) os   -- 20-Nov perf
   join fleet_driver fd on fd.id = os.partner_id
   group by 1, 2
