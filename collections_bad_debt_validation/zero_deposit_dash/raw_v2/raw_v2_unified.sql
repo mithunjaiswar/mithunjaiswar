@@ -130,10 +130,14 @@ call_day as materialized (
 ),
 -- ---------- GPS at week start (Monday) on the cars the pilot held that day ----------
 car_pop as materialized (   -- allocations of the population (read once)
-  select s.employee_id as etm, s.car_id::bigint as car_id, s.allocation_date, s.jama_date
-  from analytics.ssot_alloc_dealloc_base s
-  where s.employee_id in (select etm from pop) and s.car_id ~ '^[0-9]+$'
-    and coalesce(s.jama_date, current_date) >= (date_trunc('week', current_date)::date - 14)
+  -- 21-Nov: from car_allocation / car_deallocation instead of analytics.ssot_alloc_dealloc_base: the ETL drops and
+  -- rebuilds the ssot tables, so a query waiting on them failed with 'canceling statement due to lock timeout'.
+  select pd.etm, ca.car_id::bigint as car_id, ca.allocation_date::date as allocation_date, cd.date::date as jama_date
+  from car_allocation ca
+  join pop_drv pd on pd.driver_id = ca.driver_id
+  left join car_deallocation cd on cd.id = ca.deallocation_id
+  where ca.deactivation_date is null and ca.car_id is not null
+    and coalesce(cd.date::date, current_date) >= (date_trunc('week', current_date)::date - 14)
 ),
 car_mon as materialized (
   select w.wk, s.etm, s.car_id
