@@ -17,6 +17,12 @@
 -- =====================================================================================
 with wk as (select generate_series(date_trunc('week', current_date)::date - 14, date_trunc('week', current_date)::date, interval '7 day')::date as wk),
 -- ---------- weekly (dashboard) rows ----------
+bdm as materialized (   -- 21-Nov perf: collections_bad_debt_mv (313 MB, no week index) read ONCE for mvw + l2w (was 2 full scans)
+  select m.id, m.hissab_week, m.partner_etm, m.city, m.product_type, m.revenue_type, m.eip_tag, m.total_os,
+         m.last_week_payment_habit, m.tenure_days, m.lead_id, m.collection_pct
+  from analytics.collections_bad_debt_mv m
+  where m.for_collections = 1 and m.hissab_week between date_trunc('week', current_date)::date - 28 and date_trunc('week', current_date)::date
+),
 mvw as materialized (
   select distinct on (m.hissab_week, m.partner_etm)
          m.hissab_week as wk, m.partner_etm as etm, m.city,
@@ -24,8 +30,8 @@ mvw as materialized (
               when m.product_type = 'EV' and m.revenue_type = 'D2O' then 'EV_D2O' else m.revenue_type end as product_type,
          coalesce(m.total_os, 0) as weekly_os, m.last_week_payment_habit as habit, m.tenure_days, m.lead_id,
          case when m.eip_tag = 1 then 'EIP' else 'SINGLE' end as eip_filter
-  from analytics.collections_bad_debt_mv m
-  where m.for_collections = 1 and m.hissab_week in (select wk from wk)
+  from bdm m
+  where m.hissab_week in (select wk from wk)
   order by m.hissab_week, m.partner_etm, m.id desc
 ),
 -- ---------- daily live OS rows ----------
@@ -43,12 +49,27 @@ fdr as materialized (   -- driver id <-> ETM
   select f.id, f.employee_id from fleet_driver f where f.employee_id in (select etm from mvw)
 ),
 lod_e as materialized (select l.*, f.etm from lod l join fdr f on f.driver_id = l.driver_id),
+ca_all as materialized (   -- 21-Nov perf: car_allocation (668 MB) + car_deallocation read ONCE: open allocations
+  -- + allocations returned in the last 4 weeks. act / car_pop / cday / jama come from here (was 4 full scans).
+  select ca.driver_id, ca.car_id, ca.allocation_date, ca.deallocation_id, cd.date::date as dd
+  from car_allocation ca
+  left join car_deallocation cd on cd.id = ca.deallocation_id
+  where ca.deactivation_date is null and coalesce(cd.date::date, current_date) >= date_trunc('week', current_date)::date - 28
+),
 act as materialized (   -- open car allocations now (Agent_action population + Has Car Now)
   select ca.driver_id, ca.car_id, ca.allocation_date
-  from car_allocation ca
-  where ca.deactivation_date is null and ca.deallocation_id is null and ca.allocation_date::date <= current_date
+  from ca_all ca
+  where ca.deallocation_id is null and ca.allocation_date::date <= current_date
 ),
 act_e as materialized (select distinct fd.employee_id as etm from act a join fleet_driver fd on fd.id = a.driver_id),
+ss as materialized (   -- 21-Nov perf: analytics.ssot_alloc_dealloc_full (314 MB, no index) read ONCE (was 4 full scans):
+  -- every allocation of the dashboard / car / live OS pilots + every join of the last 3 weeks. pop / joins / alloc_last / newjoin come from here.
+  select s.employee_id, s.allocation_date, s.allocation_datetime, s.category, s.sd_amount, s.city, s.product_type, s.fuel_type, s.first_allocation_date
+  from analytics.ssot_alloc_dealloc_full s
+  where s.allocation_date <= date_trunc('week', current_date)::date + 6
+    and (s.employee_id in (select etm from mvw union select etm from act_e union select etm from lod_e)
+         or (s.category in ('New Join', 'Rejoin', 'Resurrection') and s.allocation_date >= date_trunc('week', current_date)::date - 14))
+),
 pop as materialized (
   select wk, etm from mvw
   union   -- Agent_action population: every pilot with an open car allocation now (current week)
@@ -57,7 +78,7 @@ pop as materialized (
   select distinct wk, etm from lod_e
   union   -- 17-Nov: pilots who joined this week but have no live OS row yet (else Daily_Trend 'New joins' showed 76 of 367)
   select distinct date_trunc('week', s.allocation_date)::date, s.employee_id
-  from analytics.ssot_alloc_dealloc_full s
+  from ss s
   where s.category in ('New Join', 'Rejoin', 'Resurrection')
     and s.allocation_date >= (date_trunc('week', current_date)::date - 14) and s.allocation_date <= current_date
 ),
@@ -89,9 +110,8 @@ mv_last as materialized (   -- latest dashboard row of the pilot in the 4 weeks
 joins as materialized (   -- join events (New Join / Rejoin / Resurrection) with deposit at allocation
   select s.employee_id as etm, s.allocation_date, s.category, coalesce(s.sd_amount, 0) as sd_amount, s.city,
          s.product_type, s.first_allocation_date
-  from analytics.ssot_alloc_dealloc_full s
+  from ss s
   where s.category in ('New Join', 'Rejoin', 'Resurrection') and s.employee_id in (select etm from pop)
-    and s.allocation_date <= date_trunc('week', current_date)::date + 6
 ),
 alloc_last as materialized (   -- latest allocation of any kind (city / product fallback)
   select distinct on (s.employee_id) s.employee_id as etm, s.city,
@@ -99,8 +119,8 @@ alloc_last as materialized (   -- latest allocation of any kind (city / product 
               when s.product_type = 'DTO' then case when s.fuel_type ilike 'ev%' then 'EV_D2O' else 'D2O' end
               when s.product_type = 'Rev_share' then 'Revenue Share' else s.product_type end as product_type,   -- same names as the dashboard
          s.first_allocation_date
-  from analytics.ssot_alloc_dealloc_full s
-  where s.employee_id in (select etm from pop) and s.allocation_date <= date_trunc('week', current_date)::date + 6
+  from ss s
+  where s.employee_id in (select etm from pop)
   order by s.employee_id, s.allocation_date desc, s.allocation_datetime desc
 ),
 -- ---------- money ----------
@@ -132,12 +152,11 @@ call_day as materialized (
 car_pop as materialized (   -- allocations of the population (read once)
   -- 21-Nov: from car_allocation / car_deallocation instead of analytics.ssot_alloc_dealloc_base: the ETL drops and
   -- rebuilds the ssot tables, so a query waiting on them failed with 'canceling statement due to lock timeout'.
-  select pd.etm, ca.car_id::bigint as car_id, ca.allocation_date::date as allocation_date, cd.date::date as jama_date
-  from car_allocation ca
+  select pd.etm, ca.car_id::bigint as car_id, ca.allocation_date::date as allocation_date, ca.dd as jama_date
+  from ca_all ca
   join pop_drv pd on pd.driver_id = ca.driver_id
-  left join car_deallocation cd on cd.id = ca.deallocation_id
-  where ca.deactivation_date is null and ca.car_id is not null
-    and coalesce(cd.date::date, current_date) >= (date_trunc('week', current_date)::date - 14)
+  where ca.car_id is not null
+    and coalesce(ca.dd, current_date) >= (date_trunc('week', current_date)::date - 14)
 ),
 car_mon as materialized (
   select w.wk, s.etm, s.car_id
@@ -404,15 +423,13 @@ cars_now as materialized (
   group by 1
 ),
 cday as materialized (   -- one row per allocated car per day, from 2 weeks ago Monday .. yesterday (same base as Agent_action)
-  select d.dd::date as d, date_trunc('week', d.dd)::date as wk, ca.car_id, fd.employee_id as etm
-  from car_allocation ca
-  join fleet_driver fd on fd.id = ca.driver_id
-  left join car_deallocation cd on cd.id = ca.deallocation_id
+  select d.dd::date as d, date_trunc('week', d.dd)::date as wk, ca.car_id, pd.etm
+  from ca_all ca
+  join pop_drv pd on pd.driver_id = ca.driver_id   -- only the population
   cross join lateral generate_series(greatest(ca.allocation_date::date, date_trunc('week', current_date)::date - 14),
-                                     least(coalesce(cd.date::date, current_date), current_date - 1), interval '1 day') d(dd)
-  where ca.deactivation_date is null and ca.allocation_date::date <= current_date - 1
-    and coalesce(cd.date::date, current_date) >= date_trunc('week', current_date)::date - 14
-    and ca.driver_id in (select driver_id from pop_drv)   -- 20-Nov perf: only the population
+                                     least(coalesce(ca.dd, current_date), current_date - 1), interval '1 day') d(dd)
+  where ca.allocation_date::date <= current_date - 1
+    and coalesce(ca.dd, current_date) >= date_trunc('week', current_date)::date - 14
 ),
 trip as materialized (
   select t.car_id, t.date as d, sum(t.trips) as trips, sum(t.dispatch_trips) as disp, sum(t.accepted_trips) as acc,
@@ -496,11 +513,11 @@ lwos as materialized (   -- previous hisaab week closing OS (ledger) -> row week
 ),
 jama as materialized (   -- last car return (only pilots with no car now)
   select fd.employee_id as etm,
-         max(cd.date::date) as last_jama_4w,
-         max(cd.date::date) filter (where cd.date::date >= date_trunc('week', current_date)::date - 7) as last_jama_1w
-  from car_allocation ca join car_deallocation cd on cd.id = ca.deallocation_id
+         max(ca.dd) as last_jama_4w,
+         max(ca.dd) filter (where ca.dd >= date_trunc('week', current_date)::date - 7) as last_jama_1w
+  from ca_all ca
   join fleet_driver fd on fd.id = ca.driver_id
-  where ca.deactivation_date is null and cd.date >= date_trunc('week', current_date)::date - 28
+  where ca.dd >= date_trunc('week', current_date)::date - 28
     and ca.driver_id not in (select a.driver_id from act a where a.driver_id is not null)
   group by 1
 ),
@@ -544,11 +561,11 @@ l2w as materialized (
   select w.wk, m.partner_etm as etm,
     count(*) filter (where coalesce(m.collection_pct, 0) <= 0) as n0,
     count(*) filter (where m.collection_pct > 0 and m.collection_pct <= 0.8) as n1
-  from wk w join analytics.collections_bad_debt_mv m on m.for_collections = 1 and m.hissab_week in (w.wk - 7, w.wk - 14)
+  from wk w join bdm m on m.hissab_week in (w.wk - 7, w.wk - 14)
   group by 1, 2
 ),
 newjoin as materialized (
-  select distinct s.employee_id as etm from analytics.ssot_alloc_dealloc_full s
+  select distinct s.employee_id as etm from ss s
   where s.allocation_date >= date '2026-08-17' and s.category in ('New Join', 'Resurrection')
 ),
 rc_now as materialized (   -- open car recovery case now -> pending days
