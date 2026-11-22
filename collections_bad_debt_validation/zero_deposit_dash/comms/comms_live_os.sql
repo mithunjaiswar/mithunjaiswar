@@ -28,14 +28,21 @@ lv as materialized (
     sum(uber_rev) as uber_tr, sum(fare) as fare, sum(abs(subs)) as subs, sum(cash) as cash
   from lv0 group by 1
 ),
-act as materialized (   -- 20-Nov: active cars now; if none, the last car the pilot had (car returned this week) so {{2}} is never blank
-  select ca.driver_id,
-    string_agg(distinct fc.car_number, ', ') filter (where ca.deallocation_id is null) as cars,
-    (array_agg(fc.car_number order by ca.allocation_date desc))[1] as last_car,
-    bool_or(ca.deallocation_id is null) as has_car
-  from car_allocation ca left join fleet_car fc on fc.id = ca.car_id   -- left join: active-car status survives a fleet_car re-sync
-  where ca.deactivation_date is null and ca.allocation_date::date <= current_date
-    and ca.driver_id in (select driver_id from lv)
+ss as materialized (   -- 22-Nov: analytics.ssot_alloc_dealloc_full read ONCE for cars (act) + product fallback (al).
+  -- car_allocation / fleet_car were dropped: their sync reloads them (and on 22-Nov they went back to 15-Nov data).
+  select s.driver_id, s.employee_id, s.car_number, s.allocation_date, s.allocation_datetime, s.city, s.product_type, s.fuel_type,
+         coalesce(s.jama_id, '') = '' as is_open   -- open allocation = no jama yet (jama_date holds a future placeholder)
+  from analytics.ssot_alloc_dealloc_full s
+  where s.allocation_date <= current_date
+    and (s.driver_id in (select driver_id from lv) or s.allocation_date >= current_date - 21)
+),
+act as materialized (   -- active cars now; if none, the last car the pilot had (car returned this week) so {{2}} is never blank
+  select s.driver_id,
+    string_agg(distinct s.car_number, ', ') filter (where s.is_open) as cars,
+    (array_agg(s.car_number order by s.allocation_datetime desc))[1] as last_car,
+    bool_or(s.is_open) as has_car
+  from ss s
+  where s.driver_id in (select driver_id from lv)
   group by 1
 ),
 drv as materialized (
@@ -58,8 +65,8 @@ al as materialized (   -- product / city fallback for pilots not in this week's 
     case when s.product_type = 'leasing' then case when s.fuel_type ilike 'ev%' then 'EV' else 'SINGLE' end
          when s.product_type = 'DTO' then case when s.fuel_type ilike 'ev%' then 'EV_D2O' else 'D2O' end
          when s.product_type = 'Rev_share' then 'Revenue Share' else s.product_type end as product
-  from analytics.ssot_alloc_dealloc_full s
-  where s.allocation_date between current_date - 21 and current_date   -- new joiners only (others are in this week's dashboard); full scan of this table is slow
+  from ss s
+  where s.allocation_date >= current_date - 21   -- new joiners only (others are in this week's dashboard)
   order by s.employee_id, s.allocation_date desc, s.allocation_datetime desc
 ),
 dep as materialized (
@@ -108,8 +115,7 @@ select
 from x
 where product = 'SINGLE' and dep_now <= 3000 and round(lo_now) < 0
   and (select 1 / (count(*) / 5000) from lv) is not null   -- guard: fail instead of writing a half-synced live OS (< 5000 drivers)
-  and (select 1 / (count(*) / 20000) from fleet_car) is not null   -- guard: fleet_car is reloaded (delete + insert) by sync; fail instead of blank Vehicle No
-  and (select 1 / (count(*) / 10000) from car_allocation where deallocation_id is null and deactivation_date is null) is not null   -- guard: car_allocation mid-reload
+  and (select 1 / (count(*) / 5000) from act where has_car) is not null   -- guard: ssot half-built => fail instead of blank Vehicle No
   and (select 1 / (count(*) / 5000) from mvw) is not null   -- guard: collections_bad_debt_mv is reloaded (delete + insert); half-loaded week => only ~20 pilots
   and (select 1 / (count(*) / 1000000) from mv_deposits_raw) is not null   -- guard: deposits mid-reload would push pilots under the 3K cut
 order by city, round(lo_now)
