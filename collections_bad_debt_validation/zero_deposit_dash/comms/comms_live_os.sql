@@ -110,4 +110,6 @@ where product = 'SINGLE' and dep_now <= 3000 and round(lo_now) < 0
   and (select 1 / (count(*) / 5000) from lv) is not null   -- guard: fail instead of writing a half-synced live OS (< 5000 drivers)
   and (select 1 / (count(*) / 20000) from fleet_car) is not null   -- guard: fleet_car is reloaded (delete + insert) by sync; fail instead of blank Vehicle No
   and (select 1 / (count(*) / 10000) from car_allocation where deallocation_id is null and deactivation_date is null) is not null   -- guard: car_allocation mid-reload
+  and (select 1 / (count(*) / 5000) from mvw) is not null   -- guard: collections_bad_debt_mv is reloaded (delete + insert); half-loaded week => only ~20 pilots
+  and (select 1 / (count(*) / 1000000) from mv_deposits_raw) is not null   -- guard: deposits mid-reload would push pilots under the 3K cut
 order by city, round(lo_now)
