@@ -33,7 +33,7 @@ act as materialized (   -- 20-Nov: active cars now; if none, the last car the pi
     string_agg(distinct fc.car_number, ', ') filter (where ca.deallocation_id is null) as cars,
     (array_agg(fc.car_number order by ca.allocation_date desc))[1] as last_car,
     bool_or(ca.deallocation_id is null) as has_car
-  from car_allocation ca join fleet_car fc on fc.id = ca.car_id
+  from car_allocation ca left join fleet_car fc on fc.id = ca.car_id   -- left join: active-car status survives a fleet_car re-sync
   where ca.deactivation_date is null and ca.allocation_date::date <= current_date
     and ca.driver_id in (select driver_id from lv)
   group by 1
@@ -108,4 +108,6 @@ select
 from x
 where product = 'SINGLE' and dep_now <= 3000 and round(lo_now) < 0
   and (select 1 / (count(*) / 5000) from lv) is not null   -- guard: fail instead of writing a half-synced live OS (< 5000 drivers)
+  and (select 1 / (count(*) / 20000) from fleet_car) is not null   -- guard: fleet_car is reloaded (delete + insert) by sync; fail instead of blank Vehicle No
+  and (select 1 / (count(*) / 10000) from car_allocation where deallocation_id is null and deactivation_date is null) is not null   -- guard: car_allocation mid-reload
 order by city, round(lo_now)
