@@ -51,13 +51,19 @@ drv as materialized (
   left join act a on a.driver_id = l.driver_id
   where coalesce(a.has_car, false) or l.fare > 0
 ),
+mvw_wk as materialized (   -- 23-Nov: latest hisaab week that is fully loaded (>= 5000 rows). On Monday morning the new week is not built yet -> use last week
+  select max(hissab_week) as wk from (
+    select hissab_week from analytics.collections_bad_debt_mv
+    where for_collections = 1 and hissab_week between date_trunc('week', current_date)::date - 7 and date_trunc('week', current_date)::date
+    group by 1 having count(*) >= 5000) x
+),
 mvw as materialized (   -- group by (not distinct on .. order by id: that is 20x slower on this MV)
   select m.partner_etm as etm, max(m.city) as city, max(m.lead_id) as lead_id,
     case when bool_or(m.product_type = 'EV') then 'EV'
          when bool_or(m.revenue_type = 'Leasing') then case when bool_or(m.eip_tag = 1) then 'EIP' else 'SINGLE' end
          else max(m.revenue_type) end as product
   from analytics.collections_bad_debt_mv m
-  where m.for_collections = 1 and m.hissab_week = date_trunc('week', current_date)::date
+  where m.for_collections = 1 and m.hissab_week = (select wk from mvw_wk)
   group by 1
 ),
 al as materialized (   -- product / city fallback for pilots not in this week's dashboard (new joiners)
