@@ -1,8 +1,8 @@
 -- =====================================================================================
 -- 0dp_raw v2 (Zero & Low Deposit Monitoring Dashboard), 24-Nov. Pilot x week, last 3 weeks. Output at A4 (rows 1-3 by hand).
 -- 0 DP pilot = CURRENT deposit 0: deposit balance (mv_deposits_raw, excl. OWNNOW_TO_OWNNOW / SD_TO_OWNNOW) at the end of a day
---   the pilot had a car is 0 or less. On the day the pilot returns the car, the balance of the day before is used
---   (deposit is moved to OS at exit). In the first 2 days of an allocation the deposit paid on allocation (sd_amount) counts.
+--   the pilot had a car is 0 or less. A pilot who LEAVES counts as 0 DP only if the deposit was 0 both the day before
+--   the exit AND 7 days before the exit (24-Nov: deposit moved to OS just before exit does not make a 0 DP pilot). In the first 2 days of an allocation the deposit paid on allocation (sd_amount) counts.
 -- Rows: every pilot-week where the pilot was 0 DP on a car day, plus EVERY pilot who joined that week (any deposit, for join counts).
 -- Joined at 0 deposit = New Join / Rejoin / Resurrection with deposit 0 at the end of the join day.
 -- Left (0 DP) = returned the car that day, no car the next day, and was 0 DP. OS left = OS owed on the last live OS row.
@@ -41,23 +41,25 @@ dd as materialized (
   where d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[]) and d.employee_id in (select etm from cids)
   group by 1, 2
 ),
-base as materialized (select etm, sum(amt) as b0 from dd where d < (select r0 from cfg) group by 1),   -- balance before the window
+base as materialized (select etm, sum(amt) as b0 from dd where d < (select r0 from cfg) - 7 group by 1),   -- balance before the window
 cw as materialized (   -- running balance change inside the window, valid from d to nd - 1
   select etm, d, coalesce(lead(d) over (partition by etm order by d), date '9999-12-31') as nd,
          sum(amt) over (partition by etm order by d) as run
-  from dd where d >= (select r0 from cfg)
+  from dd where d >= (select r0 from cfg) - 7
 ),
 cbal as materialized (
   select c.*, coalesce(b.b0, 0) + coalesce(w1.run, 0) as bal_d, coalesce(b.b0, 0) + coalesce(w0.run, 0) as bal_prev,
+         coalesce(b.b0, 0) + coalesce(w7.run, 0) as bal_7,
          (c.jama_d and coalesce(lead(c.d) over (partition by c.etm order by c.d), date '9999-12-31') <> c.d + 1) as left_d
   from cday c
   left join base b on b.etm = c.etm
   left join cw w1 on w1.etm = c.etm and w1.d <= c.d and w1.nd > c.d
   left join cw w0 on w0.etm = c.etm and w0.d <= c.d - 1 and w0.nd > c.d - 1
+  left join cw w7 on w7.etm = c.etm and w7.d <= c.d - 7 and w7.nd > c.d - 7
 ),
 zday as materialized (
   select c.*,
-         greatest(case when c.left_d then c.bal_prev else c.bal_d end,
+         greatest(case when c.left_d then greatest(c.bal_prev, c.bal_7) else c.bal_d end,
                   case when c.d - c.a <= 1 then c.sd_amount else 0 end) as dp
   from cbal c
 ),
