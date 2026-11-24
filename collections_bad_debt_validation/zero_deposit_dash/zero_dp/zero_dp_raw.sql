@@ -231,7 +231,7 @@ select
   round(w.wos + w.rent_w)                                 as "Total OS to Collect (Rs)",
   round(w.paid_w)                                         as "Collected This Week (Rs)",
   round(w.adj_w)                                          as "Adjustment + DP to OS (Rs)",
-  case when w.wos + w.rent_w > 0 then round(w.paid_w / (w.wos + w.rent_w), 4) end as "Collection %",
+  case when w.wos + w.rent_w > 0 then round((w.paid_w / (w.wos + w.rent_w))::numeric, 4) end as "Collection %",
   round(w.lo_we)                                          as "Live OS at Week End (Rs)",
   w.act_we                                                as "Active at Week End",
   w.car_we                                                as "Has Car at Week End",
