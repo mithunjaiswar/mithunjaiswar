@@ -61,7 +61,7 @@ SELECT
   CASE WHEN c.product_type = 'Own Now' AND al.etm IS NULL THEN LEAST(c.net_os, 0) WHEN c.net_os + c.deposit < 0 THEN c.net_os + c.deposit ELSE 0 END AS bad_debt,
   CASE WHEN a.partner_et_id IS NOT NULL THEN 'Yes' ELSE 'No' END AS attrition,
   CASE WHEN z.dep_at_join = 0 THEN 'Yes' ELSE 'No' END AS joined_at_0_deposit,
-  COALESCE(to_char(z.jd, 'YYYY-MM-DD'), '') AS last_join_date,
+  COALESCE(to_char(z.jd, 'YYYY-MM-DD'), '-') AS last_join_date,
   to_char(NOW() AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI:SS') AS last_updated_at
 FROM current_data c
 LEFT JOIN attrition a ON a.partner_et_id = c.partner_et_id
