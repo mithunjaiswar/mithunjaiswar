@@ -118,7 +118,8 @@ g_rc as materialized (
     max(case when r.close_d is null or r.close_d >= g.d then 1 else 0 end) as in_rc,
     max(case when r.start_d = g.d then 1 else 0 end) as rc_new,
     max(case when r.close_d = g.d then 1 else 0 end) as rc_closed,
-    max(case when r.close_d = g.d and r.recovered = 1 then 1 else 0 end) as rc_car
+    max(case when r.close_d = g.d and r.recovered = 1 then 1 else 0 end) as rc_car,
+    max(case when r.start_d < g.d and (r.close_d is null or r.close_d >= g.d) then 1 else 0 end) as rc_open   -- open at day start
   from grid g join rcase r on r.etm = g.etm and r.start_d <= g.d and (r.close_d is null or r.close_d >= g.d)
   group by 1, 2
 ),
@@ -148,6 +149,7 @@ pday as materialized (
     case when gl.dp <= 0 then coalesce(r.rc_new, 0) else 0 end as rc_new,
     case when gl.dp <= 0 then coalesce(r.rc_closed, 0) else 0 end as rc_closed,
     case when gl.dp <= 0 then coalesce(r.rc_car, 0) else 0 end as rc_car,
+    case when gl.dp <= 0 then coalesce(r.rc_open, 0) else 0 end as rc_open,
     case when gl.dp <= 0 and r.in_rc = 1 then coalesce(m.paid, 0) else 0 end as rc_amt
   from grid g
   left join g_last gl on gl.etm = g.etm and gl.d = g.d
@@ -165,7 +167,8 @@ pw as materialized (
     array_agg(p.z_left order by p.dn) as a_zl, array_agg(p.os_left order by p.dn) as a_ol, array_agg(p.z_act order by p.dn) as a_za,
     array_agg(p.lo_act order by p.dn) as a_lo, array_agg(p.paid order by p.dn) as a_pd, array_agg(p.rc_new order by p.dn) as a_rn,
     array_agg(p.rc_closed order by p.dn) as a_rcl, array_agg(p.rc_amt order by p.dn) as a_ra,
-    array_agg(p.dn order by p.dn) as a_dn
+    array_agg(p.dn order by p.dn) as a_dn,
+    max(p.rc_open) filter (where p.dn = 1) as rc_open_ws, array_agg(p.rc_open order by p.dn) as a_ro
   from pday p group by 1, 2
 ),
 pwe as materialized (
@@ -231,7 +234,9 @@ select
   round(w.a_pd[1]) as "Collected D1", round(w.a_pd[2]) as "Collected D2", round(w.a_pd[3]) as "Collected D3", round(w.a_pd[4]) as "Collected D4", round(w.a_pd[5]) as "Collected D5", round(w.a_pd[6]) as "Collected D6", round(w.a_pd[7]) as "Collected D7",
   w.a_rn[1] as "RC Raised D1", w.a_rn[2] as "RC Raised D2", w.a_rn[3] as "RC Raised D3", w.a_rn[4] as "RC Raised D4", w.a_rn[5] as "RC Raised D5", w.a_rn[6] as "RC Raised D6", w.a_rn[7] as "RC Raised D7",
   w.a_rcl[1] as "RC Closed D1", w.a_rcl[2] as "RC Closed D2", w.a_rcl[3] as "RC Closed D3", w.a_rcl[4] as "RC Closed D4", w.a_rcl[5] as "RC Closed D5", w.a_rcl[6] as "RC Closed D6", w.a_rcl[7] as "RC Closed D7",
-  round(w.a_ra[1]) as "RC Amount D1", round(w.a_ra[2]) as "RC Amount D2", round(w.a_ra[3]) as "RC Amount D3", round(w.a_ra[4]) as "RC Amount D4", round(w.a_ra[5]) as "RC Amount D5", round(w.a_ra[6]) as "RC Amount D6", round(w.a_ra[7]) as "RC Amount D7"
+  round(w.a_ra[1]) as "RC Amount D1", round(w.a_ra[2]) as "RC Amount D2", round(w.a_ra[3]) as "RC Amount D3", round(w.a_ra[4]) as "RC Amount D4", round(w.a_ra[5]) as "RC Amount D5", round(w.a_ra[6]) as "RC Amount D6", round(w.a_ra[7]) as "RC Amount D7",
+  coalesce(w.rc_open_ws, 0)                                as "Car Recovery Open at Week Start",
+  w.a_ro[1] as "RC Open D1", w.a_ro[2] as "RC Open D2", w.a_ro[3] as "RC Open D3", w.a_ro[4] as "RC Open D4", w.a_ro[5] as "RC Open D5", w.a_ro[6] as "RC Open D6", w.a_ro[7] as "RC Open D7"
 from pwe w
 left join wj j on j.etm = w.etm and j.wk = w.wk
 left join wos o on o.etm = w.etm and o.wk = w.wk
