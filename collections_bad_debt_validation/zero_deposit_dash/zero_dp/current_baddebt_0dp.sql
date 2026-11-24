@@ -3,7 +3,9 @@
 -- Pilots     = this hisaab week of collections_bad_debt_mv, for_collections = 1 (one row per pilot, latest mv row).
 -- net_os     = total_os + total_collected_100_pct (negative = pilot owes).
 -- deposit    = week_end_deposit.
--- bad_debt   = Own Now: net_os. Others: net_os + deposit when that is below 0 (owes more than the deposit), else 0.
+-- bad_debt   = net_os + deposit when that is below 0 (owes more than the deposit), else 0.
+--              Own Now who LEFT (no car today): full net_os (deposit not adjusted, same rule as collections_bad_debt_mv / weekly_bad_debt).
+--              24-Nov fix: Raja's rule took the full net_os of every Own Now pilot -> 100% bad debt for Own Now (active pilots' EMI OS counted).
 -- attrition  = returned the car (jama) last week and has no car allocated today.
 -- joined_at_0_deposit = latest New Join / Rejoin / Resurrection in the last 8 weeks had deposit 0 at the end of the join day
 --              (same rule as 0dp_raw: deposit now - deposits dated after the join day, at least the amount paid on allocation).
@@ -17,15 +19,16 @@ WITH current_data AS MATERIALIZED (
   WHERE a.hissab_week::date = DATE_TRUNC('week', CURRENT_DATE)::date AND a.for_collections = 1
   ORDER BY a.partner_etm, a.id DESC
 ),
+alloc AS MATERIALIZED (   -- has a car today
+  SELECT DISTINCT s.employee_id AS etm FROM analytics.ssot_alloc_dealloc_full s
+  WHERE s.allocation_date::date <= CURRENT_DATE AND COALESCE(s.jama_date::date, DATE '9999-12-31') >= CURRENT_DATE
+),
 attrition AS MATERIALIZED (
   SELECT DISTINCT s.employee_id AS partner_et_id
   FROM analytics.ssot_alloc_dealloc_full s
   WHERE s.jama_date::date >= DATE_TRUNC('week', CURRENT_DATE)::date - 7
     AND s.jama_date::date < DATE_TRUNC('week', CURRENT_DATE)::date
-    AND NOT EXISTS (
-      SELECT 1 FROM analytics.ssot_alloc_dealloc_full s2
-      WHERE s2.employee_id = s.employee_id AND s2.allocation_date::date <= CURRENT_DATE
-        AND COALESCE(s2.jama_date::date, DATE '9999-12-31') >= CURRENT_DATE)
+    AND NOT EXISTS (SELECT 1 FROM alloc al2 WHERE al2.etm = s.employee_id)
 ),
 lj AS MATERIALIZED (   -- latest join in the last 8 weeks
   SELECT DISTINCT ON (s.employee_id)
@@ -55,13 +58,14 @@ SELECT
   c.product_type,
   c.net_os,
   c.deposit,
-  CASE WHEN c.product_type = 'Own Now' THEN c.net_os WHEN c.net_os + c.deposit < 0 THEN c.net_os + c.deposit ELSE 0 END AS bad_debt,
+  CASE WHEN c.product_type = 'Own Now' AND al.etm IS NULL THEN LEAST(c.net_os, 0) WHEN c.net_os + c.deposit < 0 THEN c.net_os + c.deposit ELSE 0 END AS bad_debt,
   CASE WHEN a.partner_et_id IS NOT NULL THEN 'Yes' ELSE 'No' END AS attrition,
   CASE WHEN z.dep_at_join = 0 THEN 'Yes' ELSE 'No' END AS joined_at_0_deposit,
-  to_char(z.jd, 'YYYY-MM-DD') AS last_join_date,
+  COALESCE(to_char(z.jd, 'YYYY-MM-DD'), '') AS last_join_date,
   to_char(NOW() AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI:SS') AS last_updated_at
 FROM current_data c
 LEFT JOIN attrition a ON a.partner_et_id = c.partner_et_id
+LEFT JOIN alloc al ON al.etm = c.partner_et_id
 LEFT JOIN zdp z ON z.etm = c.partner_et_id
 WHERE (SELECT 1 / (count(*) / 5000) FROM current_data) IS NOT NULL
 ORDER BY c.city, c.product_type, c.partner_et_id
