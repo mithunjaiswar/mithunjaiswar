@@ -5,6 +5,7 @@
 --   at the end of the join day (deposit now - deposits dated after the join day; at least the amount paid on allocation).
 --   Join must be in the last 8 weeks. Days before the join are blank.
 -- Active       = live OS row that day (hissab_driver_live_os.is_active = 1).
+-- Product      = raw_v2 label from collections_bad_debt_mv (Leasing - Single / Leasing - EIP / D2O - EIP / ...), else the join product.
 -- Weekly OS    = collections_bad_debt_mv.total_os of that hisaab week (for_collections = 1), owed amount (0 if none).
 -- Rent         = rent of a day, booked on the next day's live OS row (Sunday rent goes into the weekly hisaab).
 -- Collected    = Razorpay + PhonePe + other payments (mv_daily_recovery); Adjustment + DP to OS shown separately.
@@ -113,7 +114,11 @@ calls as materialized (
   group by 1, 2
 ),
 wos as materialized (   -- weekly OS of the hisaab week (dashboard MV)
-  select distinct on (m.hissab_week, m.partner_etm) m.hissab_week as wk, m.partner_etm as etm, m.total_os
+  select distinct on (m.hissab_week, m.partner_etm) m.hissab_week as wk, m.partner_etm as etm, m.total_os,
+         case when m.product_type = 'EIP' then m.revenue_type || ' - EIP'   -- 24-Nov: same Product label as raw_v2
+              when m.revenue_type = 'Leasing' then 'Leasing - Single'
+              when m.product_type = 'EV' and m.revenue_type = 'D2O' and m.eip_tag = 1 then 'EV_Leasing'
+              when m.product_type = 'EV' and m.revenue_type = 'D2O' then 'EV_D2O' else m.revenue_type end as product_lbl
   from analytics.collections_bad_debt_mv m
   where m.for_collections = 1 and m.hissab_week >= (select r0 from cfg) and m.partner_etm in (select etm from zids)
   order by m.hissab_week, m.partner_etm, m.id desc
@@ -199,7 +204,7 @@ pw as materialized (   -- pilot x week (latest 0 deposit join of the week)
 ),
 pwe as materialized (   -- week end (last shown day of the week) values
   select w.*, e.dp as dep_we, e.live_os as lo_we, e.active as act_we, e.has_car as car_we, e.bd_amt as bd_we, e.bd_type as bdt_we, e.in_rc as rc_we,
-         abs(least(coalesce(o.total_os, 0), 0)) as wos
+         abs(least(coalesce(o.total_os, 0), 0)) as wos, o.product_lbl as mv_product
   from pw w
   join pday2 e on e.etm = w.etm and e.d = w.last_d
   left join wos o on o.wk = w.wk and o.etm = w.etm
@@ -210,7 +215,7 @@ select
   w.etm                                                   as "Employee ID",
   dr.name                                                 as "Pilot Name",
   w.city                                                  as "City",
-  w.product                                               as "Product",
+  coalesce(w.mv_product, case when w.product = 'Leasing' then 'Leasing - Single' else w.product end) as "Product",
   w.jd                                                    as "Join Date",
   w.jtype                                                 as "Join Type",
   date_trunc('week', w.jd)::date                          as "Join Week",

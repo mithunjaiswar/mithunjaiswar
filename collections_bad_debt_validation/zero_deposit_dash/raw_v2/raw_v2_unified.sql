@@ -12,6 +12,8 @@
 -- 19-Nov: Days Not Paid counts from the later of last payment / last join (new joiners were showing 60).
 -- 20-Nov: + Deposit for Dash (AA) / Deposit Bucket for Dash (AB): joined this week -> current deposit, else Monday EOD deposit.
 -- 20-Nov perf: big tables read once / only for the population (mdr, calls, mcl, pop_drv; dep_tot, lwos, cday, lead filtered).
+-- 24-Nov: EIP from collections_bad_debt_mv.product_type (like India Collections), not eip_tag. Product label:
+--   Leasing - EIP / D2O - EIP / Own Now - EIP / Leasing - Single; EIP pilots use the EIP risk rule (OS >= 25K).
 -- 21-Nov perf: TimescaleDB hypertables (mv_daily_recovery, fleet_dailytrip, car_dead_km, fleet_leasing_total_os) get a fixed floor date
 --   so the planner drops old chunks at PLAN time (current_date alone => all ~1000 chunks planned, minutes of index metapage reads).
 --   Floor only needs to be <= the oldest date used (cur-56); move it forward once a year to keep planning fast.
@@ -32,7 +34,7 @@ mvw as materialized (
          case when m.product_type = 'EV' and m.revenue_type = 'D2O' and m.eip_tag = 1 then 'EV_Leasing'
               when m.product_type = 'EV' and m.revenue_type = 'D2O' then 'EV_D2O' else m.revenue_type end as product_type,
          coalesce(m.total_os, 0) as weekly_os, m.last_week_payment_habit as habit, m.tenure_days, m.lead_id,
-         case when m.eip_tag = 1 then 'EIP' else 'SINGLE' end as eip_filter
+         case when m.product_type = 'EIP' then 'EIP' else 'SINGLE' end as eip_filter   -- 24-Nov: EIP = MV product_type (was eip_tag; D2O / Own Now EIP were missed)
   from bdm m
   where m.hissab_week in (select wk from wk)
   order by m.hissab_week, m.partner_etm, m.id desc
@@ -343,7 +345,8 @@ cfg as materialized (select date_trunc('week', current_date)::date as cur_wk, ex
 r1 as materialized (
   select r0.*,
     array[r0."Live OS D1",r0."Live OS D2",r0."Live OS D3",r0."Live OS D4",r0."Live OS D5",r0."Live OS D6",r0."Live OS D7"] as alo, array[r0."Collection D1",r0."Collection D2",r0."Collection D3",r0."Collection D4",r0."Collection D5",r0."Collection D6",r0."Collection D7"] as aco, array[r0."Surpass D1",r0."Surpass D2",r0."Surpass D3",r0."Surpass D4",r0."Surpass D5",r0."Surpass D6",r0."Surpass D7"] as asu, array[r0."Attempts D1",r0."Attempts D2",r0."Attempts D3",r0."Attempts D4",r0."Attempts D5",r0."Attempts D6",r0."Attempts D7"] as aat, array[r0."Connects D1",r0."Connects D2",r0."Connects D3",r0."Connects D4",r0."Connects D5",r0."Connects D6",r0."Connects D7"] as acn,
-    case when r0."Product Type" = 'Leasing' then case when r0."EIP / Single" = 'EIP' then 'EIP' else 'SINGLE' end
+    case when r0."EIP / Single" = 'EIP' then 'EIP'   -- 24-Nov: every EIP pilot (also on D2O / Own Now cars) uses the EIP risk rule
+         when r0."Product Type" = 'Leasing' then 'SINGLE'
          when left(r0."Product Type", 3) = 'EV_' then 'EV' else r0."Product Type" end as pk,
     greatest(coalesce(r0."Current Deposit", 0), 0) as dp,
     coalesce(r0."Daily Rent", 0) as rr,
@@ -660,7 +663,8 @@ bd as materialized (   -- 18-Nov: 1 = active bad debt (live OS that day and owes
 u as materialized (   -- raw row + Agent_action fields, shown weeks only (last week + this week)
   select r.*, p.etm as prev_s7,
     bd.bdt, bd.bda,
-    case when r."Product Type" = 'Leasing' then case when r."EIP / Single" = 'EIP' then 'Leasing - EIP' else 'Leasing - Single' end else r."Product Type" end as product_lbl,
+    case when r."EIP / Single" = 'EIP' then r."Product Type" || ' - EIP'   -- 24-Nov: Leasing - EIP / D2O - EIP / Own Now - EIP
+         when r."Product Type" = 'Leasing' then 'Leasing - Single' else r."Product Type" end as product_lbl,
     dr.name, coalesce(lm.lead_id::bigint, ld.lead_id) as lead_id,
     cn.car_numbers, cn.car_model, (ae.etm is not null) as has_car,
     coalesce(aw.agent, 'Unassigned') as agent,
