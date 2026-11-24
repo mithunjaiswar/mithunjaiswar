@@ -12,7 +12,7 @@
  * First time: run setupHourlyTrigger() once (allow permissions). It runs syncZeroDepositJoins now and then every hour.
  */
 const SRC_ID = '1zsGMzqah8XCVfDM7f7R-BeNmK5DU5MxqTJ89xPJ25Sw';
-const SRC_TAB = '0_raw';
+const SRC_TAB = '0dp_raw';   // 24-Nov: renamed from 0_raw (automation shard 1)
 const HEADER_ROW = 2, DATA_ROW = 4;
 const DEST_TAB = '0_Deposit_Join';
 const CITY_SHEETS = {

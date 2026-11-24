@@ -1,3 +1,4 @@
+-- 24-Nov: output tab renamed 0_raw -> 0dp_raw (automation row 78, shard 1 = runs early).
 -- =====================================================================================
 -- 0_raw (Zero & Low Deposit Monitoring Dashboard): ONLY 0 deposit pilots, pilot x week, last 3 weeks (like raw_v2).
 -- Output at A4 (rows 1-3 = section / header / meaning, kept by hand). 75 columns A:BW.

@@ -4,7 +4,7 @@ Weekly block C:E (3 weeks), daily block G:T (last 14 days). Filters: B1 city, B2
 B4 = last data day. Writes column C (weekly) and G (daily); the other columns are copy-pasted (relative refs)."""
 import json, sys
 
-R = "'0_raw'!"
+R = "'0dp_raw'!"
 def c(col): return f"{R}${col}:${col}"
 def blk(a, b): return f"{R}${a}:${b}"
 FILT = f'{c("E")},$B$1,{c("F")},$B$2,{c("H")},$B$3'
