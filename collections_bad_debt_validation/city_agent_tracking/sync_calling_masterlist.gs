@@ -8,8 +8,10 @@
 //     CF = Actioning Tag formula (not touched).
 //     Destination header rows 1-2 are kept as they are (not overwritten).
 //   - target_trips (BF) and min_remaining_trips (BG) are not in raw_v2 -> left blank.
-//   - 24-Nov: CG = Joined at 0 Deposit ('Yes - (Please pitch Own Now / DTO)' / No) from raw_v2 'Deposit Bucket at Allocation' of the last join
-//     (New Join / Rejoin / Resurrection). Written by the script after CF (Actioning Tag formula), agent input untouched.
+//   - 24-Nov: BS = Joined at 0 Deposit ('Yes - (Please pitch Own Now / DTO)' / No), right after BR Action Tag from raw_v2 'Deposit Bucket at Allocation' of the last join
+//     (New Join / Rejoin / Resurrection). Layout from 24-Nov: A:BU data, BV:CF agent input, CG Actioning Tag formula.
+//     First run of this version moves the old CG column to BS itself (one time), so an older script never writes
+//     into the new layout.
 // Runs every time it is called (manual or trigger): re-prints raw_v2 and matches the BU:CE agent input by ID.
 //   Skips only while the SQL query Automation is still writing raw_v2 (status not "GSHEET: SUCCESS" or
 //   row count mismatch), so half-written data never wipes rows / remarks.
@@ -22,6 +24,19 @@ function syncHyderabadCallingMasterlist() {
   const source = SpreadsheetApp.openById(SOURCE_ID).getSheetByName(SOURCE_TAB);
   const dest = SpreadsheetApp.openById(DEST_ID).getSheetByName('Calling_Masterlist');
   if (!source || !dest) throw new Error('Source ya destination tab nahi mila.');
+  // 24-Nov one-time layout change: 'Joined at 0 Deposit' goes to BS (right after BR Action Tag).
+  const ZERO_DP_HDR = 'Joined at 0 Deposit';
+  if (String(dest.getRange(2, 71).getValue()).trim() !== ZERO_DP_HDR) {          // BS
+    if (String(dest.getRange(2, 85).getValue()).trim() === ZERO_DP_HDR) {        // old place CG
+      dest.moveColumns(dest.getRange('CG:CG'), 71);
+    } else {
+      dest.insertColumnBefore(71);
+      dest.getRange(1, 71, 3, 1).setValues([['15. 0 Deposit Join'], [ZERO_DP_HDR],
+        ['Yes - (Please pitch Own Now / DTO) = last New Join / Rejoin / Resurrection was at 0 deposit (raw_v2 Deposit Bucket at Allocation). Script fills it.']]);
+    }
+    SpreadsheetApp.flush();
+    Logger.log('Layout: Joined at 0 Deposit moved to BS.');
+  }
 
   const clean = value => String(value ?? '').trim();
 
@@ -98,8 +113,9 @@ function syncHyderabadCallingMasterlist() {
     /* BP car_model                     */ 'Car Model (now)',
     /* BQ Stage Today                   */ 'Stage Today',
     /* BR Action Tag                    */ 'Action To Take',
-    /* BS allocation_date (last join)   */ 'Last Join Date',
-    /* BT Yesterday Remarks             */ 'Yesterday Remarks',   // 20-Nov: from raw_v2 (DB snapshot of yesterday's calls)
+    /* BS Joined at 0 Deposit (24-Nov)  */ '__ZERO_DP__',
+    /* BT allocation_date (last join)   */ 'Last Join Date',
+    /* BU Yesterday Remarks             */ 'Yesterday Remarks',   // 20-Nov: from raw_v2 (DB snapshot of yesterday's calls)
   ];
 
   const HEADER_ROW = 2;          // raw_v2 header row
@@ -110,15 +126,14 @@ function syncHyderabadCallingMasterlist() {
   const FIRST_DATA_ROW = (d3 === '' || /^ET[A-Z]*\d/i.test(d3)) ? 3 : 4;
   // 20-Nov: BT = Yesterday Remarks (written from raw_v2); agent input = BU:CE (Call Status ... Follow-up Date, CE Remarks).
   //   CF = Actioning Tag (sheet formula, never written by the script).
-  const DEST_DATA_COLS = 72;     // A:BT
-  const REMARK_START_COL = 73;   // BU
-  const REMARK_COLS = 11;        // BU:CE
-  const LAST_OUTPUT_COL = 83;    // CE
-  const ZERO_DP_COL = 85;        // CG = Joined at 0 Deposit (24-Nov)
+  const DEST_DATA_COLS = 73;     // A:BU (24-Nov: + BS Joined at 0 Deposit)
+  const REMARK_START_COL = 74;   // BV
+  const REMARK_COLS = 11;        // BV:CF
+  const LAST_OUTPUT_COL = 84;    // CF  (CG = Actioning Tag formula, never written)
   const ZERO_DP_SRC = 'Deposit Bucket at Allocation';
   const ZERO_DP_YES = 'Yes - (Please pitch Own Now / DTO)';   // 24-Nov: tells the agent what to pitch
-  const DEST_D_TO_LAST = DEST_DATA_COLS - 3;                 // D:BT = 69 cols
-  const DEST_D_TO_REMARK_END = DEST_D_TO_LAST + REMARK_COLS; // D:CE = 80 cols
+  const DEST_D_TO_LAST = DEST_DATA_COLS - 3;                 // D:BU = 70 cols
+  const DEST_D_TO_REMARK_END = DEST_D_TO_LAST + REMARK_COLS; // D:CF = 81 cols
   if (DEST_MAP.length !== DEST_DATA_COLS) throw new Error(`DEST_MAP me ${DEST_MAP.length} cols, ${DEST_DATA_COLS} chahiye.`);
 
   // ---------- Source ready check (SQL query Automation status) ----------
@@ -182,6 +197,10 @@ function syncHyderabadCallingMasterlist() {
     return DEST_MAP.map(name => {
       if (name === null) return '';
       if (name === '__REFRESH_DATE__') return refreshDate;
+      if (name === '__ZERO_DP__') {
+        const b = clean(row[idx[ZERO_DP_SRC]]);
+        return b === '0 Deposit' ? ZERO_DP_YES : (b === '' || b === 'Unknown' || b === 'NaN' ? '' : 'No');
+      }
       if (name === '__CRITICAL_EOD__') return clean(row[idx['Risk - That Day (EOD)']]) === 'Yes' ? 'Critical_Risk' : '';
       const v = row[idx[name]];
       return (v === 'NaN' || v === 'NaT') ? '' : v;
@@ -214,7 +233,6 @@ function syncHyderabadCallingMasterlist() {
 
   const dataAB = [];
   const dataDToCD = [];
-  const dataCG = [];
   const seen = new Set();
   picked.forEach(row => {
     const id = clean(row[iId]);
@@ -223,28 +241,24 @@ function syncHyderabadCallingMasterlist() {
     const mapped = mapSourceRow(row);
     const savedRemarks = remarksById.get(id) || Array(REMARK_COLS).fill('');
     dataAB.push(mapped.slice(0, 2));                    // A:B
-    dataDToCD.push([...mapped.slice(3), ...savedRemarks]); // D:BT + BU:CE
-    const bucket = clean(row[idx[ZERO_DP_SRC]]);
-    dataCG.push([bucket === '0 Deposit' ? ZERO_DP_YES : (bucket === '' || bucket === 'Unknown' || bucket === 'NaN' ? '' : 'No')]);
+    dataDToCD.push([...mapped.slice(3), ...savedRemarks]); // D:BU + BV:CF
   });
 
   const rowsToWrite = Math.max(oldCount, dataAB.length);
   const neededRows = FIRST_DATA_ROW + rowsToWrite - 1;
   if (dest.getMaxRows() < neededRows) dest.insertRowsAfter(dest.getMaxRows(), neededRows - dest.getMaxRows());
-  if (dest.getMaxColumns() < ZERO_DP_COL) dest.insertColumnsAfter(dest.getMaxColumns(), ZERO_DP_COL - dest.getMaxColumns());
+  if (dest.getMaxColumns() < LAST_OUTPUT_COL) dest.insertColumnsAfter(dest.getMaxColumns(), LAST_OUTPUT_COL - dest.getMaxColumns());
 
   if (rowsToWrite > 0) {
     // Old extra rows become blank; C stays untouched.
     while (dataAB.length < rowsToWrite) {
       dataAB.push(['', '']);
       dataDToCD.push(Array(DEST_D_TO_REMARK_END).fill(''));
-      dataCG.push(['']);
     }
     dest.getRange(FIRST_DATA_ROW, 1, rowsToWrite, 2).setValues(dataAB);
     dest.getRange(FIRST_DATA_ROW, 4, rowsToWrite, DEST_D_TO_REMARK_END).setValues(dataDToCD);
-    dest.getRange(FIRST_DATA_ROW, ZERO_DP_COL, rowsToWrite, 1).setValues(dataCG);   // CG
   }
 
   Logger.log(`${seen.size} Hyderabad IDs print hui (week ${curWeek}, source refresh ${refreshTime}), `
-             + `${dataCG.filter(r => r[0] === ZERO_DP_YES).length} joined at 0 deposit (CG).`);
+             + `${dataDToCD.filter(r => r[71 - 4] === ZERO_DP_YES).length} joined at 0 deposit (BS).`);
 }
