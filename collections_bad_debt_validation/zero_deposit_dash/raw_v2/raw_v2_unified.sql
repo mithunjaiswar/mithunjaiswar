@@ -99,6 +99,7 @@ calls as materialized (   -- 20-Nov perf: collections_calling_data_raw read ONCE
   select c.partner_et_id, c.date, c.week_start, c.attempt_count, c.connect_count, c.last_attempt_time, c.last_connect_time, c.last_subdisposition
   from public.collections_calling_data_raw c
   where c.week_start >= date_trunc('week', current_date)::date - 14
+    and (c.city is distinct from 'Mumbai' or c.campaign_id = '277')   -- 24-Nov: Mumbai = only Outbound_Hawkeye_Driver_Manager_Mumbai (crm.lead_campaign 277)
 ),
 mcl as materialized (   -- 20-Nov perf: calling masterlist read ONCE (4 weeks); cml / remarks come from here
   select m.week, m.partner_et_id, m.date, m.snapshot_date, m.loaded_at, m.agent_username, m.actioning_type,
@@ -416,11 +417,22 @@ lead as materialized (
   order by l.hawkeye_driver_id, l.id desc
 ),
 lead_mv as materialized (select distinct on (etm) etm, lead_id from mvw where lead_id is not null order by etm, wk desc),
+gnow as materialized (   -- 24-Nov: car in garage now = latest job card (last 30 days) of the current car, not handed over
+  select g.car_id, 'Yes - ' || coalesce(st.status, 'In Garage') || ' (since ' || to_char(g.activation_date, 'DD-Mon') || ')' as lbl
+  from (select distinct on (j.car_id) j.car_id, j.status_id, j.activation_date, j.deactivation_date
+        from garage_jobcard j
+        where j.activation_date >= current_date - 30 and j.car_id in (select car_id from act)
+        order by j.car_id, j.activation_date desc) g
+  left join garage_garage_status st on st.id = g.status_id
+  where g.status_id is distinct from 23 and g.deactivation_date is null   -- 23 = Handover Done (jc_handovertime is filled even while In Repair)
+),
 cars_now as materialized (
   select fd.employee_id as etm, string_agg(distinct fc.car_number, ', ') as car_numbers,
-         (array_agg(cm.name order by a.allocation_date desc))[1] as car_model
+         (array_agg(cm.name order by a.allocation_date desc))[1] as car_model,
+         max(gn.lbl) as garage
   from act a join fleet_driver fd on fd.id = a.driver_id
   join fleet_car fc on fc.id = a.car_id left join fleet_car_model cm on cm.id = fc.model_id
+  left join gnow gn on gn.car_id = a.car_id
   group by 1
 ),
 cday as materialized (   -- one row per allocated car per day, 2 weeks ago Monday .. yesterday; 21-Nov: from car_pop (ssot) instead of car_allocation
@@ -666,7 +678,7 @@ u as materialized (   -- raw row + Agent_action fields, shown weeks only (last w
     case when r."EIP / Single" = 'EIP' then r."Product Type" || ' - EIP'   -- 24-Nov: Leasing - EIP / D2O - EIP / Own Now - EIP
          when r."Product Type" = 'Leasing' then 'Leasing - Single' else r."Product Type" end as product_lbl,
     dr.name, coalesce(lm.lead_id::bigint, ld.lead_id) as lead_id,
-    cn.car_numbers, cn.car_model, (ae.etm is not null) as has_car,
+    cn.car_numbers, cn.car_model, cn.garage, (ae.etm is not null) as has_car,
     coalesce(aw.agent, 'Unassigned') as agent,
     case when r."Product Type" = 'D2O' then coalesce(at.act_type, 'Penalty') else '' end as act_type,
     coalesce(rw.rz, 0) as rz, coalesce(rw.oth, 0) as oth, coalesce(rw.pp, 0) as pp, coalesce(rw.adj, 0) as adj, coalesce(rw.dpo, 0) as dpo,
@@ -755,7 +767,8 @@ select
                 then case when v."Car Recovery (week)" = 'Open' then 'P0 - Critical (In car recovery)' else 'P0 - Critical (Not in car recovery)' end
        when v."Car Recovery (week)" = 'Open' and v.dp - v.cq > 0 then 'P1 - Cancel the car recovery (OFC)'
        when v.cq > 0 and v.dp - v.cq <= v.rr then 'P1 - Near surpass (<=1 day rent to deposit)'
-       when v.cq > 0 or v.ee > 0 then 'P2 - OS not collected' end, 'No action') as "Action To Take",
+       when v.cq > 0 or v.ee > 0 then 'P2 - OS not collected' end
+           || case when v.garage is not null then ' - (Car in Garage)' else '' end, 'No action') as "Action To Take",   -- 24-Nov: garage suffix
   case when v."Car Recovery (week)" = 'Closed' then '6. Car Recovery Closed' when v."Car Recovery (week)" = 'Open' then '5. In Car Recovery'
        when v.cp = 0 then '0. Not Active' when v.cr = 1 then '4. Owes >= Deposit - START RECOVERY'
        when v.ct = 1 then '3. Critical' when v.cq > 0 then '2. Owes - not critical yet' else '1. Paid Up' end as "Stage Today",
@@ -922,7 +935,8 @@ select
   v.dnp4 as "Days Not Paid D4",
   v.dnp5 as "Days Not Paid D5",
   v.dnp6 as "Days Not Paid D6",
-  v.dnp7 as "Days Not Paid D7"
+  v.dnp7 as "Days Not Paid D7",
+  coalesce(v.garage, 'No') as "Car in Garage"   -- 24-Nov: FW
 from v
 where (select 1 / (count(*) / 100) from rec_day where d = current_date - 1) is not null
   and (select 1 / (count(distinct driver_id) / 5000) from lod where d >= current_date - 1) is not null
