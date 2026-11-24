@@ -8,10 +8,8 @@
 //     BV:CH agent input (kept by Employee ID).
 //     Destination header rows 1-2 are kept as they are (not overwritten).
 //   - target_trips (BF) and min_remaining_trips (BG) are not in raw_v2 -> left blank.
-//   - 24-Nov: BS = Joined at 0 Deposit ('Yes - (Please pitch Own Now / DTO)' / No), right after BR Action Tag from raw_v2 'Deposit Bucket at Allocation' of the last join
-//     (New Join / Rejoin / Resurrection). Layout from 24-Nov: A:BU data (BU = Yesterday Remarks),
-//     BV:CH agent input (13 cols, read before the write and printed back by Employee ID).
-//     Move the column in the sheet first (CG -> BS), then paste this script.
+//   - 24-Nov: BS = Joined at 0 Deposit ('Yes - (Please pitch Own Now / DTO)' / No) from raw_v2
+//     'Deposit Bucket at Allocation' (last New Join / Rejoin / Resurrection). BV:CH = agent input (13 cols).
 // Runs every time it is called (manual or trigger): re-prints raw_v2 and matches the BV:CH agent input by ID.
 //   Skips only while the SQL query Automation is still writing raw_v2 (status not "GSHEET: SUCCESS" or
 //   row count mismatch), so half-written data never wipes rows / remarks.
