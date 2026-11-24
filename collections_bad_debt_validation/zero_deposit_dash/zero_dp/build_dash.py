@@ -1,108 +1,70 @@
-"""Builds 0_performance_dash formulas (Zero & Low Deposit Monitoring Dashboard).
-Weekly block C:J (8 weeks, oldest -> this week), daily block L:Y (last 14 days).
-Source: '0_raw' (JOIN rows = every join, DAY rows = 0 deposit pilot x day). Filters B1 city, B2 product, B3 join type ('*' = all)."""
+"""Builds 0_performance_dash formulas (Zero & Low Deposit Monitoring Dashboard) on the 0_raw tab
+(ONLY 0 deposit pilots, pilot x week, 3 weeks, data from row 4; daily values in D1..D7 column blocks).
+Weekly block C:E (3 weeks), daily block G:T (last 14 days). Filters: B1 city, B2 product, B3 join type ('*' = all).
+B4 = last data day. Writes column C (weekly) and G (daily); the other columns are copy-pasted (relative refs)."""
 import json, sys
-from openpyxl.utils import get_column_letter as L
 
 R = "'0_raw'!"
-col = dict(A='A', date='B', week='C', city='D', prod='E', jdate='H', jtype='I', jweek='J', dep_join='K', zero='L',
-           active='N', car='O', dep='P', bucket='Q', lo='R', rent='S', paid='T', adj='U', bda='V', bda_rs='W',
-           bdl='X', bdl_rs='Y', inrc='Z', rcnew='AA', rcclose='AB', rcrec='AC', att='AD', conn='AE')
-def c(k): return f"{R}${col[k]}:${col[k]}"
-FILT = f'{c("city")},$B$1,{c("prod")},$B$2,{c("jtype")},$B$3'
+def c(col): return f"{R}${col}:${col}"
+def blk(a, b): return f"{R}${a}:${b}"
+FILT = f'{c("E")},$B$1,{c("F")},$B$2,{c("H")},$B$3'
+WK = 'C$7'                                    # weekly: Monday of the week
+DWK = 'G$7-WEEKDAY(G$7,3)'                    # daily: Monday of that day's week
+DOW = 'WEEKDAY(G$7,2)'                        # daily: 1 = Monday .. 7 = Sunday
+def day(a, b): return f'INDEX({blk(a, b)},0,{DOW})'
+ACT, LO, RENT, COLL, BD, RC = (day('AH', 'AN'), day('AO', 'AU'), day('AV', 'BB'),
+                               day('BC', 'BI'), day('BJ', 'BP'), day('BQ', 'BW'))
 
-WEEK_COLS = [L(i) for i in range(3, 11)]      # C..J
-DAY_COLS = [L(i) for i in range(12, 26)]      # L..Y
+def wcount(extra=''): return f'=COUNTIFS({c("A")},{WK},{FILT}{extra})'
+def wsum(col, extra=''): return f'=SUMIFS({c(col)},{c("A")},{WK},{FILT}{extra})'
+def dcount(extra=''): return f'=COUNTIFS({c("A")},{DWK},{FILT}{extra})'
+def dsum(rng, extra=''): return f'=SUMIFS({rng},{c("A")},{DWK},{FILT}{extra})'
 
-def period(h, weekly):
-    # date criteria: weekly = days of the week, daily = that day
-    return (f'{c("date")},">="&{h}$7,{c("date")},"<="&{h}$7+6' if weekly else f'{c("date")},{h}$7')
-def point(h, weekly):
-    # point-in-time: weekly = last day of the week (or today), daily = that day
-    return (f'{c("date")},MIN({h}$7+6,TODAY())' if weekly else f'{c("date")},{h}$7')
+FIRST = 8
+rows = []
+def add(sec, label, w, d, fmt='int'): rows.append((sec, label, w, d, fmt))
+add('Joins', 'Joined at 0 deposit', wcount(f',{c("J")},"Yes"'), dcount(f',{c("G")},G$7'))                       # 0
+add('', '  New Join', wcount(f',{c("J")},"Yes",{c("H")},"New Join"'), dcount(f',{c("G")},G$7,{c("H")},"New Join"'))
+add('', '  Rejoin', wcount(f',{c("J")},"Yes",{c("H")},"Rejoin"'), dcount(f',{c("G")},G$7,{c("H")},"Rejoin"'))
+add('', '  Resurrection', wcount(f',{c("J")},"Yes",{c("H")},"Resurrection"'), dcount(f',{c("G")},G$7,{c("H")},"Resurrection"'))
+add('0 DP Pilots', '0 DP pilots (joined at 0 deposit)', wcount(), dcount(f',{c("G")},"<="&G$7'))                 # 4
+add('', 'Active (Live OS) - EOD', wcount(f',{c("W")},1'), dcount(f',{ACT},1'))                                      # 5
+add('', 'Active %', ('ratio', 5, 4), ('ratio', 5, 4), 'pct')                                                      # 6
+add('', 'Has car - EOD', wcount(f',{c("X")},1'), None)                                                            # 7
+add('', 'Active, still at 0 deposit - EOD', wcount(f',{c("W")},1,{c("M")},0'), None)                              # 8
+add('', 'Active, deposit built (> 0) - EOD', ('diff', 5, 8), None)                                                # 9
+add('', 'Avg deposit - active, EOD (Rs)', f'=IFERROR(AVERAGEIFS({c("M")},{c("A")},{WK},{FILT},{c("W")},1),0)', None, 'rs')  # 10
+add('OS & Collection', 'Weekly OS - Monday hisaab (Rs)', wsum('P'), None, 'rs')                                   # 11
+add('', 'Rent - new OS (Rs)', wsum('Q'), dsum(RENT), 'rs')                                                        # 12
+add('', 'Total OS to collect (Rs)', wsum('R'), None, 'rs')                                                        # 13
+add('', 'Collected - Razorpay / PhonePe / Other (Rs)', wsum('S'), dsum(COLL), 'rs')                               # 14
+add('', 'Adjustment + DP to OS (Rs)', wsum('T'), None, 'rs')                                                      # 15
+add('', 'Collection % (collected / total OS)', ('ratio', 14, 13), None, 'pct')                                    # 16
+add('', 'Live OS owed - EOD (Rs)', '=-' + wsum('V', f',{c("V")},"<0"')[1:], '=-' + dsum(LO, f',{LO},"<0"')[1:], 'rs')  # 17
+add('Bad Debt', 'Bad debt pilots - EOD', wcount(f',{c("Y")},">0"'), dcount(f',{BD},">0"'))                         # 18
+add('', 'Bad debt (Rs) - EOD', wsum('Y'), dsum(BD), 'rs')                                                         # 19
+add('', '  of which Active (has car) - pilots', wcount(f',{c("Z")},"Active"'), None)                              # 20
+add('', '  of which Left (no car) - pilots', wcount(f',{c("Z")},"Left"'), None)                                   # 21
+add('', 'Bad debt per 0 DP pilot (Rs)', ('ratio', 19, 4), ('ratio', 19, 4), 'rs')                                 # 22
+add('Car Recovery', 'In car recovery - EOD', wcount(f',{c("AA")},1'), dcount(f',{RC},1'))                          # 23
+add('', 'Recovery raised', wsum('AB'), None)                                                                      # 24
+add('', 'Recovery closed', wsum('AC'), None)                                                                      # 25
+add('', 'Car recovered (status complete)', wsum('AD'), None)                                                      # 26
+add('', 'Car recovered % of raised', ('ratio', 26, 24), None, 'pct')                                              # 27
+add('Calling', 'Calls attempted', wsum('AE'), None)                                                               # 28
+add('', 'Calls connected', wsum('AF'), None)                                                                      # 29
+add('', 'Connect %', ('ratio', 29, 28), None, 'pct')                                                              # 30
 
-rows = []   # (section, label, kind, spec, fmt)
-def add(sec, label, kind, spec=None, fmt='int'): rows.append((sec, label, kind, spec, fmt))
+def resolve(f, col):
+    if f is None: return ''
+    if isinstance(f, tuple):
+        k, a, b = f
+        if k == 'ratio': return f'=IFERROR({col}{FIRST + a}/{col}{FIRST + b},0)'
+        if k == 'diff': return f'={col}{FIRST + a}-{col}{FIRST + b}'
+    return f
 
-add('Joins', 'Total joins (all deposits)', 'join', [])
-add('', 'Joined at 0 deposit', 'join', [('zero', '"Yes"')])
-add('', '0 deposit share of joins %', 'ratio', (1, 0), 'pct')
-add('', '0 DP - New Join', 'join', [('zero', '"Yes"'), ('jtype', '"New Join"')])
-add('', '0 DP - Rejoin', 'join', [('zero', '"Yes"'), ('jtype', '"Rejoin"')])
-add('', '0 DP - Resurrection', 'join', [('zero', '"Yes"'), ('jtype', '"Resurrection"')])
-add('0 DP Pilots', '0 DP pilots (joined at 0 deposit, till date)', 'pcount', [])
-add('', 'Active (Live OS) - EOD', 'pcount', [('active', 1)])
-add('', 'Active %', 'ratio', (7, 6), 'pct')
-add('', 'Has car - EOD', 'pcount', [('car', 1)])
-add('', 'Active, still at 0 deposit', 'pcount', [('active', 1), ('bucket', '"0 Deposit"')])
-add('', 'Active, deposit built (> 0)', 'diff', (7, 10))
-add('', 'Avg deposit built - active (Rs)', 'pavg', ('dep', [('active', 1)]), 'rs')
-add('Rent & Collection', 'Rent due (Rs)', 'psum', ('rent', []), 'rs')
-add('', 'Paid - Razorpay / PhonePe / Other (Rs)', 'psum', ('paid', []), 'rs')
-add('', 'Adjustment + DP to OS (Rs)', 'psum', ('adj', []), 'rs')
-add('', 'Paid % of rent', 'ratio', (14, 13), 'pct')
-add('', 'Live OS owed - EOD (Rs)', 'owed', None, 'rs')
-add('Bad Debt', 'Active bad debt (owes >= deposit) - pilots', 'pcount', [('bda', 1)])
-add('', 'Active bad debt (Rs)', 'ptsum', ('bda_rs', []), 'rs')
-add('', 'Left bad debt (no car, owes > deposit) - pilots', 'pcount', [('bdl', 1)])
-add('', 'Left bad debt (Rs)', 'ptsum', ('bdl_rs', []), 'rs')
-add('', 'Total bad debt (Rs)', 'add', (19, 21), 'rs')
-add('', 'Bad debt per 0 DP pilot (Rs)', 'ratio', (22, 6), 'rs')
-add('Car Recovery', 'Recovery raised', 'psum', ('rcnew', []))
-add('', 'Recovery closed', 'psum', ('rcclose', []))
-add('', 'Car recovered (status complete)', 'psum', ('rcrec', []))
-add('', 'Car recovered % of raised', 'ratio', (26, 24), 'pct')
-add('', 'In car recovery - EOD', 'pcount', [('inrc', 1)])
-add('Calling', 'Calls attempted', 'psum', ('att', []))
-add('', 'Calls connected', 'psum', ('conn', []))
-add('', 'Connect %', 'ratio', (30, 29), 'pct')
-
-FIRST = 8  # first metric row
-def extra(spec): return ''.join(f',{c(k)},{v}' for k, v in spec)
-
-def formula(kind, spec, h, weekly, rowno):
-    if kind == 'join':
-        d = f'{c("jweek")},{h}$7' if weekly else f'{c("date")},{h}$7'
-        return f'=COUNTIFS({c("A")},"JOIN",{d},{FILT}{extra(spec)})'
-    if kind == 'pcount':
-        return f'=COUNTIFS({c("A")},"DAY",{point(h, weekly)},{FILT}{extra(spec)})'
-    if kind == 'psum':
-        k, sp = spec
-        return f'=SUMIFS({c(k)},{c("A")},"DAY",{period(h, weekly)},{FILT}{extra(sp)})'
-    if kind == 'ptsum':
-        k, sp = spec
-        return f'=SUMIFS({c(k)},{c("A")},"DAY",{point(h, weekly)},{FILT}{extra(sp)})'
-    if kind == 'pavg':
-        k, sp = spec
-        return f'=IFERROR(AVERAGEIFS({c(k)},{c("A")},"DAY",{point(h, weekly)},{FILT}{extra(sp)}),0)'
-    if kind == 'owed':
-        return f'=-SUMIFS({c("lo")},{c("A")},"DAY",{point(h, weekly)},{FILT},{c("lo")},"<0")'
-    if kind == 'ratio':
-        a, b = spec
-        return f'=IFERROR({h}{FIRST + a}/{h}{FIRST + b},0)'
-    if kind == 'diff':
-        a, b = spec
-        return f'={h}{FIRST + a}-{h}{FIRST + b}'
-    if kind == 'add':
-        a, b = spec
-        return f'={h}{FIRST + a}+{h}{FIRST + b}'
-
-grid = []
-grid.append(['City ▸', '*', '', '="Last updated: "&IFERROR(INDEX(\'0_raw\'!AF2:AF2,1),"-")&"  |  0 deposit = deposit balance 0 at the end of the join day (New Join / Rejoin / Resurrection)"'] + [''] * 21)
-grid.append(['Product ▸', '*'] + [''] * 23)
-grid.append(['Join Type ▸', '*'] + [''] * 23)
-grid.append([''] * 25)
-grid.append(['', '', 'WEEKLY  |  join week for joins, Mon-Sun total for amounts, end of week (or today) for pilot counts'] + [''] * 8 +
-            ['DAILY TREND  |  last 14 days'] + [''] * 13)
-grid.append(['', '(week)'] + [f'=TEXT({h}7,"dd-mmm")' for h in WEEK_COLS] + [''] + [f'=TEXT({h}7,"ddd")' for h in DAY_COLS])
-hdr = ['Section', 'Metric']
-hdr += ['=TODAY()-WEEKDAY(TODAY(),3)-49'] + [f'={WEEK_COLS[i-1]}7+7' for i in range(1, 8)]
-hdr += [''] + ['=TODAY()-13'] + [f'={DAY_COLS[i-1]}7+1' for i in range(1, 14)]
-grid.append(hdr)
-fmts = []
-for i, (sec, label, kind, spec, fmt) in enumerate(rows):
-    r = FIRST + i
-    line = [sec, label] + [formula(kind, spec, h, True, r) for h in WEEK_COLS] + [''] + [formula(kind, spec, h, False, r) for h in DAY_COLS]
-    grid.append(line); fmts.append(fmt)
-json.dump({'grid': grid, 'fmts': fmts, 'first': FIRST}, open(sys.argv[1], 'w'))
-print(len(grid), 'rows')
+out = {'AB': [], 'C': [], 'G': [], 'fmts': [], 'first': FIRST, 'n': len(rows)}
+for sec, label, w, d, fmt in rows:
+    out['AB'].append([sec, label]); out['C'].append([resolve(w, 'C')]); out['G'].append([resolve(d, 'G')]); out['fmts'].append(fmt)
+json.dump(out, open(sys.argv[1], 'w'))
+print(len(rows), 'metric rows; last row', FIRST + len(rows) - 1)
