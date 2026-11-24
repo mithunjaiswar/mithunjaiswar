@@ -1,3 +1,4 @@
+# 24-Nov: bad debt amount / partners count ONLY attrition = Yes pilots (as Raja's sheet). User later removed the Pilots # block + moved filter to L1.
 # Builds Current_BadDebt summary (L1:T44) + logic (L47+) in the Zero & Low Deposit sheet. Data A:J = automation (current_baddebt_0dp.sql).
 import json
 cities=['*','Mumbai','Kolkata','Bangalore','Delhi NCR','Hyderabad','Chennai','Pune']
@@ -7,10 +8,10 @@ F='IF($M$1="All","*",$M$1)'
 base='$B$2:$B,$M{r},$C$2:$C,{c}$4,$H$2:$H,'+F
 blocks=[('Pilots #','=COUNTIFS('+base+')'),
         ('Total Negative OS (Rs)','=SUMIFS($D$2:$D,'+base+',$D$2:$D,"<0")'),
-        ('Bad Debt Amount (Rs)','=SUMIFS($F$2:$F,'+base+',$F$2:$F,"<0")'),
+        ('Bad Debt Amount (Rs)','=SUMIFS($F$2:$F,'+base+',$F$2:$F,"<0",$G$2:$G,"Yes")'),
         ('Bad Debt % (of negative OS)','=IFERROR({c}{r8}/{c}{r16},"-")'),
-        ('Bad Debt Partners #','=COUNTIFS('+base+',$F$2:$F,"<0")'),
-        ('Attrition Pilots with Bad Debt #','=COUNTIFS('+base+',$F$2:$F,"<0",$G$2:$G,"Yes")')]
+        ('Bad Debt Partners #','=COUNTIFS('+base+',$F$2:$F,"<0",$G$2:$G,"Yes")'),
+        ('Attrition Pilots (left last week) #','=COUNTIFS('+base+',$G$2:$G,"Yes")')]
 rows=[['0 DP filter ▸','All','=IFERROR("Updated: "&INDEX($J:$J,2)&"  |  All = every pilot, Yes = joined at 0 deposit, No = joined with deposit","")'],
       ['Hisaab week ▸','=TEXT(TODAY()-WEEKDAY(TODAY(),3),"dd-mmm-yyyy")'],[],
       ['Metric','City']+prods]
