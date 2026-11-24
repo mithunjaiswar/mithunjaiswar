@@ -8,6 +8,8 @@
 //     CF = Actioning Tag formula (not touched).
 //     Destination header rows 1-2 are kept as they are (not overwritten).
 //   - target_trips (BF) and min_remaining_trips (BG) are not in raw_v2 -> left blank.
+//   - 24-Nov: CG = Joined at 0 Deposit (Yes / No) from raw_v2 'Deposit Bucket at Allocation' of the last join
+//     (New Join / Rejoin / Resurrection). Written by the script after CF (Actioning Tag formula), agent input untouched.
 // Runs every time it is called (manual or trigger): re-prints raw_v2 and matches the BU:CE agent input by ID.
 //   Skips only while the SQL query Automation is still writing raw_v2 (status not "GSHEET: SUCCESS" or
 //   row count mismatch), so half-written data never wipes rows / remarks.
@@ -112,6 +114,8 @@ function syncHyderabadCallingMasterlist() {
   const REMARK_START_COL = 73;   // BU
   const REMARK_COLS = 11;        // BU:CE
   const LAST_OUTPUT_COL = 83;    // CE
+  const ZERO_DP_COL = 85;        // CG = Joined at 0 Deposit (24-Nov)
+  const ZERO_DP_SRC = 'Deposit Bucket at Allocation';
   const DEST_D_TO_LAST = DEST_DATA_COLS - 3;                 // D:BT = 69 cols
   const DEST_D_TO_REMARK_END = DEST_D_TO_LAST + REMARK_COLS; // D:CE = 80 cols
   if (DEST_MAP.length !== DEST_DATA_COLS) throw new Error(`DEST_MAP me ${DEST_MAP.length} cols, ${DEST_DATA_COLS} chahiye.`);
@@ -148,12 +152,12 @@ function syncHyderabadCallingMasterlist() {
   const idx = {};
   headers.forEach((h, i) => { if (h && !(h in idx)) idx[h] = i; });
   const missing = DEST_MAP.filter(n => n && !n.startsWith('__') && !(n in idx));
-  ['Week (Mon)', 'Employee ID', 'City', 'Risk - That Day (EOD)'].forEach(n => { if (!(n in idx)) missing.push(n); });
+  ['Week (Mon)', 'Employee ID', 'City', 'Risk - That Day (EOD)', ZERO_DP_SRC].forEach(n => { if (!(n in idx)) missing.push(n); });
   if (missing.length) throw new Error('raw_v2 me ye columns nahi mile: ' + [...new Set(missing)].join(', '));
 
   // Read only up to the last column we need.
   const neededCols = Math.max(...DEST_MAP.filter(n => n && !n.startsWith('__')).map(n => idx[n]),
-                              idx['Risk - That Day (EOD)']) + 1;   // raw_v2 A:CL today
+                              idx['Risk - That Day (EOD)'], idx[ZERO_DP_SRC]) + 1;   // raw_v2 A:CL today
   const srcCount = Math.max(0, source.getLastRow() - SRC_FIRST_ROW + 1);
   const sourceRows = srcCount > 0
     ? source.getRange(SRC_FIRST_ROW, 1, srcCount, neededCols).getValues()
@@ -209,6 +213,7 @@ function syncHyderabadCallingMasterlist() {
 
   const dataAB = [];
   const dataDToCD = [];
+  const dataCG = [];
   const seen = new Set();
   picked.forEach(row => {
     const id = clean(row[iId]);
@@ -218,22 +223,27 @@ function syncHyderabadCallingMasterlist() {
     const savedRemarks = remarksById.get(id) || Array(REMARK_COLS).fill('');
     dataAB.push(mapped.slice(0, 2));                    // A:B
     dataDToCD.push([...mapped.slice(3), ...savedRemarks]); // D:BT + BU:CE
+    const bucket = clean(row[idx[ZERO_DP_SRC]]);
+    dataCG.push([bucket === '0 Deposit' ? 'Yes' : (bucket === '' || bucket === 'Unknown' || bucket === 'NaN' ? '' : 'No')]);
   });
 
   const rowsToWrite = Math.max(oldCount, dataAB.length);
   const neededRows = FIRST_DATA_ROW + rowsToWrite - 1;
   if (dest.getMaxRows() < neededRows) dest.insertRowsAfter(dest.getMaxRows(), neededRows - dest.getMaxRows());
-  if (dest.getMaxColumns() < LAST_OUTPUT_COL) dest.insertColumnsAfter(dest.getMaxColumns(), LAST_OUTPUT_COL - dest.getMaxColumns());
+  if (dest.getMaxColumns() < ZERO_DP_COL) dest.insertColumnsAfter(dest.getMaxColumns(), ZERO_DP_COL - dest.getMaxColumns());
 
   if (rowsToWrite > 0) {
     // Old extra rows become blank; C stays untouched.
     while (dataAB.length < rowsToWrite) {
       dataAB.push(['', '']);
       dataDToCD.push(Array(DEST_D_TO_REMARK_END).fill(''));
+      dataCG.push(['']);
     }
     dest.getRange(FIRST_DATA_ROW, 1, rowsToWrite, 2).setValues(dataAB);
     dest.getRange(FIRST_DATA_ROW, 4, rowsToWrite, DEST_D_TO_REMARK_END).setValues(dataDToCD);
+    dest.getRange(FIRST_DATA_ROW, ZERO_DP_COL, rowsToWrite, 1).setValues(dataCG);   // CG
   }
 
-  Logger.log(`${seen.size} Hyderabad IDs print hui (week ${curWeek}, source refresh ${refreshTime}).`);
+  Logger.log(`${seen.size} Hyderabad IDs print hui (week ${curWeek}, source refresh ${refreshTime}), `
+             + `${dataCG.filter(r => r[0] === 'Yes').length} joined at 0 deposit (CG).`);
 }
