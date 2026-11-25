@@ -11,6 +11,7 @@
 -- 18-Nov: Bad Debt Type 2 (left) = no car that day and last live OS (any earlier day, else weekly OS) owes more than the deposit; counted every day (non-funnel).
 -- 19-Nov: Days Not Paid counts from the later of last payment / last join (new joiners were showing 60).
 -- 20-Nov: + Deposit for Dash (AA) / Deposit Bucket for Dash (AB): joined this week -> current deposit, else Monday EOD deposit.
+-- 25-Nov: Deposit for Dash = max deposit in 14 days (joined this week: last 14 days to today; else 14 days before the week).
 -- 20-Nov perf: big tables read once / only for the population (mdr, calls, mcl, pop_drv; dep_tot, lwos, cday, lead filtered).
 -- 24-Nov: EIP from collections_bad_debt_mv.product_type (like India Collections), not eip_tag. Product label:
 --   Leasing - EIP / D2O - EIP / Own Now - EIP / Leasing - Single; EIP pilots use the EIP risk rule (OS >= 25K).
@@ -138,7 +139,7 @@ dep_tot as materialized (   -- index-only scan (filter must match idx_mdr_dep_va
 dep_day as materialized (   -- deposits dated inside the 4 weeks (to rebuild the deposit on each day)
   select d.employee_id as etm, d.date as d, sum(d.amount) as amt
   from mv_deposits_raw d
-  where d.date >= (date_trunc('week', current_date)::date - 14) and d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[])
+  where d.date >= (date_trunc('week', current_date)::date - 22) and d.deposit_type::text <> all (array['OWNNOW_TO_OWNNOW','SD_TO_OWNNOW']::text[])
   group by 1, 2
 ),
 rec_day as materialized (
@@ -207,6 +208,22 @@ dep_run as materialized (   -- deposit as of each day = total now - deposits dat
   from grid g
   left join dep_tot t on t.etm = g.etm
   left join dep_after a on a.wk = g.wk and a.etm = g.etm and a.d = g.d
+),
+dep14_ds as materialized (   -- 25-Nov: deposit at the end of each day, 22 days back .. today (for the 14-day max deposit)
+  select e.etm, x.d, coalesce(t.dep_now, 0) - coalesce(sum(y.amt), 0) as bal
+  from (select distinct etm from pop where wk >= date_trunc('week', current_date)::date - 7) e
+  cross join (select g::date as d from generate_series(date_trunc('week', current_date)::date - 22, current_date, interval '1 day') g) x
+  left join dep_tot t on t.etm = e.etm
+  left join dep_day y on y.etm = e.etm and y.d > x.d
+  group by 1, 2, t.dep_now
+),
+dep14 as materialized (   -- 25-Nov: max deposit in the 14 days before the week (pre14) and in the last 14 days up to today / week end (l14)
+  select p.wk, p.etm,
+         max(b.bal) filter (where b.d between p.wk - 14 and p.wk - 1) as dep_max_pre14,
+         max(b.bal) filter (where b.d between least(p.wk + 6, current_date) - 13 and least(p.wk + 6, current_date)) as dep_max_l14
+  from pop p join dep14_ds b on b.etm = p.etm
+  where p.wk >= date_trunc('week', current_date)::date - 7
+  group by 1, 2
 ),
 day as materialized (
   select g.wk, g.etm, g.dn, g.dep_asof,
@@ -322,6 +339,7 @@ r0 as materialized (select
   case when rc.etm is null then 'No' when rc.rc_open_eow then 'Open' else 'Closed' end as "Car Recovery (week)",
   rc.rc_start                                            as "Car Recovery Start",
   pv.dep_wk_start as dep_mon_eod, pv.dep_wk_last as dep_wk_last,   -- 20-Nov: for Deposit for Dash
+  d14.dep_max_pre14, d14.dep_max_l14,   -- 25-Nov: 14-day max deposit for Deposit for Dash
   pv.lo1 as "Live OS D1", pv.lo2 as "Live OS D2", pv.lo3 as "Live OS D3", pv.lo4 as "Live OS D4",
   pv.lo5 as "Live OS D5", pv.lo6 as "Live OS D6", pv.lo7 as "Live OS D7",
   pv.c1 as "Collection D1", pv.c2 as "Collection D2", pv.c3 as "Collection D3", pv.c4 as "Collection D4",
@@ -337,6 +355,7 @@ r0 as materialized (select
   to_char(now() at time zone 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI:SS') as "Last Updated"
 from base b
 left join piv pv on pv.wk = b.wk and pv.etm = b.etm
+left join dep14 d14 on d14.wk = b.wk and d14.etm = b.etm
 left join dep_tot dt on dt.etm = b.etm
 left join gps_mon g on g.wk = b.wk and g.etm = b.etm
 left join rc_wk rc on rc.wk = b.wk and rc.etm = b.etm
@@ -734,12 +753,12 @@ v as materialized (
          when u."Product Type" = 'D2O' then case when u.is_newjoin then 'Base Tier'
               else (select s.tier from slab s where s.city = u.slab_city and s.min_trips <= u.trips_lw order by s.min_trips desc limit 1) end
     end as trip_tier,
-    -- 20-Nov: Deposit for Dash = joined in this week -> current deposit (past week: end of that week);
-    -- else deposit at Monday EOD of the week, so a pilot who leaves mid-week and gets the deposit adjusted
-    -- does not move into the 0-deposit count.
+    -- 25-Nov: Deposit for Dash = MAX deposit in 14 days. Joined in this week -> last 14 days up to today
+    -- (past week row: up to that week end); else -> the 14 days before the week starts. A pilot who paid
+    -- and then left / had the deposit adjusted to OS keeps the max he gave, not 0.
     greatest(case when u."Last Join Date" between u."Week" and u."Week" + 6
-                  then case when u."Week" = date_trunc('week', current_date)::date then u.dp else coalesce(u.dep_wk_last, u.dp) end
-                  else coalesce(u.dep_mon_eod, u.dp) end, 0) as dep_dash
+                  then coalesce(u.dep_max_l14, u.dp)
+                  else coalesce(u.dep_max_pre14, u.dp) end, 0) as dep_dash
   from u
 )
 

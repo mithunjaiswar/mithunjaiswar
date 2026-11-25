@@ -30,7 +30,7 @@ COLS = [
 ('3. Join & Deposit','Deposit Bucket at Allocation','0 Deposit / 1-3K / 3-5K / 5K+ / Unknown (dash filter)','raw',W),
 ('3. Join & Deposit','Deposit Now (Rs)','Current deposit balance','raw',N),
 ('3. Join & Deposit','Deposit Bucket Now','Bucket of the current deposit','Agent_action',N),
-('3. Join & Deposit','Deposit for Dash (Rs)',"Joined in this week -> current deposit (last week row: deposit at that week's end). Everyone else -> deposit at Monday EOD of the week, so a pilot who leaves mid-week and gets the deposit adjusted does not jump into 0 deposit",'raw',W),
+('3. Join & Deposit','Deposit for Dash (Rs)',"Max deposit in 14 days. Joined in this week -> max of the last 14 days up to today (last week row: up to that week end). Everyone else -> max of the 14 days before the week starts. So a pilot who paid and then left / had the deposit adjusted to OS keeps the max he gave, not 0",'raw',W),
 ('3. Join & Deposit','Deposit Bucket for Dash','0 Deposit / 1-3K / 3-5K / 5K+ of Deposit for Dash. All 0-deposit dash filters use this column','raw',W),
 ('3. Join & Deposit','Joined This Week at 0 Deposit','Yes = joined in this week (Joined This Week is not Existing) AND Deposit Bucket at Allocation = 0 Deposit, else No. Use this to filter that week 0-deposit joiners','raw',W),
 # 4. Weekly OS & Collection
