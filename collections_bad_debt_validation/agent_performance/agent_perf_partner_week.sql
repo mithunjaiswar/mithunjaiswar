@@ -5,7 +5,7 @@
 -- Population = analytics.collections_bad_debt_mv rows with for_collections = 1 (same as India Collections).
 -- Payments = mv_daily_recovery (razorpay, phonepe, other positive, positive adjustment, deposit to OS).
 -- Calls = collections_calling_data_raw (Mumbai: only campaign 277, like raw_v2).
--- Runtime: ~15-20 s (each source read once; no IN (subquery) filter on mv_daily_recovery, that made it > 60 s).
+-- Runtime: finished under 60 s on the reporting DB (each source read once; no IN (subquery) filter on mv_daily_recovery, that made it > 60 s).
 -- =====================================================================================
 with b as materialized (
   select distinct on (m.hissab_week, m.partner_etm)
